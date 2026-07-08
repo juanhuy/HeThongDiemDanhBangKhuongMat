@@ -1,0 +1,23 @@
+ai:
+  model_name: "buffalo_l"
+  det_size: [480, 480]
+  threshold: 0.65
+
+camera:
+  device_id: 0
+  width: 1280
+  height: 720
+  fps: 30
+
+database:
+  embeddings_dir: "./database/embeddings"
+  images_dir: "./database/registered_images"
+  db_file: "./database/app_db.sqlite"
+
+attendance:
+  cooldown_seconds: 30
+  log_file: "./logs/attendance_log.csv"
+
+server:
+  host: "127.0.0.1"
+  port: 8000
