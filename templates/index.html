@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTIT Face Attendance Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(22, 29, 49, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary: #10b981;
+            --primary-hover: #059669;
+            --primary-light: rgba(16, 185, 129, 0.1);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --accent: #3b82f6;
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+
+        header {
+            background: rgba(11, 15, 25, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--card-border);
+            padding: 1.25rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-section h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #10b981, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-section p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--primary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--primary);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--primary);
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            flex-grow: 1;
+        }
+
+        /* Metrics grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .metric-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(16, 185, 129, 0.3);
+            box-shadow: 0 10px 20px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        .metric-info h3 {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .metric-info .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .metric-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        /* Main Workspace Grid */
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: 1.3fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .workspace-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-main);
+            border-left: 4px solid var(--primary);
+            padding-left: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Image Drag & Drop Area */
+        .dropzone-container {
+            position: relative;
+            width: 100%;
+            min-height: 320px;
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .dropzone-container:hover, .dropzone-container.dragover {
+            border-color: var(--primary);
+            background: rgba(16, 185, 129, 0.03);
+        }
+
+        .dropzone-prompt {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            text-align: center;
+            color: var(--text-muted);
+            padding: 2rem;
+        }
+
+        .dropzone-prompt svg {
+            width: 48px;
+            height: 48px;
+            stroke: var(--text-muted);
+        }
+
+        /* Image Preview with Bounding Boxes Canvas */
+        .preview-wrapper {
+            position: relative;
+            max-width: 100%;
+            display: none;
+        }
+
+        .preview-image {
+            width: 100%;
+            display: block;
+            border-radius: 8px;
+        }
+
+        .detection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Forms Styling */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        input, select {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--text-main);
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+            width: 100%;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--primary);
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background-color: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.12);
+        }
+
+        /* Tabs styling */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--card-border);
+            gap: 1.5rem;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+            padding: 8px 4px 12px 4px;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-main);
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: var(--primary);
+            border-radius: 99px;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Attendance Table */
+        .table-container {
+            overflow-x: auto;
+            width: 100%;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 500;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--card-border);
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--primary);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .badge-info {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+
+        /* Notifications */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: #1e293b;
+            border-left: 4px solid var(--primary);
+            border-radius: 8px;
+            padding: 12px 20px;
+            color: var(--text-main);
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(100px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* File input style */
+        .file-preview-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 6px;
+        }
+
+        .avatar-placeholder {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: white;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-section">
+            <h1>PTIT Face Attendance</h1>
+            <p>Hệ thống nhận diện khuôn mặt & điểm danh sinh viên</p>
+        </div>
+        <div class="status-badge">
+            <span class="status-dot"></span>
+            Online
+        </div>
+    </header>
+
+    <div class="container">
+        
+        <!-- Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-info">
+                    <h3>Tổng sinh viên</h3>
+                    <div class="value" id="metric-students">0</div>
+                </div>
+                <div class="metric-icon">🎓</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-info">
+                    <h3>Buổi học hôm nay</h3>
+                    <div class="value" id="metric-sessions">0</div>
+                </div>
+                <div class="metric-icon">🗓️</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-info">
+                    <h3>Tổng lượt quét</h3>
+                    <div class="value" id="metric-scans">0</div>
+                </div>
+                <div class="metric-icon">⚡</div>
+            </div>
+        </div>
+
+        <!-- Main Workspace -->
+        <div class="workspace-grid">
+            
+            <!-- Left Panel: Recognition -->
+            <div class="card">
+                <div class="card-title">
+                    Nhận diện & Điểm danh
+                    <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">Tải ảnh chụp để điểm danh</span>
+                </div>
+                
+                <div class="dropzone-container" id="dropzone" onclick="document.getElementById('image-upload').click()">
+                    <input type="file" id="image-upload" accept="image/*" style="display: none;" onchange="handleImageSelect(event)">
+                    <div class="dropzone-prompt" id="dropzone-prompt">
+                        <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                        </svg>
+                        <p style="font-size: 1rem; font-weight: 500; color: var(--text-main);">Kéo thả hoặc nhấp để tải ảnh lên</p>
+                        <p style="font-size: 0.8rem;">Hỗ trợ định dạng JPG, PNG để chạy AI đối chiếu</p>
+                    </div>
+                    <div class="preview-wrapper" id="preview-wrapper">
+                        <img src="" alt="Preview" class="preview-image" id="preview-image">
+                        <canvas class="detection-canvas" id="detection-canvas"></canvas>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" onclick="resetRecognition()">Làm mới</button>
+                    <button class="btn" onclick="triggerRecognition()">Bắt đầu đối chiếu AI</button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Data management / Registration -->
+            <div class="card">
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('tab-register', this)">Đăng ký</button>
+                    <button class="tab-btn" onclick="switchTab('tab-schedule', this)">Lịch học</button>
+                    <button class="tab-btn" onclick="switchTab('tab-structure', this)">Môn & Lớp</button>
+                </div>
+
+                <!-- Tab: Register Student -->
+                <div class="tab-content active" id="tab-register">
+                    <form id="register-form" onsubmit="handleRegister(event)">
+                        <div style="display: flex; flex-direction: column; gap: 1.2rem;">
+                            <div class="form-group">
+                                <label for="reg-mssv">Mã số sinh viên (MSSV)</label>
+                                <input type="text" id="reg-mssv" required placeholder="Ví dụ: B21DCCN123">
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-name">Họ và tên sinh viên</label>
+                                <input type="text" id="reg-name" required placeholder="Ví dụ: Nguyễn Văn A">
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-lop">Lớp chuyên ngành</label>
+                                <input type="text" id="reg-lop" required placeholder="Ví dụ: D21CQCN01-B">
+                            </div>
+                            <div class="form-group">
+                                <label>Ảnh chân dung nhận diện</label>
+                                <input type="file" id="reg-photo" accept="image/*" required style="display: none;" onchange="updateRegPhotoPreview(event)">
+                                <button type="button" class="btn btn-secondary" onclick="document.getElementById('reg-photo').click()">Chọn ảnh chân dung</button>
+                                <div class="file-preview-box" id="reg-photo-preview-box" style="display: none;">
+                                    <div class="avatar-placeholder" id="avatar-char">A</div>
+                                    <span id="reg-photo-name" style="font-size: 0.85rem; color: var(--primary);">file_anh.jpg</span>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn" style="margin-top: 10px;">Lưu & Đăng ký AI</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Tab: Add Schedule -->
+                <div class="tab-content" id="tab-schedule">
+                    <form id="schedule-form" onsubmit="handleCreateSchedule(event)">
+                        <div style="display: flex; flex-direction: column; gap: 1.2rem;">
+                            <div class="form-group">
+                                <label for="sch-class">Lớp tín chỉ</label>
+                                <select id="sch-class" required>
+                                    <option value="">-- Chọn lớp tín chỉ --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="sch-date">Ngày học</label>
+                                <input type="date" id="sch-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="sch-room">Phòng học</label>
+                                <input type="text" id="sch-room" required placeholder="Ví dụ: A2-301">
+                            </div>
+                            <div class="form-group">
+                                <label for="sch-time">Giờ bắt đầu</label>
+                                <input type="time" id="sch-time" required>
+                            </div>
+                            <button type="submit" class="btn" style="margin-top: 10px;">Thêm lịch học</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Tab: Structure (Subject, Class, Enroll) -->
+                <div class="tab-content" id="tab-structure">
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        
+                        <!-- Mon hoc -->
+                        <div style="border-bottom: 1px solid var(--card-border); padding-bottom: 1.5rem;">
+                            <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--primary);">1. Thêm môn học</h4>
+                            <form id="subject-form" onsubmit="handleCreateSubject(event)" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <input type="text" id="sub-code" required placeholder="Mã môn (INT1306)" style="flex: 1; min-width: 120px;">
+                                <input type="text" id="sub-name" required placeholder="Tên môn học" style="flex: 2; min-width: 180px;">
+                                <button type="submit" class="btn">Thêm</button>
+                            </form>
+                        </div>
+
+                        <!-- Lop tin chi -->
+                        <div style="border-bottom: 1px solid var(--card-border); padding-bottom: 1.5rem;">
+                            <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--primary);">2. Thêm lớp tín chỉ</h4>
+                            <form id="credit-class-form" onsubmit="handleCreateCreditClass(event)" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <input type="text" id="cc-code" required placeholder="Mã lớp TC (INT1306_01)" style="flex: 1; min-width: 150px;">
+                                <select id="cc-sub" required style="flex: 1; min-width: 150px;">
+                                    <option value="">-- Chọn môn học --</option>
+                                </select>
+                                <button type="submit" class="btn">Thêm</button>
+                            </form>
+                        </div>
+
+                        <!-- Dang ky sinh vien vao lop TC -->
+                        <div>
+                            <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--primary);">3. Xếp sinh viên vào lớp tín chỉ</h4>
+                            <form id="enroll-form" onsubmit="handleEnroll(event)" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <select id="enr-class" required style="flex: 1; min-width: 150px;">
+                                    <option value="">-- Chọn lớp TC --</option>
+                                </select>
+                                <input type="text" id="enr-mssv" required placeholder="MSSV cần đăng ký" style="flex: 1; min-width: 150px;">
+                                <button type="submit" class="btn">Đăng ký</button>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Attendance Logs Table -->
+        <div class="card">
+            <div class="card-title">Nhật ký điểm danh gần đây</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>MSSV</th>
+                            <th>Họ và Tên</th>
+                            <th>Lớp chuyên ngành</th>
+                            <th>Buổi học (Mã)</th>
+                            <th>Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-body">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-muted);">Đang tải dữ liệu lịch sử...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="toast" id="toast">Thông báo hệ thống</div>
+
+    <script>
+        const API_BASE = ""; // Gọi local tương đối
+
+        // Biến lưu trữ file ảnh nhận diện hiện tại
+        let selectedRecognizeFile = null;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            // Thiết lập giá trị mặc định cho ô lịch học ngày học là hôm nay
+            const todayStr = new Date().toISOString().substring(0, 10);
+            document.getElementById("sch-date").value = todayStr;
+
+            // Kéo thả file ảnh
+            setupDragAndDrop();
+
+            // Load dữ liệu ban đầu
+            fetchInitialData();
+            
+            // Tải nhật ký định kỳ mỗi 5 giây
+            setInterval(fetchLogs, 5000);
+        });
+
+        // Tabs switcher
+        function switchTab(tabId, el) {
+            document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+            document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+            el.classList.add("active");
+            document.getElementById(tabId).classList.add("active");
+        }
+
+        // Drag and Drop
+        function setupDragAndDrop() {
+            const dropzone = document.getElementById("dropzone");
+            
+            ["dragenter", "dragover"].forEach(eventName => {
+                dropzone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropzone.classList.add("dragover");
+                }, false);
+            });
+
+            ["dragleave", "drop"].forEach(eventName => {
+                dropzone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropzone.classList.remove("dragover");
+                }, false);
+            });
+
+            dropzone.addEventListener("drop", (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0) {
+                    processRecognizeImage(files[0]);
+                }
+            });
+        }
+
+        // Preview ảnh nhận dạng
+        function handleImageSelect(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                processRecognizeImage(files[0]);
+            }
+        }
+
+        function processRecognizeImage(file) {
+            if (!file.type.startsWith("image/")) {
+                showToast("Vui lòng chỉ tải lên file hình ảnh.", "danger");
+                return;
+            }
+            selectedRecognizeFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = document.getElementById("preview-image");
+                img.src = e.target.result;
+                document.getElementById("dropzone-prompt").style.display = "none";
+                document.getElementById("preview-wrapper").style.display = "block";
+                
+                // Clear canvas cũ
+                const canvas = document.getElementById("detection-canvas");
+                const ctx = canvas.getContext("2d");
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+            reader.readAsDataURL(file);
+        }
+
+        function resetRecognition() {
+            selectedRecognizeFile = null;
+            document.getElementById("image-upload").value = "";
+            document.getElementById("dropzone-prompt").style.display = "flex";
+            document.getElementById("preview-wrapper").style.display = "none";
+            document.getElementById("preview-image").src = "";
+            
+            const canvas = document.getElementById("detection-canvas");
+            const ctx = canvas.getContext("2d");
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Preview ảnh đăng ký
+        function updateRegPhotoPreview(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                const file = files[0];
+                document.getElementById("reg-photo-name").innerText = file.name;
+                document.getElementById("reg-photo-preview-box").style.display = "flex";
+                
+                // Lấy chữ cái đầu của họ tên làm avatar đại diện tạm thời
+                const name = document.getElementById("reg-name").value || "S";
+                document.getElementById("avatar-char").innerText = name.trim().charAt(0).toUpperCase();
+            }
+        }
+
+        // Toast notifications
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.innerText = message;
+            toast.style.borderLeftColor = type === "success" ? "var(--primary)" : (type === "danger" ? "var(--danger)" : "var(--accent)");
+            toast.style.display = "block";
+            setTimeout(() => {
+                toast.style.display = "none";
+            }, 3500);
+        }
+
+        // Fetch logs
+        async function fetchLogs() {
+            try {
+                const res = await fetch(`${API_BASE}/api/attendance`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const tbody = document.getElementById("logs-body");
+                if (data.logs.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Chưa có lịch sử điểm danh nào.</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = data.logs.map(log => `
+                    <tr>
+                        <td>${log.timestamp}</td>
+                        <td style="font-weight: 600;">${log.mssv}</td>
+                        <td>${log.fullname}</td>
+                        <td>${log.lop_base}</td>
+                        <td><span class="badge badge-info">Buổi ${log.ma_buoi_hoc}</span></td>
+                        <td><span class="badge badge-success">${log.trang_thai}</span></td>
+                    </tr>
+                `).join("");
+
+                // Cập nhật metrics scans
+                document.getElementById("metric-scans").innerText = data.logs.length;
+            } catch (err) {
+                console.error("Lỗi khi tải log:", err);
+            }
+        }
+
+        // Tải các danh sách ban đầu (môn học, lớp tín chỉ, tổng số sinh viên)
+        async function fetchInitialData() {
+            try {
+                // 1. Tải sinh viên
+                const resStudents = await fetch(`${API_BASE}/api/students`);
+                if (resStudents.ok) {
+                    const data = await resStudents.json();
+                    document.getElementById("metric-students").innerText = data.students.length;
+                }
+
+                // 2. Tải tất cả môn học để đổ vào Form Lớp tín chỉ
+                const resSub = await fetch(`${API_BASE}/api/students`); // Sử dụng tạm endpoint lân cận hoặc giả định có để tải
+                
+                // Gọi API lấy lịch sử logs để hiển thị
+                fetchLogs();
+
+                // Lấy thông tin lớp tín chỉ đổ vào select
+                loadCreditClassOptions();
+            } catch (err) {
+                console.error("Lỗi fetch data ban đầu:", err);
+            }
+        }
+
+        async function loadCreditClassOptions() {
+            try {
+                // Truy vấn lịch học / lớp để điền
+                // Do cấu hình tối giản, chúng ta sẽ gọi thẳng các select
+                // Ở đây chúng ta sẽ giả định danh sách lớp tín chỉ được đổ dựa trên SQLite
+                const res = await fetch(`${API_BASE}/api/attendance`); // Truy vấn mẫu
+                // Để đơn giản và nhanh gọn, chúng ta có thể load các option động từ DB hoặc cho phép thêm và lưu session.
+            } catch (e){}
+        }
+
+        // Đăng ký sinh viên
+        async function handleRegister(e) {
+            e.preventDefault();
+            const mssv = document.getElementById("reg-mssv").value;
+            const name = document.getElementById("reg-name").value;
+            const lop = document.getElementById("reg-lop").value;
+            const photoInput = document.getElementById("reg-photo");
+
+            if (photoInput.files.length === 0) {
+                showToast("Vui lòng chọn ảnh chân dung nhận diện.", "danger");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("mssv", mssv);
+            formData.append("ho_ten", name);
+            formData.append("lop_base", lop);
+            formData.append("file", photoInput.files[0]);
+
+            try {
+                const res = await fetch(`${API_BASE}/api/register`, {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(data.message || "Đăng ký thành công!");
+                    document.getElementById("register-form").reset();
+                    document.getElementById("reg-photo-preview-box").style.display = "none";
+                    fetchInitialData();
+                } else {
+                    showToast(data.detail || "Đăng ký thất bại", "danger");
+                }
+            } catch (err) {
+                showToast("Lỗi kết nối Server.", "danger");
+            }
+        }
+
+        // Thêm môn học
+        async function handleCreateSubject(e) {
+            e.preventDefault();
+            const code = document.getElementById("sub-code").value;
+            const name = document.getElementById("sub-name").value;
+
+            const formData = new FormData();
+            formData.append("ma_mon", code);
+            formData.append("ten_mon", name);
+
+            try {
+                const res = await fetch(`${API_BASE}/api/mon_hoc`, {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(data.message);
+                    document.getElementById("subject-form").reset();
+                    // Thêm option vào select lớp tín chỉ
+                    const select = document.getElementById("cc-sub");
+                    const opt = document.createElement("option");
+                    opt.value = code;
+                    opt.text = `${name} (${code})`;
+                    select.add(opt);
+                } else {
+                    showToast(data.detail, "danger");
+                }
+            } catch (err) {
+                showToast("Lỗi kết nối Server.", "danger");
+            }
+        }
+
+        // Thêm lớp tín chỉ
+        async function handleCreateCreditClass(e) {
+            e.preventDefault();
+            const code = document.getElementById("cc-code").value;
+            const maMon = document.getElementById("cc-sub").value;
+
+            const formData = new FormData();
+            formData.append("ma_lop_tc", code);
+            formData.append("ma_mon", maMon);
+
+            try {
+                const res = await fetch(`${API_BASE}/api/lop_tin_chi`, {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(data.message);
+                    document.getElementById("credit-class-form").reset();
+                    
+                    // Thêm option vào select xếp lớp và chọn lịch học
+                    const selectSch = document.getElementById("sch-class");
+                    const optSch = document.createElement("option");
+                    optSch.value = code;
+                    optSch.text = code;
+                    selectSch.add(optSch);
+
+                    const selectEnr = document.getElementById("enr-class");
+                    const optEnr = document.createElement("option");
+                    optEnr.value = code;
+                    optEnr.text = code;
+                    selectEnr.add(optEnr);
+                } else {
+                    showToast(data.detail, "danger");
+                }
+            } catch (err) {
+                showToast("Lỗi kết nối Server.", "danger");
+            }
+        }
+
+        // Xếp sinh viên vào lớp TC
+        async function handleEnroll(e) {
+            e.preventDefault();
+            const cc = document.getElementById("enr-class").value;
+            const mssv = document.getElementById("enr-mssv").value;
+
+            const formData = new FormData();
+            formData.append("ma_lop_tc", cc);
+            formData.append("mssv", mssv);
+
+            try {
+                const res = await fetch(`${API_BASE}/api/sinh_vien_lop_tin_chi`, {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(data.message);
+                    document.getElementById("enroll-form").reset();
+                } else {
+                    showToast(data.detail, "danger");
+                }
+            } catch (err) {
+                showToast("Lỗi kết nối Server.", "danger");
+            }
+        }
+
+        // Tạo lịch học
+        async function handleCreateSchedule(e) {
+            e.preventDefault();
+            const cc = document.getElementById("sch-class").value;
+            const date = document.getElementById("sch-date").value;
+            const room = document.getElementById("sch-room").value;
+            const timeVal = document.getElementById("sch-time").value + ":00";
+
+            const formData = new FormData();
+            formData.append("ma_lop_tc", cc);
+            formData.append("ngay_hoc", date);
+            formData.append("phong_hoc", room);
+            formData.append("gio_bat_dau", timeVal);
+
+            try {
+                const res = await fetch(`${API_BASE}/api/lich_hoc_chi_tiet`, {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(data.message);
+                    document.getElementById("schedule-form").reset();
+                    // Tăng số lượng buổi học
+                    const schVal = parseInt(document.getElementById("metric-sessions").innerText) || 0;
+                    document.getElementById("metric-sessions").innerText = schVal + 1;
+                } else {
+                    showToast(data.detail, "danger");
+                }
+            } catch (err) {
+                showToast("Lỗi kết nối Server.", "danger");
+            }
+        }
+
+        // Nhận diện AI đối chiếu khuôn mặt
+        async function triggerRecognition() {
+            if (!selectedRecognizeFile) {
+                showToast("Vui lòng chọn hoặc kéo thả một hình ảnh trước.", "danger");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", selectedRecognizeFile);
+
+            showToast("Đang xử lý hình ảnh qua AI...");
+
+            try {
+                const res = await fetch(`${API_BASE}/api/recognize`, {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (res.ok) {
+                    showToast(`Nhận diện hoàn tất. Phát hiện ${data.faces_detected} khuôn mặt.`);
+                    drawDetections(data.results);
+                    fetchLogs();
+                } else {
+                    showToast(data.detail || "Lỗi xử lý nhận diện", "danger");
+                }
+            } catch (err) {
+                showToast("Lỗi kết nối server nhận diện.", "danger");
+            }
+        }
+
+        // Vẽ bounding box và họ tên lên canvas nằm trên ảnh
+        function drawDetections(results) {
+            const canvas = document.getElementById("detection-canvas");
+            const img = document.getElementById("preview-image");
+            
+            // Đặt kích thước canvas bằng kích thước ảnh hiển thị
+            canvas.width = img.clientWidth;
+            canvas.height = img.clientHeight;
+
+            const ctx = canvas.getContext("2d");
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Tính tỷ lệ scale giữa ảnh hiển thị và ảnh thực tế để vẽ chuẩn
+            const scaleX = canvas.width / img.naturalWidth;
+            const scaleY = canvas.height / img.naturalHeight;
+
+            results.forEach(res => {
+                const [x1, y1, x2, y2] = res.box;
+                const bx = x1 * scaleX;
+                const by = y1 * scaleY;
+                const bw = (x2 - x1) * scaleX;
+                const bh = (y2 - y1) * scaleY;
+
+                // Chọn màu sắc: xanh cho khớp, đỏ cho Unknown
+                const color = res.is_known ? "#10b981" : "#ef4444";
+                
+                // Vẽ hộp
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(bx, by, bw, bh);
+
+                // Vẽ text nền nhãn
+                ctx.fillStyle = color;
+                ctx.font = "bold 13px 'Inter', sans-serif";
+                const label = res.is_known ? `${res.fullname} (${res.mssv})` : "Chưa đăng ký";
+                const textWidth = ctx.measureText(label).width;
+
+                ctx.fillRect(bx, by - 24, textWidth + 14, 24);
+
+                // Viết chữ
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText(label, bx + 7, by - 7);
+            });
+        }
+    </script>
+</body>
+</html>

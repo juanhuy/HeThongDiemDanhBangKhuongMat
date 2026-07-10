@@ -8,6 +8,7 @@ import insightface
 from insightface.app import FaceAnalysis
 from config.settings import settings
 from core.face_matcher import tinh_cosine_similarity
+from services.database_service import DatabaseService
 
 # Thiết lập PATH cho CUDA/CuDNN trong venv (chạy từ thư mục con core/)
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,13 +23,10 @@ class FaceAnalyzer:
         ai_config = settings.ai
         db_config = settings.database
         
-        self.embeddings_dir = os.path.join(project_root, db_config.get("embeddings_dir", "./database/embeddings"))
+        self.db_service = DatabaseService()
         self.threshold = ai_config.get("threshold", 0.65)
         self.det_size = tuple(ai_config.get("det_size", [480, 480]))
         
-        if not os.path.exists(self.embeddings_dir):
-            os.makedirs(self.embeddings_dir, exist_ok=True)
-            
         # Khởi tạo mô hình InsightFace
         self.app = FaceAnalysis(
             name=ai_config.get("model_name", "buffalo_l"), 
@@ -55,20 +53,16 @@ class FaceAnalyzer:
     def load_database(self):
         self.known_embeddings = []
         self.known_names = []
-        if not os.path.exists(self.embeddings_dir):
-            return
-            
-        for file_name in os.listdir(self.embeddings_dir):
-            if file_name.endswith(".npy"):
-                name = os.path.splitext(file_name)[0]
-                embedding = np.load(os.path.join(self.embeddings_dir, file_name))
-                self.known_embeddings.append(embedding)
-                self.known_names.append(name)
-        print(f"-> Da tai {len(self.known_names)} khuon mat tu database vector.")
+        students = self.db_service.get_all_sinh_vien()
+        for sv in students:
+            if sv["face_vector"] is not None:
+                self.known_embeddings.append(sv["face_vector"])
+                self.known_names.append(sv["mssv"])
+        print(f"-> Da tai {len(self.known_names)} khuon mat sinh vien tu database vector.")
 
 
-    def dang_ky_mat(self, image_path, name):
-        """Trích xuất và lưu vector khuôn mặt của một người"""
+    def dang_ky_mat(self, image_path, mssv, ho_ten, lop_base, **kwargs):
+        """Trích xuất và lưu vector khuôn mặt của một sinh viên"""
         img = cv.imread(image_path)
         if img is None:
             print(f"Không thể đọc được ảnh tại: {image_path}")
@@ -83,11 +77,12 @@ class FaceAnalyzer:
             return False
             
         embedding = faces[0].normed_embedding
-        save_path = os.path.join(self.embeddings_dir, f"{name}.npy")
-        np.save(save_path, embedding)
-        print(f"Đăng ký thành công khuôn mặt cho {name}")
-        self.load_database()
-        return True
+        success = self.db_service.add_sinh_vien(mssv, ho_ten, lop_base, embedding, **kwargs)
+        if success:
+            print(f"Đăng ký thành công khuôn mặt cho {ho_ten} ({mssv})")
+            self.load_database()
+            return True
+        return False
 
     def start_worker(self):
         """Khởi động luồng AI chạy ngầm"""

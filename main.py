@@ -7,22 +7,17 @@ from services.database_service import DatabaseService
 from services.attendance_service import AttendanceService
 from utils.image_helpers import draw_face_info
 
-def register_new_face(image_path, username, fullname, analyzer, db_service):
-    """Đăng ký cả SQLite và trích xuất vector khuôn mặt"""
-    print(f"\n-> Bat dau dang ky khuon mat cho: {fullname} ({username})...")
-    # 1. Thêm thông tin vào SQLite
-    db_success = db_service.add_user(username, fullname)
-    if not db_success:
-        print("Lỗi: Không thể lưu thông tin vào cơ sở dữ liệu SQLite.")
-        return False
-        
-    # 2. Trích xuất vector và lưu file npy
-    ai_success = analyzer.dang_ky_mat(image_path, username)
+def register_new_face(image_path, mssv, ho_ten, lop_base, analyzer, db_service):
+    """Đăng ký sinh viên mới: Trích xuất vector và lưu vào SQLite"""
+    print(f"\n-> Bắt đầu đăng ký khuôn mặt cho sinh viên: {ho_ten} ({mssv})...")
+    
+    # Kích hoạt trích xuất vector khuôn mặt và lưu SQLite
+    ai_success = analyzer.dang_ky_mat(image_path, mssv, ho_ten, lop_base)
     if not ai_success:
         print("Lỗi: Không thể đăng ký vector khuôn mặt qua AI.")
         return False
         
-    print("-> Dang ky khuon mat hoan tat thanh cong!")
+    print("-> Đăng ký sinh viên hoàn tất thành công!")
     return True
 
 def run_recognition_system():
@@ -30,18 +25,18 @@ def run_recognition_system():
     db_service = DatabaseService()
     attendance_service = AttendanceService(db_service)
     
-    print("-> Dang khoi tao mo hinh AI (InsightFace)...")
+    print("-> Đang khởi tạo mô hình AI (InsightFace)...")
     analyzer = FaceAnalyzer()
     
-    # Tự động quét và đăng ký khuôn mặt mẫu từ thư mục asset cũ của bạn nếu DB trống
+    # Tự động quét và đăng ký khuôn mặt mẫu từ thư mục asset nếu DB trống
     if len(analyzer.known_embeddings) == 0:
         project_root = os.path.dirname(os.path.abspath(__file__))
         demo_image = os.path.join(project_root, 'asset', 'huy1.jpg')
         if os.path.exists(demo_image):
-            register_new_face(demo_image, "huy_nguyen", "Nguyễn lê Nhật Huy", analyzer, db_service)
+            register_new_face(demo_image, "B21DCCN123", "Nguyen Le Nhat Huy", "D21CQCN01-B", analyzer, db_service)
         else:
             print("Cảnh báo: Cơ sở dữ liệu trống và không tìm thấy ảnh mẫu để tự động đăng ký.")
-            print("Vui lòng đăng ký ít nhất một khuôn mặt trước khi chạy nhận dạng.")
+            print("Vui lòng đăng ký ít nhất một sinh viên trước khi chạy nhận dạng.")
 
     # 2. Thiết lập camera từ cấu hình config.yaml
     cam_config = settings.camera
@@ -59,9 +54,9 @@ def run_recognition_system():
     # 3. Kích hoạt luồng AI chạy ngầm
     analyzer.start_worker()
     print("\n========================================================")
-    print("Hệ thống nhận diện đã sẵn sàng!")
+    print("Hệ thống nhận diện điểm danh PTIT đã sẵn sàng!")
     print("- Nhấn 'q' tại màn hình hiển thị để thoát chương trình.")
-    print("- Nhấn 'r' để đăng ký khuôn mặt mới từ ảnh có sẵn.")
+    print("- Nhấn 'r' để đăng ký sinh viên mới trực tiếp qua dòng lệnh.")
     print("========================================================\n")
 
     try:
@@ -78,18 +73,17 @@ def run_recognition_system():
             current_results = analyzer.results.copy()
             for res in current_results:
                 box = res["box"]
-                username = res["name"]
+                mssv = res["name"]
                 score = res["score"]
                 is_known = res["is_known"]
 
-                # Nếu nhận diện thành công, ghi nhận điểm danh (có cooldown chống trùng lặp)
                 if is_known:
-                    # Ghi nhận điểm danh
-                    attendance_service.record_attendance(username, score)
+                    # Ghi nhận điểm danh (tự động tìm kiếm ma_buoi_hoc đang diễn ra hôm nay)
+                    attendance_service.record_attendance(mssv, score=score)
                     
                     # Truy xuất họ tên đầy đủ từ SQLite để hiển thị lên màn hình
-                    user_info = db_service.get_user(username)
-                    display_name = user_info["fullname"] if user_info else username
+                    sv_info = db_service.get_sinh_vien(mssv)
+                    display_name = sv_info["ho_ten"] if sv_info else mssv
                 else:
                     display_name = "Unknown"
 
@@ -107,13 +101,14 @@ def run_recognition_system():
                 cv.destroyAllWindows()
                 analyzer.stop_worker()
                 
-                print("\n--- ĐĂNG KÝ THÀNH VIÊN MỚI ---")
+                print("\n--- ĐĂNG KÝ SINH VIÊN MỚI ---")
                 img_p = input("Nhập đường dẫn ảnh chân dung (VD: C:\\anh.jpg): ").strip()
-                uname = input("Nhập tên đăng nhập viết liền không dấu (VD: nguyen_a): ").strip()
-                fname = input("Nhập họ và tên đầy đủ (VD: Nguyễn Văn A): ").strip()
+                mssv_input = input("Nhập Mã số sinh viên (VD: B21DCCN123): ").strip().upper()
+                ho_ten_input = input("Nhập họ và tên đầy đủ (VD: Nguyễn Văn A): ").strip()
+                lop_base_input = input("Nhập lớp chuyên ngành (VD: D21CQCN01-B): ").strip()
                 
                 if os.path.exists(img_p):
-                    register_new_face(img_p, uname, fname, analyzer, db_service)
+                    register_new_face(img_p, mssv_input, ho_ten_input, lop_base_input, analyzer, db_service)
                 else:
                     print("Lỗi: File ảnh không tồn tại. Quay lại màn hình chính.")
                 

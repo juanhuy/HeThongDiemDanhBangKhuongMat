@@ -4,6 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
 from config.settings import settings
 
+from fastapi.staticfiles import StaticFiles
+import os
+
 app = FastAPI(
     title="He thong nhan dien khuon mat API",
     description="Web Backend Server cho viec nhan dien khuon mat va diem danh su dung InsightFace & FastAPI.",
@@ -19,6 +22,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount thư mục lưu ảnh chân dung để Frontend có thể hiển thị ảnh tĩnh
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+images_dir = os.path.join(project_root, settings.database.get("images_dir", "./database/registered_images"))
+os.makedirs(images_dir, exist_ok=True)
+app.mount("/images", StaticFiles(directory=images_dir), name="images")
+
 # Đăng ký router chứa các endpoints nghiệp vụ
 app.include_router(router)
 
@@ -29,8 +38,8 @@ if __name__ == "__main__":
     port = server_cfg.get("port", 8000)
     
     print(f"\n========================================================")
-    print(f"Khởi chạy Web API Server tại: http://{host}:{port}")
-    print(f"Tài liệu hướng dẫn trực quan (Swagger UI): http://{host}:{port}/docs")
+    print(f"Khoi chay Web API Server tai: http://{host}:{port}")
+    print(f"Tai lieu huong dan truc quan (Swagger UI): http://{host}:{port}/docs")
     print(f"========================================================\n")
     
     uvicorn.run("api.main:app", host=host, port=port, reload=True)

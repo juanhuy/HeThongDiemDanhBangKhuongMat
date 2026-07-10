@@ -10,9 +10,13 @@ camera:
   fps: 30
 
 database:
-  embeddings_dir: "./database/embeddings"
+  db_type: "mysql"
+  host: "127.0.0.1"
+  port: 3306
+  user: "root"
+  password: "19082004"
+  db_name: "ptit_diem_danh"
   images_dir: "./database/registered_images"
-  db_file: "./database/app_db.sqlite"
 
 attendance:
   cooldown_seconds: 30
