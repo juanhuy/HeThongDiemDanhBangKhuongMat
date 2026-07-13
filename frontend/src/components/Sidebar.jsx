@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, CheckCircle, FileText, BookOpen, UserPlus, DollarSign, Clock, CalendarDays, Award, Settings } from 'lucide-react';
+import { Home, CheckCircle } from 'lucide-react';
 
 const Sidebar = ({ activeMenu, setActiveMenu, setActiveTab }) => {
   const styles = {
@@ -44,14 +44,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, setActiveTab }) => {
         >
           <CheckCircle size={16} /> Điểm danh khuôn mặt AI
         </div>
-        <div className="ptit-sidebar-item"><FileText size={16} /> Xem chương trình đào tạo</div>
-        <div className="ptit-sidebar-item"><BookOpen size={16} /> Xem môn học tiên quyết</div>
-        <div className="ptit-sidebar-item"><UserPlus size={16} /> Đăng ký môn nguyện vọng</div>
-        <div className="ptit-sidebar-item"><DollarSign size={16} /> Xem học phí</div>
-        <div className="ptit-sidebar-item"><Clock size={16} /> Thời khóa biểu dạng tuần</div>
-        <div className="ptit-sidebar-item"><CalendarDays size={16} /> Thời khóa biểu học kỳ</div>
-        <div className="ptit-sidebar-item"><Award size={16} /> Xem điểm</div>
-        <div className="ptit-sidebar-item"><Settings size={16} /> Cấu hình hệ thống</div>
       </div>
 
       <div style={styles.sidebarFooter}>

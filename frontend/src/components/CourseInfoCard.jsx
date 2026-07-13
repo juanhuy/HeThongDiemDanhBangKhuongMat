@@ -53,36 +53,36 @@ const CourseInfoCard = ({ studentProfile }) => {
   return (
     <div style={styles.card}>
       <div style={styles.cardHeader}>
-        <GraduationCap size={16} /> Thông tin khóa học
+        <GraduationCap size={16} /> Thông tin liên hệ & Lý lịch
       </div>
       <div style={styles.cardBody}>
         <div style={styles.courseInfoGrid}>
           <div style={styles.dataColumn}>
             <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Lớp:</span>
-              <span style={styles.dataValue}>{studentProfile.lop_base || "N/A"}</span>
+              <span style={styles.dataLabel}>Email:</span>
+              <span style={styles.dataValue}>{studentProfile.email || "N/A"}</span>
             </div>
             <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Ngành:</span>
-              <span style={styles.dataValue}>Công nghệ thông tin</span>
+              <span style={styles.dataLabel}>Số điện thoại:</span>
+              <span style={styles.dataValue}>{studentProfile.sdt || "N/A"}</span>
             </div>
             <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Chuyên ngành:</span>
-              <span style={styles.dataValue}>Công nghệ phần mềm</span>
+              <span style={styles.dataLabel}>Ngày sinh:</span>
+              <span style={styles.dataValue}>{studentProfile.ngay_sinh || "N/A"}</span>
             </div>
           </div>
           <div style={styles.dataColumn}>
             <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Khoa:</span>
-              <span style={styles.dataValue}>Công nghệ Thông Tin 2</span>
+              <span style={styles.dataLabel}>Giới tính:</span>
+              <span style={styles.dataValue}>{studentProfile.gioi_tinh || "N/A"}</span>
             </div>
             <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Bậc đào tạo:</span>
-              <span style={styles.dataValue}>Đại học Chính Quy</span>
+              <span style={styles.dataLabel}>Nơi sinh:</span>
+              <span style={styles.dataValue}>{studentProfile.noi_sinh || "N/A"}</span>
             </div>
             <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Niên khóa:</span>
-              <span style={styles.dataValue}>2022-2027</span>
+              <span style={styles.dataLabel}>Địa chỉ liên hệ:</span>
+              <span style={styles.dataValue}>{studentProfile.dia_chi || "N/A"}</span>
             </div>
           </div>
         </div>

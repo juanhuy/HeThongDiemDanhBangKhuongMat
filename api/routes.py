@@ -28,7 +28,7 @@ def login(username :str=Form(...), password:str=Form(...)):
     if not user:
         raise HTTPException(status_code=401,detail="Ten dang nhap hoac mat khau khong dung")
         
-    return {"status":"success","message":f"Dang nhap thanh cong."}
+    return {"status": "success", "message": "Dang nhap thanh cong.", "user": user}
 @router.post("/api/auth/register")
 def register(username:str=Form(...),password:str=Form(...),mssv:str=Form(None)):
     success=db_service.register_account(username,password,mssv)
@@ -189,11 +189,12 @@ def get_attendance_history():
 @router.post("/api/recognize")
 async def recognize_uploaded_image(
     file: UploadFile = File(...),
-    ma_buoi_hoc: int = Query(None, description="Ma buoi hoc muon ghi nhan diem danh. Neu khong truyen, he thong tu dong tim buoi dang dien ra.")
+    ma_buoi_hoc: int = Query(None, description="Mã buổi học muốn ghi nhận."),
+    phong_hoc: str = Query(None, description="Tên phòng học từ Camera gửi lên.")
 ):
-    """Nhận diện khuôn mặt sinh viên và điểm danh tự động"""
+    """Nhận diện khuôn mặt sinh viên và điểm danh tự động theo quy trình 6 bước"""
     if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File gui len phai la file anh.")
+        raise HTTPException(status_code=400, detail="File gửi lên phải là file ảnh.")
 
     # Đọc file ảnh từ bộ nhớ
     try:
@@ -201,12 +202,12 @@ async def recognize_uploaded_image(
         nparr = np.frombuffer(contents, np.uint8)
         img = cv.imdecode(nparr, cv.IMREAD_COLOR)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Khong the giai ma file anh: {e}")
+        raise HTTPException(status_code=400, detail=f"Không thể giải mã file ảnh: {e}")
 
     if img is None:
-        raise HTTPException(status_code=400, detail="Anh bi loi hoac khong the doc.")
+        raise HTTPException(status_code=400, detail="Ảnh bị lỗi hoặc không thể đọc.")
 
-    # Nhận diện khuôn mặt
+    # Nhận diện khuôn mặt qua AI
     faces_results = analyzer.recognize_image(img)
     
     recognized_faces = []
@@ -216,26 +217,120 @@ async def recognize_uploaded_image(
         is_known = face["is_known"]
         ho_ten = "Unknown"
         lop_base = "Unknown"
+        trang_thai = "Chưa xác định"
 
-        if is_known:
-            # Ghi nhận điểm danh
-            attendance_service.record_attendance(mssv, ma_buoi_hoc, score)
-            # Lấy thông tin sinh viên
-            sv_info = db_service.get_sinh_vien(mssv)
-            if sv_info:
-                ho_ten = sv_info["ho_ten"]
-                lop_base = sv_info["lop_base"]
+        # Chạy quy trình điểm danh tự động cho sinh viên này
+        success, msg, sv_info = attendance_service.record_attendance(
+            mssv, ma_buoi_hoc=ma_buoi_hoc, phong_hoc=phong_hoc, score=score
+        )
+
+        if not success:
+            # Nếu gặp bất kỳ lỗi logic điểm danh nào, hủy và báo lỗi tương ứng
+            raise HTTPException(status_code=400, detail=msg)
         
+        if sv_info:
+            ho_ten = sv_info["ho_ten"]
+            lop_base = sv_info["lop_base"]
+            trang_thai = msg
+
         recognized_faces.append({
             "box": face["box"],
             "mssv": mssv,
             "fullname": ho_ten,
             "lop_base": lop_base,
             "score": score,
-            "is_known": is_known
+            "is_known": is_known,
+            "trang_thai": trang_thai
         })
 
     return {
         "faces_detected": len(recognized_faces),
         "results": recognized_faces
     }
+
+@router.get("/api/admin/pending_faces")
+def get_pending_faces():
+    """Lấy danh sách sinh viên đang chờ duyệt khuôn mặt"""
+    try:
+        conn = db_service.get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT mssv, ho_ten, lop_base, ngay_cap_nhat_anh, trang_thai_ho_so 
+                FROM sinh_vien 
+                WHERE trang_thai_ho_so = 'Pending'
+            """)
+            rows = cursor.fetchall()
+            pending = []
+            for r in rows:
+                pending.append({
+                    "mssv": r[0],
+                    "ho_ten": r[1],
+                    "lop_base": r[2],
+                    "ngay_cap_nhat_anh": str(r[3]),
+                    "trang_thai": r[4]
+                })
+            return {"pending": pending}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
+
+@router.post("/api/admin/approve_face")
+def approve_face(mssv: str = Form(...)):
+    """Phòng Đào Tạo duyệt hồ sơ ảnh khuôn mặt"""
+    success = db_service.approve_face_registration(mssv.strip().upper())
+    if success:
+        return {"status": "success", "message": f"Đã duyệt hồ sơ khuôn mặt cho {mssv}"}
+    raise HTTPException(status_code=500, detail="Không thể duyệt hồ sơ.")
+
+@router.post("/api/student/leave_request")
+def submit_leave_request(
+    mssv: str = Form(...),
+    ma_buoi_hoc: int = Form(...),
+    ly_do: str = Form(...),
+    minh_chung: str = Form("Chưa có")
+):
+    """Sinh viên nộp đơn xin nghỉ phép kèm minh chứng"""
+    success = db_service.submit_leave_request(mssv.strip().upper(), ma_buoi_hoc, ly_do, minh_chung)
+    if success:
+        return {"status": "success", "message": "Đã gửi đơn xin nghỉ phép thành công."}
+    raise HTTPException(status_code=500, detail="Không thể nộp đơn xin nghỉ phép.")
+
+@router.get("/api/teacher/leave_requests")
+def get_leave_requests(ma_lop_tc: str = Query(None)):
+    """Giảng viên xem danh sách các đơn xin nghỉ phép"""
+    requests = db_service.get_leave_requests(ma_lop_tc)
+    return {"requests": requests}
+
+@router.post("/api/teacher/approve_leave")
+def approve_leave(request_id: int = Form(...), nguoi_duyet: str = Form(...)):
+    """Giảng viên duyệt đơn xin nghỉ phép (Trạng thái chuyên cần cập nhật thành 'Có phép')"""
+    success = db_service.approve_leave_request(request_id, nguoi_duyet)
+    if success:
+        return {"status": "success", "message": "Đã duyệt đơn nghỉ phép."}
+    raise HTTPException(status_code=500, detail="Không thể duyệt đơn.")
+
+@router.post("/api/teacher/reject_leave")
+def reject_leave(request_id: int = Form(...), nguoi_duyet: str = Form(...)):
+    """Giảng viên từ chối đơn xin nghỉ phép"""
+    success = db_service.reject_leave_request(request_id, nguoi_duyet)
+    if success:
+        return {"status": "success", "message": "Đã từ chối đơn nghỉ phép."}
+    raise HTTPException(status_code=500, detail="Không thể từ chối đơn.")
+
+@router.post("/api/teacher/manual_checkin")
+def manual_checkin(
+    mssv: str = Form(...),
+    ma_buoi_hoc: int = Form(...),
+    trang_thai: str = Form(...), # Đúng giờ, Đi muộn, Vắng không phép, Có phép
+    nguoi_xac_nhan: str = Form(...) # Tên hoặc Mã GV sửa đổi
+):
+    """Giảng viên can thiệp ghi nhận trạng thái điểm danh thủ công (Manual Check-in)"""
+    success = db_service.manual_check_in(mssv.strip().upper(), ma_buoi_hoc, trang_thai, nguoi_xac_nhan)
+    if success:
+        return {"status": "success", "message": f"Đã ghi nhận điểm danh thủ công cho {mssv} là '{trang_thai}'"}
+    raise HTTPException(status_code=500, detail="Không thể điểm danh thủ công.")
+
+@router.get("/api/reports/attendance")
+def get_attendance_report(ma_lop_tc: str = Query(...)):
+    """Tổng kết chuyên cần của lớp tín chỉ, tính điểm, tỷ lệ vắng và cấm thi"""
+    report = db_service.calculate_attendance_report(ma_lop_tc)
+    return {"report": report}
