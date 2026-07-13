@@ -2,17 +2,31 @@ from sqlalchemy.orm import Session
 from app.models.student import Student
 from app.models.account import Account
 from app.schemas.student import StudentCreate, StudentUpdate
+from sqlalchemy import or_
+from app.core.security import get_password_hash
 
 def get_student(db: Session, student_id: str):
     return db.query(Student).filter(Student.student_id == student_id).first()
 
-def get_students(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(Student).offset(skip).limit(limit).all()
+def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = None, status: str = None):
+    query = db.query(Student)
+    
+    if search:
+        # Tìm kiếm theo tên hoặc MSSV
+        query = query.filter(or_(
+            Student.full_name.ilike(f"%{search}%"),
+            Student.student_id.ilike(f"%{search}%")
+        ))
+    if status:
+        # Lọc theo trạng thái học tập
+        query = query.filter(Student.academic_status == status)
+        
+    return query.offset(skip).limit(limit).all()
 
 def create_student(db: Session, student: StudentCreate):
     # Bước 1: Tạo tài khoản (Account) trước
-    # Giả định mật khẩu mặc định là mã sinh viên (Cần mã hóa Bcrypt trong thực tế)
-    default_password_hash = f"hashed_{student.student_id}" 
+    # default_password_hash = f"hashed_{student.student_id}" 
+    default_password_hash = get_password_hash(student.student_id) 
     
     new_account = Account(
         username=student.student_id,
@@ -37,9 +51,23 @@ def create_student(db: Session, student: StudentCreate):
 
 def update_student(db: Session, db_student: Student, student_update: StudentUpdate):
     update_data = student_update.model_dump(exclude_unset=True)
+    
+    # Cập nhật thông tin sinh viên
     for key, value in update_data.items():
         setattr(db_student, key, value)
-    
+        
+    # Logic nghiệp vụ: Khóa tài khoản nếu trạng thái là graduated hoặc dropped_out
+    if "academic_status" in update_data:
+        new_status = update_data["academic_status"]
+        if new_status in ["graduated", "dropped_out"]:
+            account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
+            if account:
+                account.is_active = False
+        elif new_status == "studying":
+            account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
+            if account:
+                account.is_active = True
+                
     db.add(db_student)
     db.commit()
     db.refresh(db_student)
