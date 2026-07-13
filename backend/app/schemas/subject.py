@@ -19,7 +19,7 @@ class SubjectResponse(BaseModel):
     
 
     class Config:
-        from_attributes = True # Cho phép Pydantic đọc từ SQLAlchemy Object
+        from_attributes = True 
 
 class SubjectUpdate(BaseModel):
     subject_name: Optional[str] = None

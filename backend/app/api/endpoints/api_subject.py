@@ -25,12 +25,11 @@ def update_subject(subject_id: str, subject: schemas.SubjectUpdate, db: Session 
 def read_subjects(
     skip: int = 0, 
     limit: int = 100, 
-    query: str = None,  # Thêm tham số tìm kiếm
+    query: str = None,  
     db: Session = Depends(get_db)
 ):
     if query:
         print(f"Debug Query: {query}")
-        # Nếu có từ khóa tìm kiếm, gọi hàm search
         return crud.search_subjects(db, query=query)
     # Nếu không có từ khóa, trả về danh sách mặc định
     return crud.get_subjects(db, skip=skip, limit=limit)
