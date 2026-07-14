@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from app.api.endpoints import api_subject 
-# from app.api.endpoints import api_students 
 from app.api.endpoints import api_admin_students, api_admin_lecturers, api_admin_faces
 
 
@@ -24,11 +23,12 @@ app = FastAPI(
 
 # Đăng ký các Router từ các file api_
 app.include_router(api_subject.router, prefix="/api/subjects", tags=["Quản lý Môn học"])
-# app.include_router(api_students.router, prefix="/api/students", tags=["Quản lý Sinh viên"])
-# Khai báo Router chuẩn của Admin
+
+# Khai báo Router Admin
 app.include_router(api_admin_students.router, prefix="/api/admin/students", tags=["Admin - Quản lý Sinh viên"])
 app.include_router(api_admin_lecturers.router, prefix="/api/admin/lecturers", tags=["Admin - Quản lý Giảng viên"])
-# Đăng ký nhóm API Khuôn mặt với prefix riêng
+
+# API Khuôn mặt với prefix riêng
 app.include_router(
     api_admin_faces.router, 
     prefix="/api/admin/faces", 

@@ -7,6 +7,7 @@ from app.crud import crud_subject as crud
 
 router = APIRouter()
 
+#API Tạo mới môn học
 @router.post("/", response_model=schemas.SubjectResponse)
 def create_subject(subject: schemas.SubjectCreate, db: Session = Depends(get_db)):
     db_obj = crud.get_subject_by_id(db, subject_id=subject.subject_id)
@@ -14,6 +15,7 @@ def create_subject(subject: schemas.SubjectCreate, db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="Mã môn học đã tồn tại")
     return crud.create_subject(db=db, subject=subject)
 
+#API Cập nhật thông tin môn học
 @router.put("/{subject_id}", response_model=schemas.SubjectResponse)
 def update_subject(subject_id: str, subject: schemas.SubjectUpdate, db: Session = Depends(get_db)):
     db_obj = crud.update_subject(db, subject_id=subject_id, subject_update=subject)
@@ -21,6 +23,7 @@ def update_subject(subject_id: str, subject: schemas.SubjectUpdate, db: Session 
         raise HTTPException(status_code=404, detail="Không tìm thấy môn học")
     return db_obj
 
+#API Lấy danh sách tất cả môn học
 @router.get("/", response_model=List[schemas.SubjectResponse])
 def read_subjects(
     skip: int = 0, 

@@ -14,6 +14,7 @@ from fastapi import UploadFile, File
 
 router = APIRouter()
 
+#API Lấy danh sách sinh viên
 @router.get("/", response_model=List[schemas.StudentResponse])
 def get_all_students(
     skip: int = 0, limit: int = 100, 
@@ -24,6 +25,7 @@ def get_all_students(
     """Lấy danh sách sinh viên (Hỗ trợ phân trang, tìm kiếm theo tên/MSSV, lọc trạng thái)"""
     return crud.get_students(db, skip=skip, limit=limit, search=search, status=status)
 
+#API Export danh sách sinh viên ra file Excel
 @router.get("/export")
 def export_students_to_excel(db: Session = Depends(get_db)):
     """Xuất toàn bộ danh sách sinh viên ra file Excel"""
@@ -52,6 +54,7 @@ def export_students_to_excel(db: Session = Depends(get_db)):
         headers={"Content-Disposition": "attachment; filename=students_export.xlsx"}
     )
 
+#API Lấy chi tiết hồ sơ sinh viên
 @router.get("/{student_id}", response_model=schemas.StudentResponse)
 def get_student_detail(student_id: str, db: Session = Depends(get_db)):
     """Xem chi tiết hồ sơ một sinh viên"""
@@ -60,6 +63,7 @@ def get_student_detail(student_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
     return db_student
 
+#API Thêm mới một sinh viên
 @router.post("/", response_model=schemas.StudentResponse, status_code=status.HTTP_201_CREATED)
 def create_new_student(student: schemas.StudentCreate, db: Session = Depends(get_db)):
     """Thêm mới một sinh viên và tự động tạo tài khoản"""
@@ -68,6 +72,7 @@ def create_new_student(student: schemas.StudentCreate, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="Mã sinh viên đã tồn tại")
     return crud.create_student(db=db, student=student)
 
+#API Cập nhật thông tin sinh viên
 @router.put("/{student_id}", response_model=schemas.StudentResponse)
 def update_existing_student(student_id: str, student_in: schemas.StudentUpdate, db: Session = Depends(get_db)):
     """Cập nhật thông tin sinh viên (Tự động khóa tài khoản nếu thôi học/tốt nghiệp)"""
@@ -76,6 +81,7 @@ def update_existing_student(student_id: str, student_in: schemas.StudentUpdate, 
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
     return crud.update_student(db=db, db_student=db_student, student_update=student_in)
 
+#API Import danh sách sinh viên hàng loạt từ file Excel
 @router.post("/import", status_code=status.HTTP_201_CREATED)
 def import_students_from_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Import danh sách sinh viên hàng loạt từ file Excel"""
@@ -110,56 +116,4 @@ def import_students_from_excel(file: UploadFile = File(...), db: Session = Depen
         raise HTTPException(status_code=500, detail=f"Lỗi khi đọc file: {str(e)}")
 
 
-# #--------------------------------------------
-# #--------API nghiep vu face ----------
-# #
-# @router.get("/{student_id}/faces")
-# def get_face_status(student_id: str, db: Session = Depends(get_db)):
-#     """Kiểm tra trạng thái dữ liệu khuôn mặt của sinh viên"""
-#     db_student = crud.get_student(db, student_id=student_id)
-#     if not db_student:
-#         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
-        
-#     faces = crud_face.get_student_faces(db, student_id=student_id)
-#     return {
-#         "student_id": student_id,
-#         "has_face_data": len(faces) > 0,
-#         "total_vectors": len(faces)
-#     }
 
-# @router.post("/{student_id}/faces", status_code=status.HTTP_201_CREATED)
-# async def upload_student_face(student_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
-#     """Admin tải ảnh lên để trích xuất và lưu mẫu khuôn mặt (MOCK AI CORE)"""
-#     # 1. Kiểm tra sinh viên có tồn tại không
-#     db_student = crud.get_student(db, student_id=student_id)
-#     if not db_student:
-#         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
-        
-#     # 2. Đọc file ảnh đầu vào
-#     if not file.content_type.startswith("image/"):
-#         raise HTTPException(status_code=400, detail="Vui lòng upload file hình ảnh")
-    
-#     image_bytes = await file.read()
-    
-#     # --- MOCK AI CORE TRÍCH XUẤT VECTOR ---
-#     # Trong thực tế, đoạn này sẽ gửi image_bytes sang AI Core API và nhận về Float32 Array
-#     # Ở đây ta giả lập biến đổi mảng bytes của ảnh thành một đoạn bytes giả định của Vector
-#     mock_vector_data = b"MOCK_VECTOR_" + image_bytes[:20] 
-#     # ---------------------------------------
-    
-#     # 3. Lưu vào DB
-#     crud_face.register_face(db, student_id=student_id, face_vector_bytes=mock_vector_data)
-    
-#     return {"message": "Đã trích xuất và lưu dữ liệu khuôn mặt thành công", "student_id": student_id}
-
-# @router.delete("/{student_id}/faces", status_code=status.HTTP_204_NO_CONTENT)
-# def reset_student_face(student_id: str, db: Session = Depends(get_db)):
-#     """Thực hiện Reset (Xóa) dữ liệu khuôn mặt của sinh viên"""
-#     db_student = crud.get_student(db, student_id=student_id)
-#     if not db_student:
-#         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
-        
-#     deleted = crud_face.delete_student_faces(db, student_id=student_id)
-#     if deleted == 0:
-#         raise HTTPException(status_code=400, detail="Sinh viên này chưa có dữ liệu khuôn mặt để xóa")
-#     return None
