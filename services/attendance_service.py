@@ -100,57 +100,163 @@ class AttendanceService:
                 "gio_bat_dau": rows[0][4]
             }
 
-    def record_attendance(self, mssv, ma_buoi_hoc=None, score=0.0):
-        """Ghi nhận điểm danh cho sinh viên"""
+    def record_attendance(self, mssv, ma_buoi_hoc=None, phong_hoc=None, score=0.0):
+        """
+        Ghi nhận điểm danh cho sinh viên theo Quy trình Điểm danh Tự động 6 bước.
+        Trả về tuple: (success: bool, status_or_error_msg: str, sv_info: dict or None)
+        """
+        # BƯỚC 3: ĐỐI CHIẾU VECTOR VỚI AI (Kiểm tra người lạ trước)
         if mssv == "Unknown":
-            return False
+            return False, "Người lạ/Chưa đăng ký mặt.", None
 
-        current_time = time.time()
-        last_time = self.last_attendance.get(mssv, 0)
-        
-        # Nếu chưa qua thời gian cooldown, bỏ qua ghi nhận
-        if current_time - last_time < self.cooldown_seconds:
-            return False
-
-        # Truy vấn thông tin sinh viên
+        # Truy vấn thông tin sinh viên và kiểm tra phê duyệt hồ sơ
         sv_info = self.db_service.get_sinh_vien(mssv)
-        if not sv_info:
-            print(f"-> Không tìm thấy sinh viên {mssv} trong DB.")
-            return False
+        if not sv_info or sv_info.get("trang_thai_ho_so", "Pending") != "Approved":
+            return False, "Người lạ/Chưa đăng ký mặt.", None
 
-        # Nếu không truyền ma_buoi_hoc, tự động tìm buổi học đang diễn ra
-        if ma_buoi_hoc is None:
-            session = self.get_active_session(mssv)
-            if not session:
-                print(f"-> [DIEM DANH THAT BAI] Khong tim thay buoi hoc nao dang dien ra cho {mssv}.")
-                return False
-            ma_buoi_hoc = session["ma_buoi_hoc"]
-            ma_lop_tc = session["ma_lop_tc"]
-            phong_hoc = session["phong_hoc"]
-        else:
-            # Truy vấn thông tin buổi học từ DB
+        # Xác định thời gian hiện tại
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        current_time_str = now.strftime("%H:%M:%S")
+
+        # BƯỚC 1 & 2: XÁC ĐỊNH LỊCH HỌC TẠI PHÒNG & BỘ LỌC CỬA SỔ THỜI GIAN
+        session = None
+        if ma_buoi_hoc is not None:
+            # Lấy thông tin buổi học cụ thể
             with self.db_service.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT ma_lop_tc, phong_hoc FROM lich_hoc_chi_tiet WHERE ma_buoi_hoc = ?", (ma_buoi_hoc,))
+                cursor.execute("""
+                    SELECT ma_buoi_hoc, ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau 
+                    FROM lich_hoc_chi_tiet WHERE ma_buoi_hoc = %s
+                """, (ma_buoi_hoc,))
                 row = cursor.fetchone()
                 if row:
-                    ma_lop_tc, phong_hoc = row
+                    session = {
+                        "ma_buoi_hoc": row[0],
+                        "ma_lop_tc": row[1],
+                        "ngay_hoc": str(row[2]),
+                        "phong_hoc": row[3],
+                        "gio_bat_dau": str(row[4])
+                    }
                 else:
-                    ma_lop_tc, phong_hoc = "Unknown", "Unknown"
+                    return False, "Buổi học không tồn tại.", None
+        else:
+            # Nếu có phong_hoc, quét các buổi học tại phòng này hôm nay
+            room_to_check = phong_hoc if phong_hoc else (sv_info.get("lop_base") or "Unknown")
+            
+            with self.db_service.get_connection() as conn:
+                cursor = conn.cursor()
+                # Thử tìm các buổi học trong phòng này hôm nay
+                if phong_hoc:
+                    cursor.execute("""
+                        SELECT ma_buoi_hoc, ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau 
+                        FROM lich_hoc_chi_tiet 
+                        WHERE phong_hoc = %s AND ngay_hoc = %s
+                    """, (phong_hoc, today_str))
+                else:
+                    # Nếu không truyền phòng, tìm bất kỳ buổi học nào trong ngày mà sinh viên có đăng ký
+                    cursor.execute("""
+                        SELECT lh.ma_buoi_hoc, lh.ma_lop_tc, lh.ngay_hoc, lh.phong_hoc, lh.gio_bat_dau 
+                        FROM lich_hoc_chi_tiet lh
+                        JOIN sinh_vien_lop_tin_chi sv_tc ON lh.ma_lop_tc = sv_tc.ma_lop_tc
+                        WHERE sv_tc.mssv = %s AND lh.ngay_hoc = %s
+                    """, (mssv, today_str))
+                
+                rows = cursor.fetchall()
+                if not rows:
+                    return False, "Phòng không có lịch học.", None
 
-        # Ghi nhận vào SQLite
-        self.db_service.log_diem_danh(mssv, ma_buoi_hoc, "Co mat")
-        
-        # Ghi nhận vào file CSV log để lưu trữ sơ cua
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Áp dụng Cửa sổ điểm danh (Attendance Window)
+                # Mở: trước 30 phút. Đóng: sau 60 phút.
+                valid_sessions = []
+                for r in rows:
+                    try:
+                        clean_time = str(r[4]).strip()
+                        if len(clean_time) == 5:
+                            clean_time += ":00"
+                        
+                        start_time = datetime.strptime(f"{today_str} {clean_time}", "%Y-%m-%d %H:%M:%S")
+                        early_time = start_time - timedelta(minutes=30)
+                        late_time = start_time + timedelta(minutes=60)
+                        
+                        if early_time <= now <= late_time:
+                            valid_sessions.append({
+                                "ma_buoi_hoc": r[0],
+                                "ma_lop_tc": r[1],
+                                "ngay_hoc": str(r[2]),
+                                "phong_hoc": r[3],
+                                "gio_bat_dau": str(r[4])
+                            })
+                    except Exception as e:
+                        print(f"Loi phan tich thoi gian: {e}")
+
+                if not valid_sessions:
+                    return False, "Sai ca học/Quét quá sớm.", None
+                
+                # Ưu tiên buổi học mà sinh viên này thực sự tham gia (nếu có nhiều ca)
+                session = valid_sessions[0]
+                for vs in valid_sessions:
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM sinh_vien_lop_tin_chi 
+                        WHERE ma_lop_tc = %s AND mssv = %s
+                    """, (vs["ma_lop_tc"], mssv))
+                    if cursor.fetchone()[0] > 0:
+                        session = vs
+                        break
+
+        ma_buoi_hoc = session["ma_buoi_hoc"]
+        ma_lop_tc = session["ma_lop_tc"]
+        phong_hoc = session["phong_hoc"]
+        gio_bat_dau_str = session["gio_bat_dau"]
+
+        # BƯỚC 4: KIỂM TRA SĨ SỐ TÍN CHỈ (Đối chiếu danh sách lớp)
+        with self.db_service.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) FROM sinh_vien_lop_tin_chi 
+                WHERE ma_lop_tc = %s AND mssv = %s
+            """, (ma_lop_tc, mssv))
+            if cursor.fetchone()[0] == 0:
+                return False, "SV không thuộc lớp tín chỉ này.", None
+
+        # BƯỚC 5: ĐÁNH GIÁ THỜI GIAN VÀO LỚP
+        try:
+            clean_start = gio_bat_dau_str.strip()
+            if len(clean_start) == 5:
+                clean_start += ":00"
+            start_time_only = datetime.strptime(clean_start, "%H:%M:%S").time()
+            current_time_only = now.time()
+            
+            if current_time_only <= start_time_only:
+                trang_thai = "Đúng giờ"
+            else:
+                trang_thai = "Đi muộn"
+        except Exception as e:
+            print(f"Loi so sanh gio hoc: {e}")
+            trang_thai = "Đúng giờ" # Fallback an toàn
+
+        # Cooldown check
+        current_ts = time.time()
+        last_time = self.last_attendance.get(mssv, 0)
+        if current_ts - last_time < self.cooldown_seconds:
+            # Vẫn ghi nhận thành công nhưng bỏ qua viết tiếp SQL/CSV để tránh overload
+            return True, trang_thai, sv_info
+
+        # BƯỚC 6: GHI NHẬN VÀO MYSQL LOGS
+        db_success = self.db_service.log_diem_danh(mssv, ma_buoi_hoc, trang_thai, "AI")
+        if not db_success:
+            return False, "Lỗi ghi nhận database.", None
+
+        # Ghi nhận vào file CSV log để lưu trữ backup
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
         try:
             with open(self.log_file, mode='a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow([now_str, mssv, sv_info["ho_ten"], sv_info["lop_base"], ma_buoi_hoc, ma_lop_tc, phong_hoc])
-            print(f"-> [DIEM DANH THANH CONG] {sv_info['ho_ten']} ({mssv}) tai buoi {ma_buoi_hoc} luc {now_str} (Score: {score:.2f})")
+            print(f"-> [DIEM DANH THANH CONG] {sv_info['ho_ten']} ({mssv}) - {trang_thai} tai phong {phong_hoc} luc {now_str} (Score: {score:.2f})")
         except Exception as e:
             print(f"Lỗi ghi log CSV: {e}")
 
         # Cập nhật thời gian cooldown mới nhất
-        self.last_attendance[mssv] = current_time
-        return True
+        self.last_attendance[mssv] = current_ts
+        return True, trang_thai, sv_info

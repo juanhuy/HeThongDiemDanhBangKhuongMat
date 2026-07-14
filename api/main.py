@@ -22,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount thư mục lưu ảnh chân dung để Frontend có thể hiển thị ảnh tĩnh
+# chuyển thư mục lưu ảnh chân dung để Frontend có thể hiển thị ảnh tĩnh
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 images_dir = os.path.join(project_root, settings.database.get("images_dir", "./database/registered_images"))
 os.makedirs(images_dir, exist_ok=True)

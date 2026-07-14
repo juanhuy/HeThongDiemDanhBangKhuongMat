@@ -60,6 +60,12 @@ function App() {
 
   const [studentProfile, setStudentProfile] = useState(null);
 
+  const getVietnameseDate = () => {
+    const days = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+    const d = new Date();
+    return `${days[d.getDay()]}, ngày ${d.getDate()} tháng ${d.getMonth() + 1}`;
+  };
+
   useEffect(() => {
     // Check if session exists in localStorage
     const savedUser = localStorage.getItem("ptit_user");
@@ -147,24 +153,33 @@ function App() {
           setActiveTab={setActiveTab} 
         />
 
-        <main style={styles.contentArea}>
+         <main style={styles.contentArea}>
           <div style={styles.welcomeHeader}>
-            <h2 style={styles.welcomeText}>👋 Chào mừng {profileToRender.ho_ten}</h2>
+            <h2 style={styles.welcomeText}>
+              👋 Chào mừng {user.role === 'sinh_vien' ? profileToRender.ho_ten : (user.username === 'gv1' ? 'Giảng viên 1' : 'Quản trị viên')}
+            </h2>
             <div style={styles.dateText}>
-              <Calendar size={14} /> Thứ 6, ngày 10 tháng 07
+              <Calendar size={14} /> {getVietnameseDate()}
             </div>
           </div>
 
-          <StudentInfoCard studentProfile={profileToRender} />
-          <CourseInfoCard studentProfile={profileToRender} />
+          {user.role === 'sinh_vien' && (
+            <>
+              <StudentInfoCard studentProfile={profileToRender} />
+              <CourseInfoCard studentProfile={profileToRender} />
+            </>
+          )}
           
           <AIAttendance 
             API_BASE={API_BASE} 
             showToast={showToast} 
             onAttendanceLogged={fetchLogs} 
+            user={user}
           />
 
-          <AttendanceLogs logs={logs} />
+          <AttendanceLogs 
+            logs={user.role === 'sinh_vien' && user.mssv ? logs.filter(log => log.mssv === user.mssv) : logs} 
+          />
         </main>
       </div>
 
