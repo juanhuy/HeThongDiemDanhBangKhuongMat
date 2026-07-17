@@ -67,17 +67,19 @@ function App() {
   };
 
   useEffect(() => {
-    // Check if session exists in localStorage
-    const savedUser = localStorage.getItem("ptit_user");
-    if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      setUser(parsed);
-      fetchStudentProfile(parsed.mssv);
+    // Check if session exists in localStorage (only if user state is not set yet)
+    if (!user) {
+      const savedUser = localStorage.getItem("ptit_user");
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+        fetchStudentProfile(parsed.mssv);
+      }
     }
     fetchLogs();
     const interval = setInterval(fetchLogs, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user]);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type, visible: true });
@@ -103,7 +105,7 @@ function App() {
   const fetchStudentProfile = async (mssv) => {
     if (!mssv) return;
     try {
-      const res = await fetch(`${API_BASE}/api/students/${mssv}`);
+      const res = await fetch(`${API_BASE}/api/admin/students/${mssv}`);
       if (res.ok) {
         const data = await res.json();
         setStudentProfile(data);
@@ -118,7 +120,24 @@ function App() {
       const res = await fetch(`${API_BASE}/api/attendance`);
       if (res.ok) {
         const data = await res.json();
-        setLogs(data.logs);
+        const newLogs = data.logs || [];
+        
+        setLogs(prevLogs => {
+          // If logged in user is a student, compare incoming logs to trigger checkin alert
+          if (user && user.role === 'sinh_vien' && user.mssv) {
+            const prevStudentLogs = prevLogs.filter(log => log.mssv === user.mssv);
+            const newStudentLogs = newLogs.filter(log => log.mssv === user.mssv);
+            
+            if (newStudentLogs.length > 0) {
+              const latestNew = newStudentLogs[0];
+              const latestPrev = prevStudentLogs[0];
+              if (!latestPrev || latestNew.id !== latestPrev.id) {
+                showToast(`🔔 Hệ thống: Bạn vừa được điểm danh tự động [${latestNew.trang_thai}] tại Buổi học số ${latestNew.ma_buoi_hoc}!`);
+              }
+            }
+          }
+          return newLogs;
+        });
       }
     } catch (e) {
       console.error(e);
@@ -150,36 +169,40 @@ function App() {
         <Sidebar 
           activeMenu={activeMenu} 
           setActiveMenu={setActiveMenu} 
-          setActiveTab={setActiveTab} 
+          user={user}
         />
 
          <main style={styles.contentArea}>
           <div style={styles.welcomeHeader}>
             <h2 style={styles.welcomeText}>
-              👋 Chào mừng {user.role === 'sinh_vien' ? profileToRender.ho_ten : (user.username === 'gv1' ? 'Giảng viên 1' : 'Quản trị viên')}
+              👋 Chào mừng {user.role === 'sinh_vien' ? profileToRender.ho_ten : (user.role === 'giang_vien' ? 'Giảng viên' : 'Quản trị viên')}
             </h2>
             <div style={styles.dateText}>
               <Calendar size={14} /> {getVietnameseDate()}
             </div>
           </div>
 
-          {user.role === 'sinh_vien' && (
+          {activeMenu === 'home' ? (
             <>
-              <StudentInfoCard studentProfile={profileToRender} />
-              <CourseInfoCard studentProfile={profileToRender} />
+              {user.role === 'sinh_vien' && (
+                <>
+                  <StudentInfoCard studentProfile={profileToRender} />
+                  <CourseInfoCard studentProfile={profileToRender} />
+                </>
+              )}
+              <AttendanceLogs 
+                logs={user.role === 'sinh_vien' && user.mssv ? logs.filter(log => log.mssv === user.mssv) : logs} 
+              />
             </>
+          ) : (
+            <AIAttendance 
+              API_BASE={API_BASE} 
+              showToast={showToast} 
+              onAttendanceLogged={fetchLogs} 
+              user={user}
+              activeMenu={activeMenu}
+            />
           )}
-          
-          <AIAttendance 
-            API_BASE={API_BASE} 
-            showToast={showToast} 
-            onAttendanceLogged={fetchLogs} 
-            user={user}
-          />
-
-          <AttendanceLogs 
-            logs={user.role === 'sinh_vien' && user.mssv ? logs.filter(log => log.mssv === user.mssv) : logs} 
-          />
         </main>
       </div>
 

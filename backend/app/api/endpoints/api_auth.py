@@ -1,0 +1,66 @@
+import hashlib
+from fastapi import APIRouter, Depends, HTTPException, Form
+from sqlalchemy.orm import Session
+from app.db.session import get_db
+from app.models.account import Account
+from app.models.student import Student
+
+router = APIRouter()
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+@router.post("/login")
+def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    pw_hash = hash_password(password)
+    # Tìm tài khoản
+    account = db.query(Account).filter(Account.username == username.strip().lower(), Account.password_hash == pw_hash).first()
+    if not account:
+        raise HTTPException(status_code=401, detail="Ten dang nhap hoac mat khau khong dung")
+    
+    # Lấy thông tin sinh viên liên kết nếu có
+    student_info = None
+    if account.role == "sinh_vien":
+        student = db.query(Student).filter(Student.account_id == account.account_id).first()
+        if student:
+            student_info = student
+    
+    user_data = {
+        "username": account.username,
+        "role": account.role,
+        "mssv": student_info.student_id if student_info else None,
+        "ho_ten": student_info.full_name if student_info else None,
+        "lop_base": student_info.administrative_class if student_info else None
+    }
+    
+    return {"status": "success", "message": "Dang nhap thanh cong.", "user": user_data}
+
+@router.post("/register")
+def register(username: str = Form(...), password: str = Form(...), mssv: str = Form(None), db: Session = Depends(get_db)):
+    username_lower = username.strip().lower()
+    existing_account = db.query(Account).filter(Account.username == username_lower).first()
+    if existing_account:
+        raise HTTPException(status_code=400, detail="Tai khoan da ton tai.")
+    
+    # Kiểm tra xem sinh viên có tồn tại không
+    student = None
+    if mssv:
+        student = db.query(Student).filter(Student.student_id == mssv.strip().upper()).first()
+        if not student:
+            raise HTTPException(status_code=404, detail=f"Khong tim thay sinh vien {mssv} de lien ket tai khoan.")
+    
+    pw_hash = hash_password(password)
+    new_account = Account(
+        username=username_lower,
+        password_hash=pw_hash,
+        role="sinh_vien" if mssv else "giang_vien"
+    )
+    db.add(new_account)
+    db.commit()
+    db.refresh(new_account)
+    
+    if student:
+        student.account_id = new_account.account_id
+        db.commit()
+        
+    return {"status": "success", "message": f"Tai khoan {username} da duoc tao."}

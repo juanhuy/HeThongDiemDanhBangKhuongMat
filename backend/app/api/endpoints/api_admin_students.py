@@ -163,3 +163,25 @@ def import_students_from_excel(file: UploadFile = File(...), db: Session = Depen
 #     if deleted == 0:
 #         raise HTTPException(status_code=400, detail="Sinh viên này chưa có dữ liệu khuôn mặt để xóa")
 #     return None
+
+@router.delete("/{student_id}")
+def delete_student(student_id: str, db: Session = Depends(get_db)):
+    """Xóa tài khoản và hồ sơ sinh viên"""
+    try:
+        from app.models.student import Student
+        from app.models.account import Account
+        db_student = db.query(Student).filter(Student.student_id == student_id).first()
+        if not db_student:
+            raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
+        
+        if db_student.account_id:
+            account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
+            if account:
+                db.delete(account)
+        
+        db.delete(db_student)
+        db.commit()
+        return {"status": "success", "message": "Xóa sinh viên và tài khoản thành công"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")

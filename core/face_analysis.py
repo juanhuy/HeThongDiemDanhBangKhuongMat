@@ -53,12 +53,42 @@ class FaceAnalyzer:
     def load_database(self):
         self.known_embeddings = []
         self.known_names = []
+        
+        # Thử dùng SQLAlchemy qua SessionLocal nếu import được
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            backend_path = os.path.join(project_root, 'backend')
+            if backend_path not in sys.path:
+                sys.path.append(backend_path)
+                
+            from app.db.session import SessionLocal
+            from app.models.face_feature import FaceFeature
+            
+            db = SessionLocal()
+            try:
+                features = db.query(FaceFeature).all()
+                for feat in features:
+                    if feat.face_vector:
+                        # Convert LargeBinary bytes back to numpy array
+                        vec = np.frombuffer(feat.face_vector, dtype=np.float32)
+                        self.known_embeddings.append(vec)
+                        self.known_names.append(feat.student_id)
+                print(f"-> [SQLAlchemy] Da tai {len(self.known_names)} khuon mat tu database vector.")
+                return
+            except Exception as db_err:
+                print(f"Loi truy van FaceFeature qua SQLAlchemy: {db_err}. fallback to DatabaseService.")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"Không thể import app/db/session, sử dụng DatabaseService cũ: {e}")
+
+        # Fallback cũ sử dụng DatabaseService
         students = self.db_service.get_all_sinh_vien()
         for sv in students:
             if sv["face_vector"] is not None:
                 self.known_embeddings.append(sv["face_vector"])
                 self.known_names.append(sv["mssv"])
-        print(f"-> Da tai {len(self.known_names)} khuon mat sinh vien tu database vector.")
+        print(f"-> [Fallback] Da tai {len(self.known_names)} khuon mat tu database vector.")
 
 
     def dang_ky_mat(self, image_path, mssv, ho_ten, lop_base, **kwargs):
@@ -77,9 +107,64 @@ class FaceAnalyzer:
             return False
             
         embedding = faces[0].normed_embedding
+        
+        # Thử lưu bằng SQLAlchemy qua SessionLocal nếu được
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            backend_path = os.path.join(project_root, 'backend')
+            if backend_path not in sys.path:
+                sys.path.append(backend_path)
+                
+            from app.db.session import SessionLocal
+            from app.models.student import Student
+            from app.models.face_feature import FaceFeature
+            
+            db = SessionLocal()
+            try:
+                # Kiểm tra/Cập nhật thông tin sinh viên
+                student = db.query(Student).filter(Student.student_id == mssv).first()
+                if not student:
+                    student = Student(
+                        student_id=mssv,
+                        full_name=ho_ten,
+                        administrative_class=lop_base,
+                        email=kwargs.get("email") or f"{mssv}@student.ptit.edu.vn",
+                        phone_number=kwargs.get("sdt"),
+                        academic_status="studying"
+                    )
+                    db.add(student)
+                else:
+                    student.full_name = ho_ten
+                    student.administrative_class = lop_base
+                    if kwargs.get("sdt"):
+                        student.phone_number = kwargs.get("sdt")
+                
+                # Xóa các vector khuôn mặt cũ và thêm vector mới
+                db.query(FaceFeature).filter(FaceFeature.student_id == mssv).delete()
+                
+                # Ghi vector dưới dạng bytes
+                new_feat = FaceFeature(
+                    student_id=mssv,
+                    face_vector=embedding.tobytes(),
+                    is_primary=True
+                )
+                db.add(new_feat)
+                db.commit()
+                print(f"[SQLAlchemy] Đăng ký thành công khuôn mặt cho {ho_ten} ({mssv})")
+                self.load_database()
+                return True
+            except Exception as db_err:
+                db.rollback()
+                print(f"Lỗi ghi DB qua SQLAlchemy trong dang_ky_mat: {db_err}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"Không thể sử dụng SQLAlchemy trong dang_ky_mat: {e}")
+
+        # Fallback cũ sử dụng DatabaseService
         success = self.db_service.add_sinh_vien(mssv, ho_ten, lop_base, embedding, **kwargs)
         if success:
-            print(f"Đăng ký thành công khuôn mặt cho {ho_ten} ({mssv})")
+            print(f"[Fallback] Đăng ký thành công khuôn mặt cho {ho_ten} ({mssv})")
             self.load_database()
             return True
         return False
