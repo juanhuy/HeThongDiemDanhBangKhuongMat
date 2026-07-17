@@ -14,6 +14,7 @@ from fastapi import UploadFile, File
 
 router = APIRouter()
 
+#API Lấy danh sách sinh viên
 @router.get("/", response_model=List[schemas.StudentResponse])
 def get_all_students(
     skip: int = 0, limit: int = 100, 
@@ -24,6 +25,7 @@ def get_all_students(
     """Lấy danh sách sinh viên (Hỗ trợ phân trang, tìm kiếm theo tên/MSSV, lọc trạng thái)"""
     return crud.get_students(db, skip=skip, limit=limit, search=search, status=status)
 
+#API Export danh sách sinh viên ra file Excel
 @router.get("/export")
 def export_students_to_excel(db: Session = Depends(get_db)):
     """Xuất toàn bộ danh sách sinh viên ra file Excel"""
@@ -52,6 +54,7 @@ def export_students_to_excel(db: Session = Depends(get_db)):
         headers={"Content-Disposition": "attachment; filename=students_export.xlsx"}
     )
 
+#API Lấy chi tiết hồ sơ sinh viên
 @router.get("/{student_id}", response_model=schemas.StudentResponse)
 def get_student_detail(student_id: str, db: Session = Depends(get_db)):
     """Xem chi tiết hồ sơ một sinh viên"""
@@ -60,6 +63,7 @@ def get_student_detail(student_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
     return db_student
 
+#API Thêm mới một sinh viên
 @router.post("/", response_model=schemas.StudentResponse, status_code=status.HTTP_201_CREATED)
 def create_new_student(student: schemas.StudentCreate, db: Session = Depends(get_db)):
     """Thêm mới một sinh viên và tự động tạo tài khoản"""
@@ -68,6 +72,7 @@ def create_new_student(student: schemas.StudentCreate, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="Mã sinh viên đã tồn tại")
     return crud.create_student(db=db, student=student)
 
+#API Cập nhật thông tin sinh viên
 @router.put("/{student_id}", response_model=schemas.StudentResponse)
 def update_existing_student(student_id: str, student_in: schemas.StudentUpdate, db: Session = Depends(get_db)):
     """Cập nhật thông tin sinh viên (Tự động khóa tài khoản nếu thôi học/tốt nghiệp)"""
@@ -76,6 +81,7 @@ def update_existing_student(student_id: str, student_in: schemas.StudentUpdate, 
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
     return crud.update_student(db=db, db_student=db_student, student_update=student_in)
 
+#API Import danh sách sinh viên hàng loạt từ file Excel
 @router.post("/import", status_code=status.HTTP_201_CREATED)
 def import_students_from_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Import danh sách sinh viên hàng loạt từ file Excel"""
@@ -163,25 +169,3 @@ def import_students_from_excel(file: UploadFile = File(...), db: Session = Depen
 #     if deleted == 0:
 #         raise HTTPException(status_code=400, detail="Sinh viên này chưa có dữ liệu khuôn mặt để xóa")
 #     return None
-
-@router.delete("/{student_id}")
-def delete_student(student_id: str, db: Session = Depends(get_db)):
-    """Xóa tài khoản và hồ sơ sinh viên"""
-    try:
-        from app.models.student import Student
-        from app.models.account import Account
-        db_student = db.query(Student).filter(Student.student_id == student_id).first()
-        if not db_student:
-            raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
-        
-        if db_student.account_id:
-            account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
-            if account:
-                db.delete(account)
-        
-        db.delete(db_student)
-        db.commit()
-        return {"status": "success", "message": "Xóa sinh viên và tài khoản thành công"}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
