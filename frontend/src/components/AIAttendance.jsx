@@ -83,12 +83,16 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const imageRef = useRef(null);
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
+  const recognitionIntervalRef = useRef(null);
 
   // Stop webcam stream when component unmounts
   useEffect(() => {
     return () => {
       if (webcamStream) {
         webcamStream.getTracks().forEach(track => track.stop());
+      }
+      if (recognitionIntervalRef.current) {
+        clearInterval(recognitionIntervalRef.current);
       }
     };
   }, [webcamStream]);
@@ -100,12 +104,85 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       setUseWebcam(true);
       setRecognizeImageSrc('');
       setRecognizeFile(null);
-      // Wait for a frame to let video mount and assign srcObject
+      
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
       }, 100);
+
+      // Tự động nhận diện mỗi 3 giây
+      recognitionIntervalRef.current = setInterval(async () => {
+        if (videoRef.current && canvasRef.current) {
+          const video = videoRef.current;
+          const canvas = canvasRef.current;
+          
+          // Tạo một canvas tạm để trích xuất frame từ video
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = video.videoWidth || 640;
+          tempCanvas.height = video.videoHeight || 480;
+          const tempCtx = tempCanvas.getContext("2d");
+          tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+          
+          tempCanvas.toBlob(async (blob) => {
+            if (!blob) return;
+            const formData = new FormData();
+            formData.append("file", blob, "webcam_capture.jpg");
+            
+            try {
+              const url = `${API_BASE}/api/recognize?phong_hoc=${encodeURIComponent(cameraRoom)}`;
+              const res = await fetch(url, {
+                method: "POST",
+                body: formData
+              });
+              if (res.ok) {
+                const data = await res.json();
+                setDetectionLogs(data.results || []);
+                
+                // Vẽ bounding boxes trực tiếp trên video qua canvasRef
+                if (canvas && video) {
+                  canvas.width = video.clientWidth;
+                  canvas.height = video.clientHeight;
+                  const ctx = canvas.getContext("2d");
+                  ctx.clearRect(0, 0, canvas.width, canvas.height);
+                  
+                  const scaleX = canvas.width / tempCanvas.width;
+                  const scaleY = canvas.height / tempCanvas.height;
+                  
+                  (data.results || []).forEach(resItem => {
+                    const [x1, y1, x2, y2] = resItem.box;
+                    const bx = x1 * scaleX;
+                    const by = y1 * scaleY;
+                    const bw = (x2 - x1) * scaleX;
+                    const bh = (y2 - y1) * scaleY;
+                    
+                    const color = resItem.is_known ? "#10b981" : "#ef4444";
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(bx, by, bw, bh);
+                    
+                    ctx.fillStyle = color;
+                    ctx.font = "bold 13px 'Inter', sans-serif";
+                    const label = resItem.is_known ? `${resItem.fullname} - ${resItem.trang_thai}` : "Chưa đăng ký";
+                    const textWidth = ctx.measureText(label).width;
+                    
+                    ctx.fillRect(bx, by - 24, textWidth + 14, 24);
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillText(label, bx + 7, by - 7);
+                  });
+                }
+                
+                if (onAttendanceLogged) {
+                  onAttendanceLogged();
+                }
+              }
+            } catch (err) {
+              console.error("Lỗi tự động quét khuôn mặt: ", err);
+            }
+          }, "image/jpeg");
+        }
+      }, 3000);
+
     } catch (err) {
       showToast("Không thể truy cập camera: " + err.message, "danger");
     }
@@ -115,6 +192,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     if (webcamStream) {
       webcamStream.getTracks().forEach(track => track.stop());
       setWebcamStream(null);
+    }
+    if (recognitionIntervalRef.current) {
+      clearInterval(recognitionIntervalRef.current);
+      recognitionIntervalRef.current = null;
     }
     setUseWebcam(false);
   };
@@ -340,13 +421,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const toggleCameraSimulation = (cameraId) => {
     setAdminCameras(prev => prev.map(cam => {
       if (cam.id === cameraId) {
-        const nextSimulating = !cam.isSimulating;
-        if (nextSimulating) {
-          showToast(`Đã kích hoạt chế độ tự động điểm danh cho ${cam.name}`);
-        } else {
-          showToast(`Đã dừng tự động điểm danh cho ${cam.name}`);
-        }
-        return { ...cam, isSimulating: nextSimulating };
+        return { ...cam, isSimulating: !cam.isSimulating };
       }
       return cam;
     }));
@@ -455,15 +530,14 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   };
 
   const fetchPendingFaces = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/pending_faces`);
-      if (res.ok) {
-        const data = await res.json();
-        setPendingFaces(data.pending);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    // Backend không có chức năng chờ duyệt ảnh nữa vì đã Approved trực tiếp.
+    // Trả về mảng rỗng để không bị lỗi 404.
+    setPendingFaces([]);
+  };
+
+  const handleApproveFace = async (mssv) => {
+    showToast(`Đã duyệt hồ sơ khuôn mặt cho SV ${mssv}`);
+    fetchPendingFaces();
   };
 
   const fetchLeaveRequests = async () => {
@@ -788,7 +862,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       });
       const data = await res.json();
       if (res.ok) {
-        showToast("Đã lưu thông tin hồ sơ ở trạng thái chờ duyệt (Pending)!");
+        showToast("Đăng ký hồ sơ sinh viên và khuôn mặt thành công!");
         setRegPhoto(null);
         setRegPhotoName('');
         setRegMssv('');
@@ -1269,13 +1343,27 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 />
                 
                 {useWebcam ? (
-                  <div style={styles.previewWrapper}>
+                  <div style={{ ...styles.previewWrapper, width: "100%", height: "100%", position: "relative" }}>
                     <video 
                       ref={videoRef} 
                       autoPlay 
                       playsInline 
-                      style={{ ...styles.previewImage, transform: "scaleX(-1)" }}
+                      style={{ ...styles.previewImage, width: "100%", height: "100%", objectFit: "cover" }}
+                      onLoadedMetadata={() => {
+                        if (canvasRef.current && videoRef.current) {
+                          canvasRef.current.width = videoRef.current.clientWidth || 640;
+                          canvasRef.current.height = videoRef.current.clientHeight || 480;
+                        }
+                      }}
                     />
+                    <canvas ref={canvasRef} style={{ 
+                      position: "absolute", 
+                      top: 0, 
+                      left: 0, 
+                      width: "100%", 
+                      height: "100%", 
+                      pointerEvents: "none" 
+                    }}></canvas>
                   </div>
                 ) : !recognizeImageSrc ? (
                   <div style={styles.dropzonePrompt}>
@@ -1312,21 +1400,67 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 >
                   Làm mới
                 </button>
-                <button onClick={triggerRecognition} style={styles.btn}>
-                  {useWebcam ? "Chụp & Điểm danh" : "Quét khuôn mặt (AI Check-in)"}
-                </button>
+                {!useWebcam && (
+                  <button onClick={triggerRecognition} style={styles.btn}>
+                    Quét khuôn mặt (AI Check-in)
+                  </button>
+                )}
               </div>
 
               {detectionLogs.length > 0 && (
-                <div style={{ background: "#f8fbfd", padding: "10px", borderRadius: "6px", border: "1px solid #d0e0eb" }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6" }}>Kết quả kiểm tra luồng khuôn mặt:</span>
-                  <ul style={{ margin: "5px 0 0 15px", padding: 0, fontSize: "0.8rem" }}>
+                <div style={{ background: "#f8fbfd", padding: "12px", borderRadius: "8px", border: "1px solid #d0e0eb" }}>
+                  <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>
+                    Kết quả kiểm tra luồng khuôn mặt:
+                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     {detectionLogs.map((l, idx) => (
-                      <li key={idx} style={{ color: l.is_known ? "#10b981" : "#ef4444" }}>
-                        {l.is_known ? `✓ ${l.fullname} (${l.mssv}): Điểm danh trạng thái: ${l.trang_thai}` : `✗ Không thể điểm danh: Khuôn mặt lạ.`}
-                      </li>
+                      <div key={idx} style={{ 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: "12px", 
+                        padding: "8px", 
+                        borderRadius: "6px", 
+                        background: "#ffffff", 
+                        border: "1px solid #e2edf5" 
+                      }}>
+                        {l.is_known ? (
+                          <>
+                            <img 
+                              src={`${API_BASE}/images/${l.mssv}.jpg`} 
+                              alt={l.fullname} 
+                              onError={(e) => { e.target.src = "https://via.placeholder.com/40?text=SV"; }}
+                              style={{ width: "45px", height: "45px", borderRadius: "50%", objectFit: "cover", border: "2px solid #10b981" }}
+                            />
+                            <div style={{ fontSize: "0.8rem", color: "#2a3d4a" }}>
+                              <div style={{ fontWeight: "700", color: "#10b981" }}>✓ {l.fullname} ({l.mssv})</div>
+                              <div style={{ fontSize: "0.75rem", color: "#54738c" }}>Lớp: {l.lop_base}</div>
+                              <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "#106fa6" }}>
+                                Trạng thái: {l.trang_thai}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ 
+                              width: "45px", 
+                              height: "45px", 
+                              borderRadius: "50%", 
+                              background: "#fee2e2", 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "center",
+                              border: "2px solid #ef4444" 
+                            }}>
+                              <span style={{ color: "#ef4444", fontWeight: "bold", fontSize: "1.2rem" }}>?</span>
+                            </div>
+                            <div style={{ fontSize: "0.8rem", color: "#ef4444", fontWeight: "600" }}>
+                              ✗ Không thể điểm danh: Khuôn mặt lạ.
+                            </div>
+                          </>
+                        )}
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
             </div>
