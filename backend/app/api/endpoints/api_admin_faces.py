@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
+import os
+import shutil
+
 from app.db.session import get_db
 from app.crud import crud_student as crud
 from app.crud import crud_face as crud_face
+from app.api.endpoints.api_ai import analyzer, images_dir
 
 router = APIRouter()
 
@@ -15,7 +19,7 @@ def get_face_status(student_id: str, db: Session = Depends(get_db)):
     faces = crud_face.get_student_faces(db, student_id=student_id)
     return {"student_id": student_id, "has_face_data": len(faces) > 0, "total_vectors": len(faces)}
 
-#API Upload dữ liệu khuôn mặt
+#API Upload dữ liệu khuôn mặt bằng AI thật
 @router.post("/{student_id}/faces", status_code=status.HTTP_201_CREATED)
 async def upload_student_face(student_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     db_student = crud.get_student(db, student_id=student_id)
@@ -24,11 +28,28 @@ async def upload_student_face(student_id: str, file: UploadFile = File(...), db:
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Vui lòng upload file hình ảnh")
     
-    image_bytes = await file.read()
-    mock_vector_data = b"MOCK_VECTOR_" + image_bytes[:20] 
-    crud_face.register_face(db, student_id=student_id, face_vector_bytes=mock_vector_data)
+    os.makedirs(images_dir, exist_ok=True)
+    temp_img_path = os.path.join(images_dir, f"{student_id}.jpg")
+    try:
+        with open(temp_img_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Không thể ghi file ảnh: {e}")
     
-    return {"message": "Đã lưu dữ liệu khuôn mặt thành công", "student_id": student_id}
+    # Sử dụng FaceAnalyzer thực tế để trích xuất vector khuôn mặt và ghi vào database
+    success = analyzer.dang_ky_mat(
+        temp_img_path, 
+        mssv=student_id, 
+        ho_ten=db_student.full_name, 
+        lop_base=db_student.administrative_class
+    )
+    
+    if not success:
+        if os.path.exists(temp_img_path):
+            os.remove(temp_img_path)
+        raise HTTPException(status_code=400, detail="AI không tìm thấy khuôn mặt hợp lệ (hoặc có quá nhiều mặt) trong ảnh.")
+    
+    return {"message": "Đã lưu dữ liệu khuôn mặt thành công bằng AI", "student_id": student_id}
     
 #API Xóa dữ liệu khuôn mặt
 @router.delete("/{student_id}/faces", status_code=status.HTTP_204_NO_CONTENT)

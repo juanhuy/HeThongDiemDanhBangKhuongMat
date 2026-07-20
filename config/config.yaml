@@ -13,8 +13,8 @@ database:
   db_type: "mysql"
   host: "127.0.0.1"
   port: 3306
-  user: "admin"
-  password: "adminpassword"
+  user: "root"
+  password: "19082004"
   db_name: "ptit_diem_danh"
   images_dir: "./database/registered_images"
 

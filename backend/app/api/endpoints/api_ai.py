@@ -6,9 +6,11 @@ import numpy as np
 import csv
 import time
 from datetime import datetime, timedelta
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
 from sqlalchemy.orm import Session
 from app.db.session import get_db
+
 
 # Thêm đường dẫn gốc để import FaceAnalyzer
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
@@ -259,11 +261,18 @@ async def register_student(
 
 @router.post("/recognize")
 async def recognize_uploaded_image(
-    file: UploadFile = File(...),
-    ma_buoi_hoc: int = Query(None, description="Mã buổi học muốn ghi nhận."),
-    phong_hoc: str = Query(None, description="Tên phòng học từ Camera gửi lên."),
+    file: Optional[UploadFile] = File(None),
+    ma_buoi_hoc: Optional[int] = Query(None, description="Mã buổi học muốn ghi nhận."),
+    phong_hoc: Optional[str] = Query(None, description="Tên phòng học từ Camera gửi lên."),
     db: Session = Depends(get_db)
 ):
+    if not file:
+        return {
+            "faces_detected": 0,
+            "results": [],
+            "message": "Không nhận được file ảnh (Chế độ giả lập)"
+        }
+
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File gửi lên phải là file ảnh.")
 
@@ -287,18 +296,26 @@ async def recognize_uploaded_image(
         ho_ten = "Unknown"
         lop_base = "Unknown"
         trang_thai = "Chưa xác định"
+        
+        # Lấy thông tin họ tên từ db nếu sinh viên đã được nhận diện
+        if is_known and mssv != "Unknown":
+            student_info = db.query(Student).filter(Student.student_id == mssv).first()
+            if student_info:
+                ho_ten = student_info.full_name
+                lop_base = student_info.administrative_class
 
         success, msg, sv_info = record_attendance_sqlalchemy(
             db, mssv, ma_buoi_hoc=ma_buoi_hoc, phong_hoc=phong_hoc, score=score
         )
-
-        if not success:
-            raise HTTPException(status_code=400, detail=msg)
         
         if sv_info:
             ho_ten = sv_info["ho_ten"]
             lop_base = sv_info["lop_base"]
             trang_thai = msg
+        else:
+            trang_thai = msg if msg else "Chưa đăng ký"
+
+
 
         recognized_faces.append({
             "box": face["box"],

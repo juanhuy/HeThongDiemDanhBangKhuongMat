@@ -18,6 +18,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [regLop, setRegLop] = useState('');
   const [regPhoto, setRegPhoto] = useState(null);
   const [regPhotoName, setRegPhotoName] = useState('');
+  const [regUseWebcam, setRegUseWebcam] = useState(false);
+  const [regWebcamStream, setRegWebcamStream] = useState(null);
+  const [regPreviewSrc, setRegPreviewSrc] = useState('');
+  const regVideoRef = useRef(null);
   
   const [schClass, setSchClass] = useState('D22CQCNPM02-N');
   const [schDate, setSchDate] = useState(new Date().toISOString().substring(0, 10));
@@ -91,33 +95,23 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       if (webcamStream) {
         webcamStream.getTracks().forEach(track => track.stop());
       }
+      if (regWebcamStream) {
+        regWebcamStream.getTracks().forEach(track => track.stop());
+      }
       if (recognitionIntervalRef.current) {
         clearInterval(recognitionIntervalRef.current);
       }
     };
-  }, [webcamStream]);
+  }, [webcamStream, regWebcamStream]);
 
-  const startWebcam = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-      setWebcamStream(stream);
-      setUseWebcam(true);
-      setRecognizeImageSrc('');
-      setRecognizeFile(null);
-      
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      }, 100);
-
-      // Tự động nhận diện mỗi 3 giây
+  // Manage webcam recognition interval
+  useEffect(() => {
+    if (useWebcam && webcamStream) {
       recognitionIntervalRef.current = setInterval(async () => {
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
           
-          // Tạo một canvas tạm để trích xuất frame từ video
           const tempCanvas = document.createElement("canvas");
           tempCanvas.width = video.videoWidth || 640;
           tempCanvas.height = video.videoHeight || 480;
@@ -139,7 +133,6 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 const data = await res.json();
                 setDetectionLogs(data.results || []);
                 
-                // Vẽ bounding boxes trực tiếp trên video qua canvasRef
                 if (canvas && video) {
                   canvas.width = video.clientWidth;
                   canvas.height = video.clientHeight;
@@ -181,8 +174,35 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
             }
           }, "image/jpeg");
         }
-      }, 3000);
+      }, 500);
+    } else {
+      if (recognitionIntervalRef.current) {
+        clearInterval(recognitionIntervalRef.current);
+        recognitionIntervalRef.current = null;
+      }
+    }
 
+    return () => {
+      if (recognitionIntervalRef.current) {
+        clearInterval(recognitionIntervalRef.current);
+        recognitionIntervalRef.current = null;
+      }
+    };
+  }, [useWebcam, webcamStream, cameraRoom]);
+
+  const startWebcam = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      setWebcamStream(stream);
+      setUseWebcam(true);
+      setRecognizeImageSrc('');
+      setRecognizeFile(null);
+      
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 100);
     } catch (err) {
       showToast("Không thể truy cập camera: " + err.message, "danger");
     }
@@ -193,11 +213,58 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       webcamStream.getTracks().forEach(track => track.stop());
       setWebcamStream(null);
     }
-    if (recognitionIntervalRef.current) {
-      clearInterval(recognitionIntervalRef.current);
-      recognitionIntervalRef.current = null;
-    }
     setUseWebcam(false);
+  };
+
+  const startRegWebcam = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      setRegWebcamStream(stream);
+      setRegUseWebcam(true);
+      setRegPreviewSrc('');
+      setRegPhoto(null);
+      setRegPhotoName('');
+      
+      setTimeout(() => {
+        if (regVideoRef.current) {
+          regVideoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (err) {
+      showToast("Không thể truy cập camera đăng ký: " + err.message, "danger");
+    }
+  };
+
+  const stopRegWebcam = () => {
+    if (regWebcamStream) {
+      regWebcamStream.getTracks().forEach(track => track.stop());
+      setRegWebcamStream(null);
+    }
+    setRegUseWebcam(false);
+  };
+
+  const captureRegPhoto = () => {
+    if (regVideoRef.current) {
+      const video = regVideoRef.current;
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], `${regMssv || "captured"}_face.jpg`, { type: "image/jpeg" });
+          setRegPhoto(file);
+          setRegPhotoName(`Ảnh chụp webcam: ${file.name}`);
+          
+          const previewUrl = URL.createObjectURL(blob);
+          setRegPreviewSrc(previewUrl);
+        }
+      }, "image/jpeg");
+      
+      stopRegWebcam();
+    }
   };
 
 
@@ -535,11 +602,6 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     setPendingFaces([]);
   };
 
-  const handleApproveFace = async (mssv) => {
-    showToast(`Đã duyệt hồ sơ khuôn mặt cho SV ${mssv}`);
-    fetchPendingFaces();
-  };
-
   const fetchLeaveRequests = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/teacher/leave_requests`);
@@ -868,6 +930,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         setRegMssv('');
         setRegName('');
         setRegLop('');
+        setRegPreviewSrc('');
       } else {
         showToast(data.detail || "Đăng ký thất bại.", "danger");
       }
@@ -893,6 +956,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       if (res.ok) {
         showToast("Thêm lịch học thành công!");
         setSchRoom('');
+        fetchSchedules();
       }
     } catch (err) {
       showToast("Lỗi kết nối.", "danger");
@@ -939,6 +1003,95 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     } catch (err) {
       showToast("Lỗi kết nối.", "danger");
     }
+  };
+
+  const renderClassManagementTab = () => {
+    return (
+      <div>
+        <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Danh sách lớp tín chỉ đang mở</h4>
+        
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "15px" }}>
+          <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "10px", maxHeight: "250px", overflowY: "auto" }}>
+            <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Chọn lớp học phần:</span>
+            {creditClasses.length === 0 ? (
+              <p style={{ fontSize: "0.75rem", color: "#6c8da3" }}>Chưa có lớp tín chỉ nào.</p>
+            ) : (
+              creditClasses.map(c => (
+                <div 
+                  key={c.class_id}
+                  onClick={() => fetchEnrolledStudents(c.class_id)}
+                  style={{ 
+                    padding: "8px 10px", 
+                    cursor: "pointer", 
+                    borderRadius: "4px", 
+                    fontSize: "0.8rem",
+                    marginBottom: "4px",
+                    background: selectedClass === c.class_id ? "#e0f2fe" : "transparent",
+                    color: selectedClass === c.class_id ? "#0284c7" : "#1c3240",
+                    fontWeight: selectedClass === c.class_id ? "600" : "400"
+                  }}
+                >
+                  📁 {c.class_id} - {c.subject_name}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "10px" }}>
+            <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Đăng ký sinh viên vào lớp học phần:</span>
+            <form onSubmit={handleEnrollStudent}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Mã lớp học phần hiện tại</label>
+                <input style={{ ...styles.input, background: "#f1f5f9" }} disabled value={selectedClass || "Vui lòng chọn lớp bên trái"} />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>MSSV của Sinh viên</label>
+                <input 
+                  style={styles.input} 
+                  placeholder="Nhập MSSV (Ví dụ: N22DCCN134)" 
+                  value={enrollMssv} 
+                  onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
+                  required 
+                />
+              </div>
+              <button disabled={!selectedClass} type="submit" style={{ ...styles.btn, width: "100%", padding: "8px", fontSize: "0.8rem" }}>Đăng ký vào lớp</button>
+            </form>
+          </div>
+        </div>
+
+        {selectedClass && (
+          <div>
+            <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>
+              Danh sách sinh viên thuộc lớp: {selectedClass}
+            </span>
+            {enrolledStudents.length === 0 ? (
+              <p style={{ fontSize: "0.75rem", color: "#6c8da3" }}>Chưa có sinh viên nào đăng ký vào lớp này.</p>
+            ) : (
+              <div style={{ overflowY: "auto", maxHeight: "200px" }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>MSSV</th>
+                      <th style={styles.th}>Họ Tên</th>
+                      <th style={styles.th}>Lớp Chuyên Ngành</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {enrolledStudents.map((st) => (
+                      <tr key={st.mssv}>
+                        <td style={styles.td}>{st.mssv}</td>
+                        <td style={styles.td}><strong>{st.ho_ten}</strong></td>
+                        <td style={styles.td}>{st.lop_base}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderStudentsListTab = () => {
@@ -1100,8 +1253,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       padding: "20px"
     },
     aiContainer: {
-      display: role === 'admin' ? "grid" : "block",
-      gridTemplateColumns: role === 'admin' ? "1.3fr 1.2fr" : "1fr",
+      display: (role === 'admin' && activeTab === 'camera_dashboard') ? "grid" : "block",
+      gridTemplateColumns: (role === 'admin' && activeTab === 'camera_dashboard') ? "1.3fr 1.2fr" : "1fr",
       gap: "1.5rem"
     },
     dropzone: {
@@ -1279,8 +1432,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       </div>
       <div style={styles.cardBody}>
         <div style={styles.aiContainer}>
-          {/* Trái: Camera mô phỏng quét khuôn mặt (Chỉ dành cho Admin) */}
-          {role === 'admin' && (
+          {/* Trái: Camera mô phỏng quét khuôn mặt (Chỉ dành cho Admin và khi ở tab camera_dashboard) */}
+          {role === 'admin' && activeTab === 'camera_dashboard' && (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#54738c" }}>Camera tại phòng:</span>
@@ -1292,19 +1445,6 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
               </div>
 
               <div style={{ display: "flex", gap: "10px" }}>
-                <button 
-                  type="button"
-                  onClick={() => { stopWebcam(); setUseWebcam(false); resetRecognition(); }}
-                  style={{ 
-                    ...styles.btn, 
-                    ...(useWebcam ? styles.btnSecondary : {}),
-                    padding: "6px 12px", 
-                    fontSize: "0.8rem", 
-                    flex: 1 
-                  }}
-                >
-                  <UploadCloud size={14} /> Tải ảnh lên
-                </button>
                 <button 
                   type="button"
                   onClick={() => { if(useWebcam) { stopWebcam(); } else { startWebcam(); } }}
@@ -1329,19 +1469,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
               </div>
               
               <div 
-                style={styles.dropzone}
-                onDragOver={useWebcam ? undefined : (e) => { e.preventDefault(); }}
-                onDrop={useWebcam ? undefined : handleFileDrop}
-                onClick={useWebcam ? undefined : () => fileInputRef.current.click()}
+                style={{ ...styles.dropzone, cursor: "default" }}
               >
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  accept="image/*" 
-                  style={{ display: "none" }} 
-                  onChange={(e) => { if(e.target.files.length > 0) processImage(e.target.files[0]); }} 
-                />
-                
                 {useWebcam ? (
                   <div style={{ ...styles.previewWrapper, width: "100%", height: "100%", position: "relative" }}>
                     <video 
@@ -1365,29 +1494,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       pointerEvents: "none" 
                     }}></canvas>
                   </div>
-                ) : !recognizeImageSrc ? (
-                  <div style={styles.dropzonePrompt}>
-                    <UploadCloud size={40} color="#1d92d1" />
-                    <p style={{ fontSize: "0.95rem", fontWeight: 600, color: "#106fa6" }}>
-                      Tải ảnh từ Camera lớp học để quét tự động (Event-Driven)
-                    </p>
-                    <p style={{ fontSize: "0.75rem" }}>Bản ghi được đối chiếu và xử lý 6 bước tự động</p>
-                  </div>
                 ) : (
-                  <div style={styles.previewWrapper}>
-                    <img 
-                      ref={imageRef} 
-                      src={recognizeImageSrc} 
-                      alt="Preview" 
-                      style={styles.previewImage} 
-                      onLoad={() => {
-                        if (canvasRef.current && imageRef.current) {
-                          canvasRef.current.width = imageRef.current.clientWidth;
-                          canvasRef.current.height = imageRef.current.clientHeight;
-                        }
-                      }}
-                    />
-                    <canvas ref={canvasRef} style={styles.detectionCanvas}></canvas>
+                  <div style={{ ...styles.dropzonePrompt, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", height: "300px" }}>
+                    <Camera size={48} color="#94a3b8" />
+                    <p style={{ fontSize: "0.95rem", fontWeight: 600, color: "#64748b", margin: 0 }}>
+                      Camera đang tắt
+                    </p>
+                    <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: 0 }}>Nhấn "Mở Camera" để bắt đầu nhận diện và điểm danh tự động</p>
                   </div>
                 )}
               </div>
@@ -1396,15 +1509,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 <button 
                   onClick={() => { stopWebcam(); resetRecognition(); }}
                   className="btn btn-secondary" 
-                  style={{ ...styles.btn, ...styles.btnSecondary }}
+                  style={{ ...styles.btn, ...styles.btnSecondary, width: "100%" }}
                 >
                   Làm mới
                 </button>
-                {!useWebcam && (
-                  <button onClick={triggerRecognition} style={styles.btn}>
-                    Quét khuôn mặt (AI Check-in)
-                  </button>
-                )}
               </div>
 
               {detectionLogs.length > 0 && (
@@ -1547,25 +1655,93 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Ảnh đại diện / Ảnh gốc chụp thẻ SV</label>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        id="reg-photo-file-ptit-admin" 
-                        style={{ display: "none" }}
-                        onChange={(e) => {
-                          if(e.target.files.length > 0) {
-                            setRegPhoto(e.target.files[0]);
-                            setRegPhotoName(e.target.files[0].name);
-                          }
-                        }}
-                      />
-                      <button 
-                        type="button" 
-                        style={{ ...styles.btn, ...styles.btnSecondary, padding: "8px 14px", fontSize: "0.8rem" }}
-                        onClick={() => document.getElementById("reg-photo-file-ptit-admin").click()}
-                      >
-                        Chọn file ảnh gốc
-                      </button>
+                      <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          id="reg-photo-file-ptit-admin" 
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            if(e.target.files.length > 0) {
+                              setRegPhoto(e.target.files[0]);
+                              setRegPhotoName(e.target.files[0].name);
+                              setRegPreviewSrc(URL.createObjectURL(e.target.files[0]));
+                              stopRegWebcam();
+                            }
+                          }}
+                        />
+                        <button 
+                          type="button" 
+                          style={{ ...styles.btn, ...styles.btnSecondary, padding: "8px 14px", fontSize: "0.8rem" }}
+                          onClick={() => document.getElementById("reg-photo-file-ptit-admin").click()}
+                        >
+                          Chọn file ảnh gốc
+                        </button>
+                        <button 
+                          type="button" 
+                          style={{ 
+                            ...styles.btn, 
+                            ...(regUseWebcam ? { backgroundColor: "#ef4444" } : styles.btnSecondary), 
+                            padding: "8px 14px", 
+                            fontSize: "0.8rem" 
+                          }}
+                          onClick={() => { if(regUseWebcam) { stopRegWebcam(); } else { startRegWebcam(); } }}
+                        >
+                          {regUseWebcam ? "Tắt Camera" : "Chụp từ Camera"}
+                        </button>
+                      </div>
+
+                      {regUseWebcam && (
+                        <div style={{ 
+                          position: "relative", 
+                          width: "320px", 
+                          height: "240px", 
+                          borderRadius: "8px", 
+                          overflow: "hidden", 
+                          border: "2px solid #1d92d1",
+                          marginBottom: "10px"
+                        }}>
+                          <video 
+                            ref={regVideoRef} 
+                            autoPlay 
+                            playsInline 
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={captureRegPhoto}
+                            style={{
+                              position: "absolute",
+                              bottom: "10px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              backgroundColor: "#10b981",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: "20px",
+                              padding: "6px 16px",
+                              fontSize: "0.8rem",
+                              fontWeight: "bold",
+                              cursor: "pointer",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.2)"
+                            }}
+                          >
+                            📸 Chụp hình
+                          </button>
+                        </div>
+                      )}
+
+                      {regPreviewSrc && (
+                        <div style={{ marginBottom: "10px" }}>
+                          <span style={{ fontSize: "0.75rem", color: "#54738c", display: "block", marginBottom: "4px" }}>Ảnh xem trước:</span>
+                          <img 
+                            src={regPreviewSrc} 
+                            alt="Registration Preview" 
+                            style={{ width: "150px", height: "150px", borderRadius: "8px", objectFit: "cover", border: "1px solid #d0e0eb" }} 
+                          />
+                        </div>
+                      )}
+
                       {regPhotoName && (
                         <div style={{ fontSize: "0.75rem", color: "#10b981", marginTop: "4px" }}>
                           ✓ {regPhotoName}
@@ -1792,6 +1968,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     </div>
                   </div>
                 )}
+                {activeTab === 'class_management' && renderClassManagementTab()}
               </>
             )}
 
@@ -2041,92 +2218,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   </div>
                 )}
                 {activeTab === 'students_list' && renderStudentsListTab()}
-                {activeTab === 'class_management' && (
-                  <div>
-                    <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Danh sách lớp tín chỉ phụ trách</h4>
-                    
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "15px" }}>
-                      <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "10px", maxHeight: "250px", overflowY: "auto" }}>
-                        <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Chọn lớp học phần:</span>
-                        {creditClasses.length === 0 ? (
-                          <p style={{ fontSize: "0.75rem", color: "#6c8da3" }}>Chưa có lớp tín chỉ nào.</p>
-                        ) : (
-                          creditClasses.map(c => (
-                            <div 
-                              key={c.class_id}
-                              onClick={() => fetchEnrolledStudents(c.class_id)}
-                              style={{ 
-                                padding: "8px 10px", 
-                                cursor: "pointer", 
-                                borderRadius: "4px", 
-                                fontSize: "0.8rem",
-                                marginBottom: "4px",
-                                background: selectedClass === c.class_id ? "#e0f2fe" : "transparent",
-                                color: selectedClass === c.class_id ? "#0284c7" : "#1c3240",
-                                fontWeight: selectedClass === c.class_id ? "600" : "400"
-                              }}
-                            >
-                              📁 {c.class_id} - {c.subject_name}
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                      <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "10px" }}>
-                        <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Đăng ký sinh viên vào lớp học phần:</span>
-                        <form onSubmit={handleEnrollStudent}>
-                          <div style={styles.formGroup}>
-                            <label style={styles.label}>Mã lớp học phần hiện tại</label>
-                            <input style={{ ...styles.input, background: "#f1f5f9" }} disabled value={selectedClass || "Vui lòng chọn lớp bên trái"} />
-                          </div>
-                          <div style={styles.formGroup}>
-                            <label style={styles.label}>MSSV của Sinh viên</label>
-                            <input 
-                              style={styles.input} 
-                              placeholder="Nhập MSSV (Ví dụ: N22DCCN134)" 
-                              value={enrollMssv} 
-                              onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
-                              required 
-                            />
-                          </div>
-                          <button disabled={!selectedClass} type="submit" style={{ ...styles.btn, width: "100%", padding: "8px", fontSize: "0.8rem" }}>Đăng ký vào lớp</button>
-                        </form>
-                      </div>
-                    </div>
-
-                    {selectedClass && (
-                      <div>
-                        <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>
-                          Danh sách sinh viên thuộc lớp: {selectedClass}
-                        </span>
-                        {enrolledStudents.length === 0 ? (
-                          <p style={{ fontSize: "0.75rem", color: "#6c8da3" }}>Chưa có sinh viên nào đăng ký vào lớp này.</p>
-                        ) : (
-                          <div style={{ overflowY: "auto", maxHeight: "200px" }}>
-                            <table style={styles.table}>
-                              <thead>
-                                <tr>
-                                  <th style={styles.th}>MSSV</th>
-                                  <th style={styles.th}>Họ Tên</th>
-                                  <th style={styles.th}>Lớp Chuyên Ngành</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {enrolledStudents.map((st) => (
-                                  <tr key={st.mssv}>
-                                    <td style={styles.td}>{st.mssv}</td>
-                                    <td style={styles.td}><strong>{st.ho_ten}</strong></td>
-                                    <td style={styles.td}>{st.lop_base}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {activeTab === 'class_management' && renderClassManagementTab()}
                 {activeTab === 'teaching_schedule' && (
                   <div>
                     <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Lịch dạy chi tiết của Giảng viên</h4>

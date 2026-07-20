@@ -62,6 +62,8 @@ class FaceAnalyzer:
                 sys.path.append(backend_path)
                 
             from app.db.session import SessionLocal
+            from app.models.account import Account
+            from app.models.student import Student
             from app.models.face_feature import FaceFeature
             
             db = SessionLocal()
@@ -71,39 +73,46 @@ class FaceAnalyzer:
                     if feat.face_vector:
                         # Convert LargeBinary bytes back to numpy array
                         vec = np.frombuffer(feat.face_vector, dtype=np.float32)
-                        self.known_embeddings.append(vec)
-                        self.known_names.append(feat.student_id)
-                print(f"-> [SQLAlchemy] Da tai {len(self.known_names)} khuon mat tu database vector.")
+                        if len(vec) == 512:
+                            self.known_embeddings.append(vec)
+                            self.known_names.append(feat.student_id)
+                        else:
+                            print(f"-> [SQLAlchemy] Bo qua vector gia lap/loi: {feat.student_id} (chieu: {len(vec)})")
+                print(f"-> [SQLAlchemy] Da tai {len(self.known_names)} khuon mat hop le tu database vector.")
                 return
             except Exception as db_err:
                 print(f"Loi truy van FaceFeature qua SQLAlchemy: {db_err}. fallback to DatabaseService.")
             finally:
                 db.close()
         except Exception as e:
-            print(f"Không thể import app/db/session, sử dụng DatabaseService cũ: {e}")
+            print(f"Khong the import app/db/session, su dung DatabaseService cu: {e}")
 
         # Fallback cũ sử dụng DatabaseService
         students = self.db_service.get_all_sinh_vien()
         for sv in students:
             if sv["face_vector"] is not None:
-                self.known_embeddings.append(sv["face_vector"])
-                self.known_names.append(sv["mssv"])
-        print(f"-> [Fallback] Da tai {len(self.known_names)} khuon mat tu database vector.")
+                vec = sv["face_vector"]
+                if len(vec) == 512:
+                    self.known_embeddings.append(vec)
+                    self.known_names.append(sv["mssv"])
+                else:
+                    print(f"-> [Fallback] Bo qua vector gia lap/loi: {sv['mssv']} (chieu: {len(vec)})")
+        print(f"-> [Fallback] Da tai {len(self.known_names)} khuon mat hop le tu database vector.")
 
 
     def dang_ky_mat(self, image_path, mssv, ho_ten, lop_base, **kwargs):
         """Trích xuất và lưu vector khuôn mặt của một sinh viên"""
         img = cv.imread(image_path)
         if img is None:
-            print(f"Không thể đọc được ảnh tại: {image_path}")
+            print(f"Khong the doc duoc anh tai: {image_path}")
             return False
             
         faces = self.app.get(img)
         if len(faces) == 0:
-            print("Không tìm thấy khuôn mặt trong ảnh.")
+            print("Khong tim thay khuon mat trong anh.")
             return False
         elif len(faces) > 1:
-            print("Có nhiều hơn một khuôn mặt. Vui lòng chọn ảnh chỉ có một khuôn mặt.")
+            print("Co nhieu hon mot khuon mat. Vui long chon anh chi co mot khuon mat.")
             return False
             
         embedding = faces[0].normed_embedding
@@ -116,6 +125,7 @@ class FaceAnalyzer:
                 sys.path.append(backend_path)
                 
             from app.db.session import SessionLocal
+            from app.models.account import Account
             from app.models.student import Student
             from app.models.face_feature import FaceFeature
             
@@ -133,11 +143,14 @@ class FaceAnalyzer:
                         academic_status="studying"
                     )
                     db.add(student)
+                    db.flush()
                 else:
                     student.full_name = ho_ten
                     student.administrative_class = lop_base
                     if kwargs.get("sdt"):
                         student.phone_number = kwargs.get("sdt")
+                    db.add(student)
+                    db.flush()
                 
                 # Xóa các vector khuôn mặt cũ và thêm vector mới
                 db.query(FaceFeature).filter(FaceFeature.student_id == mssv).delete()
@@ -150,21 +163,21 @@ class FaceAnalyzer:
                 )
                 db.add(new_feat)
                 db.commit()
-                print(f"[SQLAlchemy] Đăng ký thành công khuôn mặt cho {ho_ten} ({mssv})")
+                print(f"[SQLAlchemy] Dang ky thanh cong khuon mat cho {ho_ten} ({mssv})")
                 self.load_database()
                 return True
             except Exception as db_err:
                 db.rollback()
-                print(f"Lỗi ghi DB qua SQLAlchemy trong dang_ky_mat: {db_err}")
+                print(f"Loi ghi DB qua SQLAlchemy trong dang_ky_mat: {db_err}")
             finally:
                 db.close()
         except Exception as e:
-            print(f"Không thể sử dụng SQLAlchemy trong dang_ky_mat: {e}")
+            print(f"Khong the su dung SQLAlchemy trong dang_ky_mat: {e}")
 
         # Fallback cũ sử dụng DatabaseService
         success = self.db_service.add_sinh_vien(mssv, ho_ten, lop_base, embedding, **kwargs)
         if success:
-            print(f"[Fallback] Đăng ký thành công khuôn mặt cho {ho_ten} ({mssv})")
+            print(f"[Fallback] Dang ky thanh cong khuon mat cho {ho_ten} ({mssv})")
             self.load_database()
             return True
         return False
@@ -245,7 +258,14 @@ class FaceAnalyzer:
 
     def recognize_image(self, img):
         """Nhận diện khuôn mặt từ một ảnh tĩnh (OpenCV Image)"""
+        if img is None:
+            print("-> [AI] Anh nhan vao bi null!")
+            return []
+            
+        print(f"-> [AI] Dang xu ly nhan dang khung hinh (Kich thuoc: {img.shape})")
         faces = self.app.get(img)
+        print(f"-> [AI] Phat hien {len(faces)} khuon mat trong khung hinh.")
+        
         results = []
         for face in faces:
             bbox = face.bbox
@@ -266,7 +286,8 @@ class FaceAnalyzer:
                     raw_name = self.known_names[best_idx]
                     best_name = raw_name.split("_")[0] if "_" in raw_name else raw_name
                     is_known = True
-                    
+            
+            print(f"   + Mat quet duoc: {best_name} (Score so khop: {best_score:.2f}, Nguong: {self.threshold})")
             results.append({
                 "box": (x1, y1, x2, y2),
                 "name": best_name,

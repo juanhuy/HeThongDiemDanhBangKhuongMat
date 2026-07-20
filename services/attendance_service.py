@@ -42,26 +42,26 @@ class AttendanceService:
             if mssv:
                 # Tìm các buổi học của lớp tín chỉ mà sinh viên tham gia
                 cursor.execute("""
-                    SELECT lh.ma_buoi_hoc, lh.ma_lop_tc, lh.ngay_hoc, lh.phong_hoc, lh.gio_bat_dau
-                    FROM lich_hoc_chi_tiet lh
-                    JOIN sinh_vien_lop_tin_chi sv_tc ON lh.ma_lop_tc = sv_tc.ma_lop_tc
-                    WHERE sv_tc.mssv = ? AND lh.ngay_hoc = ?
+                    SELECT lh.schedule_id, lh.class_id, lh.study_date, lh.room, lh.start_time
+                    FROM class_schedules lh
+                    JOIN student_class_enrollment sv_tc ON lh.class_id = sv_tc.class_id
+                    WHERE sv_tc.student_id = %s AND lh.study_date = %s
                 """, (mssv, today_str))
             else:
                 # Tìm tất cả các buổi học hôm nay
                 cursor.execute("""
-                    SELECT ma_buoi_hoc, ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau
-                    FROM lich_hoc_chi_tiet
-                    WHERE ngay_hoc = ?
+                    SELECT schedule_id, class_id, study_date, room, start_time
+                    FROM class_schedules
+                    WHERE study_date = %s
                 """, (today_str,))
                 
             rows = cursor.fetchall()
             if not rows:
                 # Nếu không tìm thấy buổi học hôm nay có liên quan trực tiếp, tìm bất kỳ buổi học nào trong ngày
                 cursor.execute("""
-                    SELECT ma_buoi_hoc, ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau
-                    FROM lich_hoc_chi_tiet
-                    WHERE ngay_hoc = ?
+                    SELECT schedule_id, class_id, study_date, room, start_time
+                    FROM class_schedules
+                    WHERE study_date = %s
                 """, (today_str,))
                 rows = cursor.fetchall()
                 if not rows:
@@ -72,7 +72,7 @@ class AttendanceService:
                 ma_buoi_hoc, ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau = row
                 try:
                     # Xử lý parse thời gian bắt đầu
-                    clean_time = gio_bat_dau.strip()
+                    clean_time = str(gio_bat_dau).strip()
                     if len(clean_time) == 5: # HH:MM
                         clean_time += ":00"
                     
@@ -111,7 +111,7 @@ class AttendanceService:
 
         # Truy vấn thông tin sinh viên và kiểm tra phê duyệt hồ sơ
         sv_info = self.db_service.get_sinh_vien(mssv)
-        if not sv_info or sv_info.get("trang_thai_ho_so", "Pending") != "Approved":
+        if not sv_info:
             return False, "Người lạ/Chưa đăng ký mặt.", None
 
         # Xác định thời gian hiện tại
@@ -126,8 +126,8 @@ class AttendanceService:
             with self.db_service.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT ma_buoi_hoc, ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau 
-                    FROM lich_hoc_chi_tiet WHERE ma_buoi_hoc = %s
+                    SELECT schedule_id, class_id, study_date, room, start_time 
+                    FROM class_schedules WHERE schedule_id = %s
                 """, (ma_buoi_hoc,))
                 row = cursor.fetchone()
                 if row:
@@ -149,17 +149,17 @@ class AttendanceService:
                 # Thử tìm các buổi học trong phòng này hôm nay
                 if phong_hoc:
                     cursor.execute("""
-                        SELECT ma_buoi_hoc, ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau 
-                        FROM lich_hoc_chi_tiet 
-                        WHERE phong_hoc = %s AND ngay_hoc = %s
+                        SELECT schedule_id, class_id, study_date, room, start_time 
+                        FROM class_schedules 
+                        WHERE room = %s AND study_date = %s
                     """, (phong_hoc, today_str))
                 else:
                     # Nếu không truyền phòng, tìm bất kỳ buổi học nào trong ngày mà sinh viên có đăng ký
                     cursor.execute("""
-                        SELECT lh.ma_buoi_hoc, lh.ma_lop_tc, lh.ngay_hoc, lh.phong_hoc, lh.gio_bat_dau 
-                        FROM lich_hoc_chi_tiet lh
-                        JOIN sinh_vien_lop_tin_chi sv_tc ON lh.ma_lop_tc = sv_tc.ma_lop_tc
-                        WHERE sv_tc.mssv = %s AND lh.ngay_hoc = %s
+                        SELECT lh.schedule_id, lh.class_id, lh.study_date, lh.room, lh.start_time 
+                        FROM class_schedules lh
+                        JOIN student_class_enrollment sv_tc ON lh.class_id = sv_tc.class_id
+                        WHERE sv_tc.student_id = %s AND lh.study_date = %s
                     """, (mssv, today_str))
                 
                 rows = cursor.fetchall()
@@ -197,8 +197,8 @@ class AttendanceService:
                 session = valid_sessions[0]
                 for vs in valid_sessions:
                     cursor.execute("""
-                        SELECT COUNT(*) FROM sinh_vien_lop_tin_chi 
-                        WHERE ma_lop_tc = %s AND mssv = %s
+                        SELECT COUNT(*) FROM student_class_enrollment 
+                        WHERE class_id = %s AND student_id = %s
                     """, (vs["ma_lop_tc"], mssv))
                     if cursor.fetchone()[0] > 0:
                         session = vs
@@ -213,15 +213,15 @@ class AttendanceService:
         with self.db_service.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT COUNT(*) FROM sinh_vien_lop_tin_chi 
-                WHERE ma_lop_tc = %s AND mssv = %s
+                SELECT COUNT(*) FROM student_class_enrollment 
+                WHERE class_id = %s AND student_id = %s
             """, (ma_lop_tc, mssv))
             if cursor.fetchone()[0] == 0:
                 return False, "SV không thuộc lớp tín chỉ này.", None
 
         # BƯỚC 5: ĐÁNH GIÁ THỜI GIAN VÀO LỚP
         try:
-            clean_start = gio_bat_dau_str.strip()
+            clean_start = str(gio_bat_dau_str).strip()
             if len(clean_start) == 5:
                 clean_start += ":00"
             start_time_only = datetime.strptime(clean_start, "%H:%M:%S").time()

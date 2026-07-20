@@ -61,6 +61,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'structure' ? 'active' : ''}`} onClick={() => setActiveMenu('structure')}>
             <BookOpen size={16} /> Cấu trúc Lớp
           </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('class_management')}>
+            <BookOpen size={16} /> Quản lý Đăng ký Lớp
+          </div>
         </>
       );
     }

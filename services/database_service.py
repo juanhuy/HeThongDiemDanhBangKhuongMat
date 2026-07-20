@@ -13,7 +13,7 @@ class DatabaseService:
         self.password = self.db_config.get("password", "")
         self.db_name = self.db_config.get("db_name", "ptit_diem_danh")
         
-        # Đảm bảo tạo database và các bảng nếu chưa tồn tại
+        # Đảm bảo tạo database nếu chưa tồn tại
         self.create_database_if_not_exists()
         self.init_db()
 
@@ -44,188 +44,42 @@ class DatabaseService:
         )
 
     def init_db(self):
-        """Khởi tạo các bảng MySQL nếu chưa tồn tại"""
+        """Khởi tạo các bảng mặc định nếu chưa tồn tại (Dọn sạch các bảng tiếng Việt, các bảng tiếng Anh được quản lý bởi SQLAlchemy backend)"""
+        # Lưu ý: Các bảng tiếng Anh sẽ được backend FastAPI tự động khởi tạo qua SQLAlchemy.
+        # Ở đây ta chỉ khởi tạo dữ liệu mặc định ban đầu nếu chưa có.
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                # 1. Bảng sinh viên (Mở rộng thêm các trường thông tin cá nhân)
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS sinh_vien (
-                        mssv VARCHAR(20) PRIMARY KEY,
-                        ho_ten VARCHAR(100) NOT NULL,
-                        lop_base VARCHAR(50),
-                        face_vector TEXT,
-                        ngay_sinh VARCHAR(20),
-                        gioi_tinh VARCHAR(10),
-                        sdt VARCHAR(20),
-                        cccd VARCHAR(20),
-                        dan_toc VARCHAR(20),
-                        ton_giao VARCHAR(20),
-                        noi_sinh VARCHAR(50),
-                        quoc_tich VARCHAR(50),
-                        email VARCHAR(100),
-                        dia_chi VARCHAR(200),
-                        trang_thai_ho_so VARCHAR(20) DEFAULT 'Pending',
-                        ngay_cap_nhat_anh DATETIME DEFAULT CURRENT_TIMESTAMP
-                    ) ENGINE=InnoDB;
-                """)
-                
-                # Di chuyển nâng cấp cột phòng hờ nếu bảng cũ đã tồn tại trước đó
-                for col, col_type in [
-                    ("ngay_sinh", "VARCHAR(20)"),
-                    ("gioi_tinh", "VARCHAR(10)"),
-                    ("sdt", "VARCHAR(20)"),
-                    ("cccd", "VARCHAR(20)"),
-                    ("dan_toc", "VARCHAR(20)"),
-                    ("ton_giao", "VARCHAR(20)"),
-                    ("noi_sinh", "VARCHAR(50)"),
-                    ("quoc_tich", "VARCHAR(50)"),
-                    ("email", "VARCHAR(100)"),
-                    ("dia_chi", "VARCHAR(200)"),
-                    ("trang_thai_ho_so", "VARCHAR(20) DEFAULT 'Pending'"),
-                    ("ngay_cap_nhat_anh", "DATETIME DEFAULT CURRENT_TIMESTAMP")
-                ]:
-                    try:
-                        cursor.execute(f"ALTER TABLE sinh_vien ADD COLUMN {col} {col_type};")
-                    except Exception:
-                        pass
-                
-                # 2. Bảng môn học
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mon_hoc (
-                        ma_mon VARCHAR(20) PRIMARY KEY,
-                        ten_mon VARCHAR(100) NOT NULL
-                    ) ENGINE=InnoDB;
-                """)
-                
-                # 3. Bảng lớp tín chỉ
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS lop_tin_chi (
-                        ma_lop_tc VARCHAR(50) PRIMARY KEY,
-                        ma_mon VARCHAR(20),
-                        FOREIGN KEY (ma_mon) REFERENCES mon_hoc(ma_mon) ON DELETE CASCADE
-                    ) ENGINE=InnoDB;
-                """)
-                
-                # 4. Bảng trung gian Sinh viên - Lớp tín chỉ
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS sinh_vien_lop_tin_chi (
-                        ma_lop_tc VARCHAR(50),
-                        mssv VARCHAR(20),
-                        trang_thai_hoc_tap VARCHAR(20) DEFAULT 'Active', -- Active, Cam thi
-                        PRIMARY KEY (ma_lop_tc, mssv),
-                        FOREIGN KEY (ma_lop_tc) REFERENCES lop_tin_chi(ma_lop_tc) ON DELETE CASCADE,
-                        FOREIGN KEY (mssv) REFERENCES sinh_vien(mssv) ON DELETE CASCADE
-                    ) ENGINE=InnoDB;
-                """)
-                try:
-                    cursor.execute("ALTER TABLE sinh_vien_lop_tin_chi ADD COLUMN trang_thai_hoc_tap VARCHAR(20) DEFAULT 'Active';")
-                except Exception:
-                    pass
-                
-                # 5. Bảng lịch học chi tiết
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS lich_hoc_chi_tiet (
-                        ma_buoi_hoc INT AUTO_INCREMENT PRIMARY KEY,
-                        ma_lop_tc VARCHAR(50),
-                        ngay_hoc DATE NOT NULL,
-                        phong_hoc VARCHAR(20) NOT NULL,
-                        gio_bat_dau TIME NOT NULL,
-                        FOREIGN KEY (ma_lop_tc) REFERENCES lop_tin_chi(ma_lop_tc) ON DELETE CASCADE
-                    ) ENGINE=InnoDB;
-                """)
-                
-                # 6. Bảng lịch sử điểm danh
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS lich_su_diem_danh (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        mssv VARCHAR(20),
-                        ma_buoi_hoc INT,
-                        thoi_gian_quet DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        trang_thai VARCHAR(20),
-                        nguoi_xac_nhan VARCHAR(50) DEFAULT 'AI',
-                        FOREIGN KEY (mssv) REFERENCES sinh_vien(mssv) ON DELETE CASCADE,
-                        FOREIGN KEY (ma_buoi_hoc) REFERENCES lich_hoc_chi_tiet(ma_buoi_hoc) ON DELETE CASCADE
-                    ) ENGINE=InnoDB;
-                """)
-                try:
-                    cursor.execute("ALTER TABLE lich_su_diem_danh ADD COLUMN nguoi_xac_nhan VARCHAR(50) DEFAULT 'AI';")
-                except Exception:
-                    pass
+                # Tự động chèn tài khoản mặc định admin admin / 123456
+                cursor.execute("SHOW TABLES LIKE 'accounts'")
+                if cursor.fetchone():
+                    cursor.execute("SELECT COUNT(*) FROM accounts WHERE username = 'admin'")
+                    if cursor.fetchone()[0] == 0:
+                        pw_hash = self.hash_password("123456")
+                        cursor.execute("""
+                            INSERT INTO accounts (username, password_hash, role, is_active)
+                            VALUES ('admin', %s, 'admin', True)
+                        """, (pw_hash,))
+                        
+                    # Tự động chèn tài khoản giảng viên mặc định để kiểm thử gv1 / 123456
+                    cursor.execute("SELECT COUNT(*) FROM accounts WHERE username = 'gv1'")
+                    if cursor.fetchone()[0] == 0:
+                        pw_hash = self.hash_password("123456")
+                        cursor.execute("""
+                            INSERT INTO accounts (username, password_hash, role, is_active)
+                            VALUES ('gv1', %s, 'giang_vien', True)
+                        """, (pw_hash,))
 
-                # 6.1. Bảng đơn xin nghỉ phép
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS don_xin_phep (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        mssv VARCHAR(20),
-                        ma_buoi_hoc INT,
-                        ly_do TEXT,
-                        minh_chung VARCHAR(255),
-                        trang_thai VARCHAR(20) DEFAULT 'Pending',
-                        nguoi_duyet VARCHAR(50),
-                        FOREIGN KEY (mssv) REFERENCES sinh_vien(mssv) ON DELETE CASCADE,
-                        FOREIGN KEY (ma_buoi_hoc) REFERENCES lich_hoc_chi_tiet(ma_buoi_hoc) ON DELETE CASCADE
-                    ) ENGINE=InnoDB;
-                """)
-                
-                # 7. Bảng tài khoản người dùng
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS tai_khoan (
-                        username VARCHAR(50) PRIMARY KEY,
-                        password_hash VARCHAR(255) NOT NULL,
-                        mssv VARCHAR(20) UNIQUE,
-                        role VARCHAR(20) DEFAULT 'sinh_vien',
-                        FOREIGN KEY (mssv) REFERENCES sinh_vien(mssv) ON DELETE SET NULL
-                    ) ENGINE=InnoDB;
-                """)
-                
-                # Tự động chèn thông tin sinh viên mặc định N22DCCN134 nếu chưa tồn tại
-                cursor.execute("SELECT COUNT(*) FROM sinh_vien WHERE mssv = 'N22DCCN134'")
-                if cursor.fetchone()[0] == 0:
-                    cursor.execute("""
-                        INSERT INTO sinh_vien (
-                            mssv, ho_ten, lop_base, ngay_sinh, gioi_tinh, sdt, cccd, 
-                            dan_toc, ton_giao, noi_sinh, quoc_tich, email, dia_chi, trang_thai_ho_so
-                        ) VALUES (
-                            'N22DCCN134', 'Nguyễn Lê Nhật Huy', 'D22CQCNPM02-N', '19/08/2004', 'Nam', 
-                            '0814117674', '054204002126', 'Kinh', 'Phật Giáo', 'Phú Yên', 
-                            'Việt Nam', 'n22dccn134@student.ptithcm.edu.vn', 
-                            'Tập Đoàn 24, Thôn Nguyên Cam, Xã Sơn Hòa, Tỉnh Đắk Lắk', 'Approved'
-                        )
-                    """)
-                else:
-                    cursor.execute("UPDATE sinh_vien SET trang_thai_ho_so = 'Approved' WHERE mssv = 'N22DCCN134'")
-
-                # Tự động chèn tài khoản mặc định n22dccn134 nếu chưa tồn tại
-                cursor.execute("SELECT COUNT(*) FROM tai_khoan WHERE username = 'n22dccn134'")
-                if cursor.fetchone()[0] == 0:
-                    pw_hash = hashlib.sha256("123456".encode()).hexdigest()
-                    cursor.execute("""
-                        INSERT INTO tai_khoan (username, password_hash, mssv, role)
-                        VALUES ('n22dccn134', %s, 'N22DCCN134', 'sinh_vien')
-                    """, (pw_hash,))
-                    
-                # Tự động chèn tài khoản giảng viên mặc định để kiểm thử gv1 / 123456
-                cursor.execute("SELECT COUNT(*) FROM tai_khoan WHERE username = 'gv1'")
-                if cursor.fetchone()[0] == 0:
-                    pw_hash = hashlib.sha256("123456".encode()).hexdigest()
-                    cursor.execute("""
-                        INSERT INTO tai_khoan (username, password_hash, mssv, role)
-                        VALUES ('gv1', %s, NULL, 'giang_vien')
-                    """, (pw_hash,))
-
-                # Tự động chèn tài khoản admin admin / 123456
-                cursor.execute("SELECT COUNT(*) FROM tai_khoan WHERE username = 'admin'")
-                if cursor.fetchone()[0] == 0:
-                    pw_hash = hashlib.sha256("123456".encode()).hexdigest()
-                    cursor.execute("""
-                        INSERT INTO tai_khoan (username, password_hash, mssv, role)
-                        VALUES ('admin', %s, NULL, 'admin')
-                    """, (pw_hash,))
-
+                # Xóa toàn bộ dữ liệu sinh viên giả lập/thử nghiệm nếu tồn tại
+                cursor.execute("SHOW TABLES LIKE 'students'")
+                if cursor.fetchone():
+                    # Xoá liên kết khoá ngoại trước
+                    cursor.execute("DELETE FROM face_features WHERE student_id IN ('N22DCCN134', 'TEST01')")
+                    cursor.execute("DELETE FROM students WHERE student_id IN ('N22DCCN134', 'TEST01')")
+                    cursor.execute("DELETE FROM accounts WHERE username IN ('n22dccn134', 'test01')")
             conn.commit()
         except Exception as e:
-            print(f"Loi khoi tao cau truc bang MySQL: {e}")
+            print(f"Loi khoi tao cau truc/du lieu mac dinh MySQL: {e}")
         finally:
             conn.close()
 
@@ -251,31 +105,33 @@ class DatabaseService:
         """Thêm hoặc cập nhật sinh viên với các thông tin chi tiết"""
         conn = self.get_connection()
         try:
-            vector_str = self.vector_to_string(face_vector)
             with conn.cursor() as cursor:
+                # 1. Thêm hoặc cập nhật bảng students
+                email_val = email or f"{mssv}@student.ptit.edu.vn"
                 cursor.execute("""
-                    INSERT INTO sinh_vien (
-                        mssv, ho_ten, lop_base, face_vector, ngay_sinh, gioi_tinh, sdt, cccd, 
-                        dan_toc, ton_giao, noi_sinh, quoc_tich, email, dia_chi
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO students (
+                        student_id, full_name, email, phone_number, administrative_class, academic_status
+                    ) VALUES (%s, %s, %s, %s, %s, 'studying')
                     ON DUPLICATE KEY UPDATE 
-                        ho_ten=VALUES(ho_ten), 
-                        lop_base=VALUES(lop_base), 
-                        face_vector=COALESCE(NULLIF(VALUES(face_vector), ''), face_vector),
-                        ngay_sinh=VALUES(ngay_sinh),
-                        gioi_tinh=VALUES(gioi_tinh),
-                        sdt=VALUES(sdt),
-                        cccd=VALUES(cccd),
-                        dan_toc=VALUES(dan_toc),
-                        ton_giao=VALUES(ton_giao),
-                        noi_sinh=VALUES(noi_sinh),
-                        quoc_tich=VALUES(quoc_tich),
-                        email=VALUES(email),
-                        dia_chi=VALUES(dia_chi)
-                """, (
-                    mssv, ho_ten, lop_base, vector_str, ngay_sinh, gioi_tinh, sdt, cccd, 
-                    dan_toc, ton_giao, noi_sinh, quoc_tich, email, dia_chi
-                ))
+                        full_name=VALUES(full_name), 
+                        administrative_class=VALUES(administrative_class),
+                        phone_number=VALUES(phone_number),
+                        email=VALUES(email)
+                """, (mssv, ho_ten, email_val, sdt, lop_base))
+                
+                # 2. Xóa các đặc trưng khuôn mặt cũ của sinh viên này
+                cursor.execute("DELETE FROM face_features WHERE student_id = %s", (mssv,))
+                
+                # 3. Thêm vector khuôn mặt nhị phân mới vào bảng face_features
+                if face_vector is not None:
+                    if isinstance(face_vector, np.ndarray):
+                        vector_bytes = face_vector.tobytes()
+                    else:
+                        vector_bytes = face_vector
+                    cursor.execute("""
+                        INSERT INTO face_features (student_id, face_vector, is_primary)
+                        VALUES (%s, %s, True)
+                    """, (mssv, vector_bytes))
             conn.commit()
             return True
         except Exception as e:
@@ -290,27 +146,31 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT ho_ten, lop_base, face_vector, ngay_sinh, gioi_tinh, sdt, cccd, 
-                           dan_toc, ton_giao, noi_sinh, quoc_tich, email, dia_chi 
-                    FROM sinh_vien WHERE mssv = %s
+                    SELECT s.full_name, s.administrative_class, s.email, s.phone_number, f.face_vector
+                    FROM students s
+                    LEFT JOIN face_features f ON s.student_id = f.student_id AND f.is_primary = True
+                    WHERE s.student_id = %s
                 """, (mssv,))
                 row = cursor.fetchone()
                 if row:
+                    face_vector = None
+                    if row[4]:
+                        face_vector = np.frombuffer(row[4], dtype=np.float32)
                     return {
                         "mssv": mssv,
                         "ho_ten": row[0],
                         "lop_base": row[1],
-                        "face_vector": self.string_to_vector(row[2]),
-                        "ngay_sinh": row[3],
-                        "gioi_tinh": row[4],
-                        "sdt": row[5],
-                        "cccd": row[6],
-                        "dan_toc": row[7],
-                        "ton_giao": row[8],
-                        "noi_sinh": row[9],
-                        "quoc_tich": row[10],
-                        "email": row[11],
-                        "dia_chi": row[12]
+                        "email": row[2],
+                        "sdt": row[3],
+                        "face_vector": face_vector,
+                        "ngay_sinh": None,
+                        "gioi_tinh": None,
+                        "cccd": None,
+                        "dan_toc": None,
+                        "ton_giao": None,
+                        "noi_sinh": None,
+                        "quoc_tich": None,
+                        "dia_chi": None
                     }
                 return None
         except Exception as e:
@@ -325,28 +185,31 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT mssv, ho_ten, lop_base, face_vector, ngay_sinh, gioi_tinh, sdt, cccd, 
-                           dan_toc, ton_giao, noi_sinh, quoc_tich, email, dia_chi 
-                    FROM sinh_vien
+                    SELECT s.student_id, s.full_name, s.administrative_class, f.face_vector, s.email, s.phone_number
+                    FROM students s
+                    INNER JOIN face_features f ON s.student_id = f.student_id AND f.is_primary = True
                 """)
                 rows = cursor.fetchall()
                 result = []
                 for r in rows:
+                    face_vector = None
+                    if r[3]:
+                        face_vector = np.frombuffer(r[3], dtype=np.float32)
                     result.append({
                         "mssv": r[0],
                         "ho_ten": r[1],
                         "lop_base": r[2],
-                        "face_vector": self.string_to_vector(r[3]),
-                        "ngay_sinh": r[4],
-                        "gioi_tinh": r[5],
-                        "sdt": r[6],
-                        "cccd": r[7],
-                        "dan_toc": r[8],
-                        "ton_giao": r[9],
-                        "noi_sinh": r[10],
-                        "quoc_tich": r[11],
-                        "email": r[12],
-                        "dia_chi": r[13]
+                        "face_vector": face_vector,
+                        "email": r[4],
+                        "sdt": r[5],
+                        "ngay_sinh": None,
+                        "gioi_tinh": None,
+                        "cccd": None,
+                        "dan_toc": None,
+                        "ton_giao": None,
+                        "noi_sinh": None,
+                        "quoc_tich": None,
+                        "dia_chi": None
                     })
                 return result
         except Exception as e:
@@ -359,7 +222,7 @@ class DatabaseService:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                cursor.execute("REPLACE INTO mon_hoc (ma_mon, ten_mon) VALUES (%s, %s)", (ma_mon, ten_mon))
+                cursor.execute("REPLACE INTO subjects (subject_id, subject_name, credits) VALUES (%s, %s, 3)", (ma_mon, ten_mon))
             conn.commit()
             return True
         except Exception as e:
@@ -372,7 +235,7 @@ class DatabaseService:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                cursor.execute("REPLACE INTO lop_tin_chi (ma_lop_tc, ma_mon) VALUES (%s, %s)", (ma_lop_tc, ma_mon))
+                cursor.execute("REPLACE INTO credit_classes (class_id, subject_id) VALUES (%s, %s)", (ma_lop_tc, ma_mon))
             conn.commit()
             return True
         except Exception as e:
@@ -385,7 +248,7 @@ class DatabaseService:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                cursor.execute("REPLACE INTO sinh_vien_lop_tin_chi (ma_lop_tc, mssv) VALUES (%s, %s)", (ma_lop_tc, mssv))
+                cursor.execute("REPLACE INTO student_class_enrollment (class_id, student_id) VALUES (%s, %s)", (ma_lop_tc, mssv))
             conn.commit()
             return True
         except Exception as e:
@@ -399,7 +262,7 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO lich_hoc_chi_tiet (ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO class_schedules (class_id, study_date, room, start_time) VALUES (%s, %s, %s, %s)",
                     (ma_lop_tc, ngay_hoc, phong_hoc, gio_bat_dau)
                 )
             conn.commit()
@@ -416,18 +279,18 @@ class DatabaseService:
             with conn.cursor() as cursor:
                 # Kiểm tra xem đã có bản ghi điểm danh chưa
                 cursor.execute(
-                    "SELECT id FROM lich_su_diem_danh WHERE mssv = %s AND ma_buoi_hoc = %s",
+                    "SELECT attendance_id FROM attendance_histories WHERE student_id = %s AND schedule_id = %s",
                     (mssv, ma_buoi_hoc)
                 )
                 row = cursor.fetchone()
                 if row:
                     cursor.execute(
-                        "UPDATE lich_su_diem_danh SET trang_thai = %s, nguoi_xac_nhan = %s, thoi_gian_quet = CURRENT_TIMESTAMP WHERE id = %s",
+                        "UPDATE attendance_histories SET status = %s, confirmed_by = %s, check_in_time = CURRENT_TIMESTAMP WHERE attendance_id = %s",
                         (trang_thai, nguoi_xac_nhan, row[0])
                     )
                 else:
                     cursor.execute(
-                        "INSERT INTO lich_su_diem_danh (mssv, ma_buoi_hoc, trang_thai, nguoi_xac_nhan) VALUES (%s, %s, %s, %s)",
+                        "INSERT INTO attendance_histories (student_id, schedule_id, status, confirmed_by) VALUES (%s, %s, %s, %s)",
                         (mssv, ma_buoi_hoc, trang_thai, nguoi_xac_nhan)
                     )
             conn.commit()
@@ -439,21 +302,8 @@ class DatabaseService:
             conn.close()
 
     def approve_face_registration(self, mssv):
-        """Duyệt hồ sơ khuôn mặt sinh viên"""
-        conn = self.get_connection()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE sinh_vien SET trang_thai_ho_so = 'Approved', ngay_cap_nhat_anh = CURRENT_TIMESTAMP WHERE mssv = %s",
-                    (mssv,)
-                )
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Loi duyet ho so: {e}")
-            return False
-        finally:
-            conn.close()
+        """Duyệt hồ sơ khuôn mặt sinh viên (Không dùng cột này nữa ở DB mới, luôn trả về True)"""
+        return True
 
     def submit_leave_request(self, mssv, ma_buoi_hoc, ly_do, minh_chung):
         """Gửi đơn xin nghỉ phép"""
@@ -461,7 +311,7 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO don_xin_phep (mssv, ma_buoi_hoc, ly_do, minh_chung) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO leave_requests (student_id, schedule_id, reason, evidence) VALUES (%s, %s, %s, %s)",
                     (mssv, ma_buoi_hoc, ly_do, minh_chung)
                 )
             conn.commit()
@@ -478,17 +328,17 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 query = """
-                    SELECT dxp.id, dxp.mssv, sv.ho_ten, dxp.ma_buoi_hoc, lh.ngay_hoc, lh.gio_bat_dau, lh.ma_lop_tc,
-                           dxp.ly_do, dxp.minh_chung, dxp.trang_thai, dxp.nguoi_duyet
-                    FROM don_xin_phep dxp
-                    JOIN sinh_vien sv ON dxp.mssv = sv.mssv
-                    JOIN lich_hoc_chi_tiet lh ON dxp.ma_buoi_hoc = lh.ma_buoi_hoc
+                    SELECT lr.request_id, lr.student_id, s.full_name, lr.schedule_id, cs.study_date, cs.start_time, cs.class_id,
+                           lr.reason, lr.evidence, lr.status, lr.approved_by
+                    FROM leave_requests lr
+                    JOIN students s ON lr.student_id = s.student_id
+                    JOIN class_schedules cs ON lr.schedule_id = cs.schedule_id
                 """
                 params = []
                 if ma_lop_tc:
-                    query += " WHERE lh.ma_lop_tc = %s"
+                    query += " WHERE cs.class_id = %s"
                     params.append(ma_lop_tc)
-                query += " ORDER BY dxp.id DESC"
+                query += " ORDER BY lr.request_id DESC"
                 cursor.execute(query, tuple(params))
                 rows = cursor.fetchall()
                 result = []
@@ -519,33 +369,33 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 # Lấy mssv và ma_buoi_hoc từ đơn
-                cursor.execute("SELECT mssv, ma_buoi_hoc FROM don_xin_phep WHERE id = %s", (request_id,))
+                cursor.execute("SELECT student_id, schedule_id FROM leave_requests WHERE request_id = %s", (request_id,))
                 row = cursor.fetchone()
                 if not row:
                     return False
-                mssv, ma_buoi_hoc = row
+                student_id, schedule_id = row
                 
                 # Cập nhật trạng thái đơn nghỉ phép
                 cursor.execute(
-                    "UPDATE don_xin_phep SET trang_thai = 'Approved', nguoi_duyet = %s WHERE id = %s",
+                    "UPDATE leave_requests SET status = 'Approved', approved_by = %s WHERE request_id = %s",
                     (nguoi_duyet, request_id)
                 )
                 
                 # Ghi nhận/Cập nhật bảng điểm danh
                 cursor.execute(
-                    "SELECT id FROM lich_su_diem_danh WHERE mssv = %s AND ma_buoi_hoc = %s",
-                    (mssv, ma_buoi_hoc)
+                    "SELECT attendance_id FROM attendance_histories WHERE student_id = %s AND schedule_id = %s",
+                    (student_id, schedule_id)
                 )
                 att_row = cursor.fetchone()
                 if att_row:
                     cursor.execute(
-                        "UPDATE lich_su_diem_danh SET trang_thai = 'Có phép', nguoi_xac_nhan = %s, thoi_gian_quet = CURRENT_TIMESTAMP WHERE id = %s",
+                        "UPDATE attendance_histories SET status = 'Có phép', confirmed_by = %s, check_in_time = CURRENT_TIMESTAMP WHERE attendance_id = %s",
                         (nguoi_duyet, att_row[0])
                     )
                 else:
                     cursor.execute(
-                        "INSERT INTO lich_su_diem_danh (mssv, ma_buoi_hoc, trang_thai, nguoi_xac_nhan) VALUES (%s, %s, 'Có phép', %s)",
-                        (mssv, ma_buoi_hoc, nguoi_duyet)
+                        "INSERT INTO attendance_histories (student_id, schedule_id, status, confirmed_by) VALUES (%s, %s, 'Có phép', %s)",
+                        (student_id, schedule_id, nguoi_duyet)
                     )
             conn.commit()
             return True
@@ -561,7 +411,7 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "UPDATE don_xin_phep SET trang_thai = 'Rejected', nguoi_duyet = %s WHERE id = %s",
+                    "UPDATE leave_requests SET status = 'Rejected', approved_by = %s WHERE request_id = %s",
                     (nguoi_duyet, request_id)
                 )
             conn.commit()
@@ -581,26 +431,26 @@ class DatabaseService:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                # 1. Lấy tất cả buổi học đã diễn ra cho lớp tín chỉ này
+                # 1. Lấy tất cả buổi học đã diễn ra cho lớp tín chỉ này (class_schedules)
                 cursor.execute("""
-                    SELECT ma_buoi_hoc FROM lich_hoc_chi_tiet 
-                    WHERE ma_lop_tc = %s AND (ngay_hoc < CURRENT_DATE OR (ngay_hoc = CURRENT_DATE AND gio_bat_dau <= CURRENT_TIME))
+                    SELECT schedule_id FROM class_schedules 
+                    WHERE class_id = %s AND (study_date < CURRENT_DATE OR (study_date = CURRENT_DATE AND start_time <= CURRENT_TIME))
                 """, (ma_lop_tc,))
                 buoi_hoc_rows = cursor.fetchall()
                 buoi_hoc_ids = [r[0] for r in buoi_hoc_rows]
                 tong_buoi = len(buoi_hoc_ids)
                 
-                # 2. Lấy danh sách sinh viên đăng ký lớp
+                # 2. Lấy danh sách sinh viên đăng ký lớp (student_class_enrollment join students)
                 cursor.execute("""
-                    SELECT sv.mssv, sv.ho_ten, sv.lop_base 
-                    FROM sinh_vien_lop_tin_chi sv_tc
-                    JOIN sinh_vien sv ON sv_tc.mssv = sv.mssv
-                    WHERE sv_tc.ma_lop_tc = %s
+                    SELECT s.student_id, s.full_name, s.administrative_class 
+                    FROM student_class_enrollment sv_tc
+                    JOIN students s ON sv_tc.student_id = s.student_id
+                    WHERE sv_tc.class_id = %s
                 """, (ma_lop_tc,))
                 sinh_vien_list = cursor.fetchall()
                 
                 report = []
-                for mssv, ho_ten, lop_base in sinh_vien_list:
+                for student_id, ho_ten, lop_base in sinh_vien_list:
                     # Đếm các trạng thái điểm danh
                     # Nếu chưa có log thì mặc định là Vắng không phép
                     dung_gio = 0
@@ -610,9 +460,9 @@ class DatabaseService:
                     
                     for ma_buoi in buoi_hoc_ids:
                         cursor.execute("""
-                            SELECT trang_thai FROM lich_su_diem_danh 
-                            WHERE mssv = %s AND ma_buoi_hoc = %s
-                        """, (mssv, ma_buoi))
+                            SELECT status FROM attendance_histories 
+                            WHERE student_id = %s AND schedule_id = %s
+                        """, (student_id, ma_buoi))
                         row = cursor.fetchone()
                         if row:
                             status = row[0]
@@ -649,19 +499,19 @@ class DatabaseService:
                         trang_thai_hoc_tap = "Cam thi"
                         # Cập nhật DB
                         cursor.execute("""
-                            UPDATE sinh_vien_lop_tin_chi 
-                            SET trang_thai_hoc_tap = 'Cam thi' 
-                            WHERE ma_lop_tc = %s AND mssv = %s
-                        """, (ma_lop_tc, mssv))
+                            UPDATE student_class_enrollment 
+                            SET academic_status = 'Cam thi' 
+                            WHERE class_id = %s AND student_id = %s
+                        """, (ma_lop_tc, student_id))
                     else:
                         cursor.execute("""
-                            UPDATE sinh_vien_lop_tin_chi 
-                            SET trang_thai_hoc_tap = 'Active' 
-                            WHERE ma_lop_tc = %s AND mssv = %s
-                        """, (ma_lop_tc, mssv))
+                            UPDATE student_class_enrollment 
+                            SET academic_status = 'Active' 
+                            WHERE class_id = %s AND student_id = %s
+                        """, (ma_lop_tc, student_id))
                         
                     report.append({
-                        "mssv": mssv,
+                        "mssv": student_id,
                         "ho_ten": ho_ten,
                         "lop_base": lop_base,
                         "dung_gio": dung_gio,
@@ -692,10 +542,19 @@ class DatabaseService:
         try:
             pw_hash = self.hash_password(password)
             with conn.cursor() as cursor:
+                # 1. Thêm account
                 cursor.execute(
-                    "INSERT INTO tai_khoan (username, password_hash, mssv, role) VALUES (%s, %s, %s, %s)",
-                    (username.strip().lower(), pw_hash, mssv, role)
+                    "INSERT INTO accounts (username, password_hash, role, is_active) VALUES (%s, %s, %s, True)",
+                    (username.strip().lower(), pw_hash, role)
                 )
+                acc_id = cursor.lastrowid
+                
+                # 2. Nếu có mssv, cập nhật account_id cho sinh viên
+                if mssv:
+                    cursor.execute(
+                        "UPDATE students SET account_id = %s WHERE student_id = %s",
+                        (acc_id, mssv)
+                    )
             conn.commit()
             return True
         except Exception as e:
@@ -711,10 +570,10 @@ class DatabaseService:
             pw_hash = self.hash_password(password)
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT tk.username, tk.role, tk.mssv, sv.ho_ten, sv.lop_base 
-                    FROM tai_khoan tk
-                    LEFT JOIN sinh_vien sv ON tk.mssv = sv.mssv
-                    WHERE tk.username = %s AND tk.password_hash = %s
+                    SELECT tk.username, tk.role, s.student_id, s.full_name, s.administrative_class 
+                    FROM accounts tk
+                    LEFT JOIN students s ON tk.account_id = s.account_id
+                    WHERE tk.username = %s AND tk.password_hash = %s AND tk.is_active = True
                 """, (username.strip().lower(), pw_hash))
                 row = cursor.fetchone()
                 if row:
