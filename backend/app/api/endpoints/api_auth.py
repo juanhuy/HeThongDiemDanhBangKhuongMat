@@ -20,7 +20,7 @@ def login(username: str = Form(...), password: str = Form(...), db: Session = De
     
     # Lấy thông tin sinh viên liên kết nếu có
     student_info = None
-    if account.role == "sinh_vien":
+    if account.role in ["sinh_vien", "student"]:
         student = db.query(Student).filter(Student.account_id == account.account_id).first()
         if student:
             student_info = student

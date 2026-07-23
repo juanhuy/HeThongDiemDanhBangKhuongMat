@@ -60,6 +60,15 @@ function App() {
 
   const [studentProfile, setStudentProfile] = useState(null);
 
+  const userRole = user?.role ? user.role.toLowerCase() : '';
+  const isStudent = userRole === 'sinh_vien' || userRole === 'student';
+  const isLecturer = userRole === 'giang_vien' || userRole === 'lecturer';
+  const isAdmin = userRole === 'admin';
+
+  if (user && isStudent && (!user.mssv || user.mssv === 'N/A')) {
+    user.mssv = user.username.toUpperCase();
+  }
+
   const getVietnameseDate = () => {
     const days = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
     const d = new Date();
@@ -124,7 +133,7 @@ function App() {
         
         setLogs(prevLogs => {
           // If logged in user is a student, compare incoming logs to trigger checkin alert
-          if (user && user.role === 'sinh_vien' && user.mssv) {
+          if (user && isStudent && user.mssv) {
             const prevStudentLogs = prevLogs.filter(log => log.mssv === user.mssv);
             const newStudentLogs = newLogs.filter(log => log.mssv === user.mssv);
             
@@ -175,7 +184,7 @@ function App() {
          <main style={styles.contentArea}>
           <div style={styles.welcomeHeader}>
             <h2 style={styles.welcomeText}>
-              👋 Chào mừng {user.role === 'sinh_vien' ? profileToRender.ho_ten : (user.role === 'giang_vien' ? 'Giảng viên' : 'Quản trị viên')}
+              👋 Chào mừng {isStudent ? profileToRender.ho_ten : (isLecturer ? 'Giảng viên' : 'Quản trị viên')} {isStudent && `(${activeMenu === 'home' ? 'Trang chủ' : activeMenu === 'my_classes' ? 'Lớp học của tôi' : activeMenu === 'course_registration' ? 'Đăng ký học phần' : activeMenu === 'submit_leave' ? 'Xin nghỉ phép' : 'Sinh trắc học'})`}
             </h2>
             <div style={styles.dateText}>
               <Calendar size={14} /> {getVietnameseDate()}
@@ -184,18 +193,19 @@ function App() {
 
           {activeMenu === 'home' ? (
             <>
-              {user.role === 'sinh_vien' && (
+              {isStudent && (
                 <>
                   <StudentInfoCard studentProfile={profileToRender} />
                   <CourseInfoCard studentProfile={profileToRender} />
                 </>
               )}
               <AttendanceLogs 
-                logs={user.role === 'sinh_vien' && user.mssv ? logs.filter(log => log.mssv === user.mssv) : logs} 
+                logs={isStudent && user.mssv ? logs.filter(log => log.mssv === user.mssv) : logs} 
               />
             </>
           ) : (
             <AIAttendance 
+              key={activeMenu}
               API_BASE={API_BASE} 
               showToast={showToast} 
               onAttendanceLogged={fetchLogs} 

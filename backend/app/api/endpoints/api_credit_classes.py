@@ -62,6 +62,54 @@ def enroll_student(ma_lop_tc: str = Form(...), mssv: str = Form(...), db: Sessio
     db.commit()
     return {"status": "success", "message": f"Da dang ky sinh vien {mssv} vao lop {ma_lop_tc}"}
 
+@router.delete("/sinh_vien_lop_tin_chi/{ma_lop_tc}/{mssv}")
+def unenroll_student(ma_lop_tc: str, mssv: str, db: Session = Depends(get_db)):
+    enrollment = db.query(StudentClassEnrollment).filter(
+        StudentClassEnrollment.class_id == ma_lop_tc.strip(),
+        StudentClassEnrollment.student_id == mssv.strip().upper()
+    ).first()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông tin đăng ký học của sinh viên này.")
+    
+    db.delete(enrollment)
+    db.commit()
+    return {"status": "success", "message": f"Đã hủy đăng ký lớp {ma_lop_tc} thành công."}
+
+@router.post("/sinh_vien_lop_tin_chi/bulk_administrative")
+def enroll_bulk_administrative_class(
+    ma_lop_tc: str = Form(...),
+    lop_hanh_chinh: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    cc = db.query(CreditClass).filter(CreditClass.class_id == ma_lop_tc.strip()).first()
+    if not cc:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp tín chỉ {ma_lop_tc}")
+    
+    students = db.query(Student).filter(Student.administrative_class == lop_hanh_chinh.strip()).all()
+    if not students:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy sinh viên nào thuộc lớp hành chính {lop_hanh_chinh}")
+    
+    count = 0
+    for st in students:
+        existing = db.query(StudentClassEnrollment).filter(
+            StudentClassEnrollment.class_id == ma_lop_tc.strip(),
+            StudentClassEnrollment.student_id == st.student_id
+        ).first()
+        
+        if not existing:
+            enroll = StudentClassEnrollment(
+                class_id=ma_lop_tc.strip(),
+                student_id=st.student_id
+            )
+            db.add(enroll)
+            count += 1
+            
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"Đã đăng ký thành công {count} sinh viên của lớp {lop_hanh_chinh} vào lớp tín chỉ {ma_lop_tc}"
+    }
+
 @router.post("/lich_hoc_chi_tiet")
 def add_schedule(
     ma_lop_tc: str = Form(...),
@@ -79,6 +127,23 @@ def add_schedule(
         dt_time = datetime.strptime(gio_bat_dau.strip(), "%H:%M:%S").time()
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Dinh dang ngay (YYYY-MM-DD) hoac gio (HH:MM:SS) khong hop le: {e}")
+
+    # Kiểm tra xem phòng học có bị trùng lịch vào giờ này không (thời lượng mỗi buổi học là 3 tiếng - 10800 giây)
+    conflicts = db.query(ClassSchedule).filter(
+        ClassSchedule.room == phong_hoc.strip(),
+        ClassSchedule.study_date == dt_date
+    ).all()
+    
+    for c in conflicts:
+        c_seconds = c.start_time.hour * 3600 + c.start_time.minute * 60 + c.start_time.second
+        new_seconds = dt_time.hour * 3600 + dt_time.minute * 60 + dt_time.second
+        if abs(c_seconds - new_seconds) < 10800:
+            conflict_class_id = c.class_id
+            conflict_time_str = c.start_time.strftime("%H:%M")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Trùng lịch: Phòng {phong_hoc.strip()} đã có lớp {conflict_class_id} học lúc {conflict_time_str} cùng ngày."
+            )
 
     sched = ClassSchedule(
         class_id=ma_lop_tc.strip(),

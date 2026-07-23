@@ -24,14 +24,13 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
     return query.offset(skip).limit(limit).all()
 
 def create_student(db: Session, student: StudentCreate):
-    # Bước 1: Tạo tài khoản (Account) trước
-    # default_password_hash = f"hashed_{student.student_id}" 
-    default_password_hash = get_password_hash(student.student_id) 
+    import hashlib
+    default_password_hash = hashlib.sha256("123456".encode()).hexdigest() 
     
     new_account = Account(
-        username=student.student_id,
+        username=student.student_id.strip().lower(),
         password_hash=default_password_hash,
-        role="student",
+        role="sinh_vien",
         is_active=True
     )
     db.add(new_account)

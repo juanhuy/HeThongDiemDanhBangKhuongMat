@@ -6,8 +6,13 @@ import {
 } from 'lucide-react';
 
 const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMenu }) => {
-  const role = user?.role || 'sinh_vien';
+  const rawRole = (user?.role || 'sinh_vien').toLowerCase();
+  const role = rawRole === 'student' ? 'sinh_vien' : (rawRole === 'lecturer' ? 'giang_vien' : rawRole);
   const username = user?.username || 'anonymous';
+  
+  if (user && role === 'sinh_vien' && (!user.mssv || user.mssv === 'N/A')) {
+    user.mssv = user.username.toUpperCase();
+  }
 
   const activeTab = activeMenu;
 
@@ -67,6 +72,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [selectedClass, setSelectedClass] = useState('');
   const [enrolledStudents, setEnrolledStudents] = useState([]);
   const [enrollMssv, setEnrollMssv] = useState('');
+  const [bulkClassCode, setBulkClassCode] = useState('');
   const [studentClasses, setStudentClasses] = useState([]);
   const [adminCameras, setAdminCameras] = useState([
     { id: 1, name: "Camera Cửa Lớp A2-301", status: "Online", room: "A2-301", isSimulating: false },
@@ -83,6 +89,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [editingStudentId, setEditingStudentId] = useState(null);
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentClass, setEditStudentClass] = useState('');
+  const [scheduleViewMode, setScheduleViewMode] = useState('grid');
   const fileInputRef = useRef(null);
   const imageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -280,10 +287,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       fetchCreditClasses();
     } else if (activeTab === 'my_classes') {
       fetchStudentClasses();
+      fetchSchedules();
     } else if (activeTab === 'teaching_schedule' || activeTab === 'schedule') {
       fetchSchedules();
+      fetchCreditClasses();
     } else if (activeTab === 'course_registration') {
       fetchAvailableClasses();
+      fetchStudentClasses();
     }
   }, [activeTab]);
 
@@ -318,8 +328,29 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       if (res.ok) {
         showToast(`Đăng ký học phần ${classId} thành công!`);
         fetchAvailableClasses();
+        fetchStudentClasses();
       } else {
         showToast(data.detail || "Đăng ký học phần thất bại.", "danger");
+      }
+    } catch (err) {
+      showToast("Lỗi kết nối.", "danger");
+    }
+  };
+
+  const handleUnregisterCourse = async (classId) => {
+    if (!user?.mssv) return;
+    if (!window.confirm(`Bạn có chắc chắn muốn hủy đăng ký lớp học phần ${classId} không?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/sinh_vien_lop_tin_chi/${classId}/${user.mssv}`, {
+        method: "DELETE"
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Đã hủy đăng ký lớp học phần ${classId} thành công.`);
+        fetchAvailableClasses();
+        fetchStudentClasses();
+      } else {
+        showToast(data.detail || "Hủy đăng ký thất bại.", "danger");
       }
     } catch (err) {
       showToast("Lỗi kết nối.", "danger");
@@ -466,6 +497,34 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         fetchEnrolledStudents(selectedClass);
       } else {
         showToast(data.detail || "Thêm sinh viên thất bại.", "danger");
+      }
+    } catch (err) {
+      showToast("Lỗi kết nối.", "danger");
+    }
+  };
+
+  const handleBulkEnroll = async (e) => {
+    e.preventDefault();
+    if (!bulkClassCode || !selectedClass) {
+      showToast("Vui lòng nhập tên lớp hành chính và chọn lớp học phần.", "danger");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("ma_lop_tc", selectedClass);
+    formData.append("lop_hanh_chinh", bulkClassCode);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/sinh_vien_lop_tin_chi/bulk_administrative`, {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || `Đã thêm thành công sinh viên vào lớp.`);
+        setBulkClassCode('');
+        fetchEnrolledStudents(selectedClass);
+      } else {
+        showToast(data.detail || "Đăng ký cả lớp thất bại.", "danger");
       }
     } catch (err) {
       showToast("Lỗi kết nối.", "danger");
@@ -1037,25 +1096,46 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
             )}
           </div>
 
-          <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "10px" }}>
-            <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Đăng ký sinh viên vào lớp học phần:</span>
-            <form onSubmit={handleEnrollStudent}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Mã lớp học phần hiện tại</label>
-                <input style={{ ...styles.input, background: "#f1f5f9" }} disabled value={selectedClass || "Vui lòng chọn lớp bên trái"} />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>MSSV của Sinh viên</label>
-                <input 
-                  style={styles.input} 
-                  placeholder="Nhập MSSV (Ví dụ: N22DCCN134)" 
-                  value={enrollMssv} 
-                  onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
-                  required 
-                />
-              </div>
-              <button disabled={!selectedClass} type="submit" style={{ ...styles.btn, width: "100%", padding: "8px", fontSize: "0.8rem" }}>Đăng ký vào lớp</button>
-            </form>
+          <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "10px", display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div>
+              <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Đăng ký lẻ sinh viên:</span>
+              <form onSubmit={handleEnrollStudent} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Mã lớp tín chỉ đang chọn</label>
+                  <input style={{ ...styles.input, background: "#f1f5f9", padding: "6px" }} disabled value={selectedClass || "Vui lòng chọn lớp bên trái"} />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>MSSV Sinh viên</label>
+                  <input 
+                    style={{ ...styles.input, padding: "6px" }} 
+                    placeholder="Ví dụ: N22DCCN134" 
+                    value={enrollMssv} 
+                    onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
+                    required 
+                  />
+                </div>
+                <button disabled={!selectedClass} type="submit" style={{ ...styles.btn, padding: "6px 10px", fontSize: "0.75rem" }}>Đăng ký lẻ</button>
+              </form>
+            </div>
+            
+            <hr style={{ border: "0", borderTop: "1px solid #eef2f6", margin: "4px 0" }} />
+            
+            <div>
+              <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Đăng ký cả lớp hành chính (Nhanh):</span>
+              <form onSubmit={handleBulkEnroll} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Tên lớp hành chính cần thêm</label>
+                  <input 
+                    style={{ ...styles.input, padding: "6px" }} 
+                    placeholder="Ví dụ: D22CQCNPM02-N" 
+                    value={bulkClassCode} 
+                    onChange={(e) => setBulkClassCode(e.target.value.toUpperCase())}
+                    required 
+                  />
+                </div>
+                <button disabled={!selectedClass} type="submit" style={{ ...styles.btn, padding: "6px 10px", fontSize: "0.75rem", backgroundColor: "#0284c7" }}>Đăng ký cả lớp hành chính</button>
+              </form>
+            </div>
           </div>
         </div>
 
@@ -1253,8 +1333,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       padding: "20px"
     },
     aiContainer: {
-      display: (role === 'admin' && activeTab === 'camera_dashboard') ? "grid" : "block",
-      gridTemplateColumns: (role === 'admin' && activeTab === 'camera_dashboard') ? "1.3fr 1.2fr" : "1fr",
+      display: "block",
+      gridTemplateColumns: "1fr",
       gap: "1.5rem"
     },
     dropzone: {
@@ -1378,52 +1458,6 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     }
   };
 
-  if (role === 'sinh_vien') {
-    return (
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <ClipboardList size={16} /> Gửi yêu cầu nghỉ phép
-        </div>
-        <div style={styles.cardBody}>
-          <form onSubmit={handleLeaveRequestSubmit}>
-            <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Nộp đơn xin phép nghỉ buổi học</h4>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Mã buổi học nghỉ phép</label>
-              <input 
-                type="number" 
-                required 
-                placeholder="Mã số buổi học trong lịch học (ví dụ: 1)"
-                style={styles.input}
-                value={leaveSessionId}
-                onChange={(e) => setLeaveSessionId(e.target.value)}
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Lý do xin nghỉ</label>
-              <textarea 
-                required 
-                rows={3}
-                placeholder="Nêu rõ lý do (VD: Bị ốm có giấy ra viện, Lý do gia đình...)"
-                style={{ ...styles.input, resize: "none" }}
-                value={leaveReason}
-                onChange={(e) => setLeaveReason(e.target.value)}
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Minh chứng đính kèm</label>
-              <input 
-                type="text" 
-                style={styles.input}
-                value={leaveProof}
-                onChange={(e) => setLeaveProof(e.target.value)}
-              />
-            </div>
-            <button type="submit" style={{ ...styles.btn, width: "100%", marginTop: "10px" }}>Nộp đơn xin nghỉ</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={styles.card}>
@@ -1762,14 +1796,20 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "10px" }}>Thêm lịch học mới</span>
                         <form onSubmit={handleCreateSchedule}>
                           <div style={styles.formGroup}>
-                            <label style={styles.label}>Lớp tín chỉ</label>
-                            <input 
-                              type="text" 
+                            <label style={styles.label}>Chọn lớp tín chỉ (Môn học)</label>
+                            <select 
                               required 
                               style={styles.input} 
                               value={schClass}
                               onChange={(e) => setSchClass(e.target.value)}
-                            />
+                            >
+                              <option value="">-- Chọn lớp tín chỉ --</option>
+                              {creditClasses.map(c => (
+                                <option key={c.class_id} value={c.class_id}>
+                                  {c.class_id} - {c.subject_name}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                           <div style={styles.formGroup}>
                             <label style={styles.label}>Ngày học</label>
@@ -1910,64 +1950,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   </div>
                 )}
                 {activeTab === 'students_list' && renderStudentsListTab()}
-                {activeTab === 'camera_dashboard' && (
-                  <div>
-                    <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Bảng điều khiển Camera tự động tại các phòng học</h4>
-                    
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "15px" }}>
-                      {adminCameras.map(cam => (
-                        <div key={cam.id} style={{ 
-                          display: "flex", 
-                          justifyContent: "space-between", 
-                          alignItems: "center", 
-                          background: "#f8fbfd", 
-                          padding: "10px 14px", 
-                          borderRadius: "8px", 
-                          border: "1px solid #d0e0eb" 
-                        }}>
-                          <div>
-                            <strong>{cam.name}</strong><br/>
-                            <small style={{ color: "#54738c" }}>Vị trí: {cam.room} | Trạng thái vật lý: </small>
-                            <span style={{ 
-                              fontSize: "0.75rem", 
-                              fontWeight: "600",
-                              color: cam.status === "Online" ? "#10b981" : "#ef4444" 
-                            }}>
-                              {cam.status}
-                            </span>
-                          </div>
-                          
-                          <button 
-                            disabled={cam.status !== "Online"}
-                            onClick={() => toggleCameraSimulation(cam.id)}
-                            style={{ 
-                              ...styles.btn, 
-                              padding: "6px 12px", 
-                              fontSize: "0.75rem",
-                              backgroundColor: cam.isSimulating ? "#ef4444" : "#10b981",
-                              opacity: cam.status !== "Online" ? 0.5 : 1
-                            }}
-                          >
-                            {cam.isSimulating ? "Tắt tự động" : "Bật tự động"}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
 
-                    <div style={{ background: "#1c3240", color: "#38ef7d", fontFamily: "monospace", padding: "12px", borderRadius: "6px", minHeight: "150px", fontSize: "0.75rem" }}>
-                      <div style={{ borderBottom: "1px solid #2d4554", paddingBottom: "4px", marginBottom: "6px", color: "#a5b4fc" }}>
-                        Console Log nhận dạng trực tuyến (Thời gian thực)
-                      </div>
-                      {simulatedLogs.length === 0 ? (
-                        <div style={{ color: "#64748b" }}>Đang chờ kích hoạt luồng camera tự động...</div>
-                      ) : (
-                        simulatedLogs.map((log, idx) => (
-                          <div key={idx} style={{ marginBottom: "3px" }}>{log}</div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
                 {activeTab === 'class_management' && renderClassManagementTab()}
               </>
             )}
@@ -2383,46 +2366,259 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         </tbody>
                       </table>
                     )}
+
+                    {/* Detailed upcoming schedules for student's registered classes */}
+                    {studentClasses.length > 0 && (
+                      <div style={{ marginTop: "25px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid #e2edf5", paddingBottom: "6px" }}>
+                          <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: 0 }}>Thời khóa biểu học tập của tôi</h4>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button 
+                              type="button"
+                              onClick={() => setScheduleViewMode('grid')}
+                              style={{ 
+                                ...styles.btn, 
+                                padding: "4px 8px", 
+                                fontSize: "0.7rem", 
+                                backgroundColor: scheduleViewMode === 'grid' ? "#106fa6" : "#ffffff",
+                                color: scheduleViewMode === 'grid' ? "#ffffff" : "#475569",
+                                border: "1px solid #cbd5e1"
+                              }}
+                            >
+                              📅 Dạng Lịch Tuần
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => setScheduleViewMode('list')}
+                              style={{ 
+                                ...styles.btn, 
+                                padding: "4px 8px", 
+                                fontSize: "0.7rem", 
+                                backgroundColor: scheduleViewMode === 'list' ? "#106fa6" : "#ffffff",
+                                color: scheduleViewMode === 'list' ? "#ffffff" : "#475569",
+                                border: "1px solid #cbd5e1"
+                              }}
+                            >
+                              📋 Dạng Danh Sách
+                            </button>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const myClassIds = (studentClasses || []).map(c => c ? c.class_id : "");
+                          const mySchedules = (schedules || []).filter(s => s && myClassIds.includes(s.class_id));
+                          
+                          if (mySchedules.length === 0) {
+                            return <p style={{ fontSize: "0.8rem", color: "#6c8da3", padding: "10px", background: "#f8fbfd", borderRadius: "6px", border: "1px solid #eef2f6" }}>Chưa xếp lịch học cụ thể cho các môn học này.</p>;
+                          }
+                          
+                          if (scheduleViewMode === 'list') {
+                            return (
+                              <table style={styles.table}>
+                                <thead>
+                                  <tr>
+                                    <th style={styles.th}>Môn học</th>
+                                    <th style={styles.th}>Mã lớp</th>
+                                    <th style={styles.th}>Ngày học</th>
+                                    <th style={styles.th}>Giờ bắt đầu</th>
+                                    <th style={styles.th}>Phòng học</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                    {mySchedules.map((s, idx) => (
+                                      <tr key={idx}>
+                                        <td style={styles.td}><strong>{s.subject_name || "N/A"}</strong></td>
+                                        <td style={styles.td}>{s.class_id || "N/A"}</td>
+                                        <td style={styles.td}>{s.study_date || "N/A"}</td>
+                                        <td style={styles.td}>{s.start_time ? s.start_time.substring(0, 5) : "N/A"}</td>
+                                        <td style={styles.td}>
+                                          <span style={{ 
+                                            padding: "3px 6px", 
+                                            borderRadius: "4px", 
+                                            backgroundColor: "#f0f9ff", 
+                                            color: "#0369a1", 
+                                            fontWeight: "600",
+                                            fontSize: "0.75rem"
+                                          }}>
+                                            🚪 {s.room || "N/A"}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            );
+                          }
+
+                          // Grid Mode: Group by day of week
+                          const weekdays = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"];
+                          const groupedSchedules = {
+                            "Thứ 2": [], "Thứ 3": [], "Thứ 4": [], "Thứ 5": [], "Thứ 6": [], "Thứ 7": [], "Chủ Nhật": []
+                          };
+
+                          mySchedules.forEach(s => {
+                            const dateObj = new Date(s.study_date);
+                            const day = dateObj.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+                            const dayLabel = day === 0 ? "Chủ Nhật" : `Thứ ${day + 1}`;
+                            if (groupedSchedules[dayLabel]) {
+                              groupedSchedules[dayLabel].push(s);
+                            }
+                          });
+
+                          return (
+                            <div style={{ 
+                              display: "grid", 
+                              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", 
+                              gap: "10px", 
+                              marginTop: "10px" 
+                            }}>
+                              {weekdays.map(day => (
+                                <div key={day} style={{ 
+                                  background: "#f8fbfd", 
+                                  border: "1px solid #e2edf5", 
+                                  borderRadius: "6px", 
+                                  padding: "8px",
+                                  minHeight: "150px"
+                                }}>
+                                  <div style={{ 
+                                    fontSize: "0.72rem", 
+                                    fontWeight: "bold", 
+                                    color: "#1e293b", 
+                                    textAlign: "center", 
+                                    borderBottom: "2px solid #106fa6", 
+                                    paddingBottom: "4px", 
+                                    marginBottom: "8px" 
+                                  }}>
+                                    {day}
+                                  </div>
+                                  
+                                  {groupedSchedules[day].length === 0 ? (
+                                    <div style={{ 
+                                      fontSize: "0.7rem", 
+                                      color: "#94a3b8", 
+                                      textAlign: "center", 
+                                      marginTop: "20px" 
+                                    }}>
+                                      Trống
+                                    </div>
+                                  ) : (
+                                    groupedSchedules[day].sort((a,b) => (a.start_time || "").localeCompare(b.start_time || "")).map((s, idx) => (
+                                      <div key={idx} style={{ 
+                                        background: "#ffffff", 
+                                        borderLeft: "3px solid #0284c7", 
+                                        borderRadius: "4px", 
+                                        padding: "6px", 
+                                        marginBottom: "6px",
+                                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                                      }}>
+                                        <div style={{ fontSize: "0.7rem", fontWeight: "bold", color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={s.subject_name || ""}>
+                                          {s.subject_name || "N/A"}
+                                        </div>
+                                        <div style={{ fontSize: "0.62rem", color: "#64748b", margin: "2px 0" }}>
+                                          🕒 {s.start_time ? s.start_time.substring(0, 5) : "N/A"}
+                                        </div>
+                                        <div style={{ fontSize: "0.62rem", fontWeight: "600", color: "#0369a1" }}>
+                                          🚪 {s.room || "N/A"}
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {activeTab === 'course_registration' && (
                   <div>
-                    <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Đăng ký Lớp Học Phần (Tín chỉ)</h4>
-                    <p style={{ fontSize: "0.75rem", color: "#6c8da3", marginBottom: "12px" }}>
-                      Vui lòng chọn lớp học phần đang mở dưới đây để thực hiện đăng ký học.
-                    </p>
-                    {availableClasses.length === 0 ? (
-                      <p style={{ fontSize: "0.8rem", color: "#6c8da3" }}>Hiện tại không có lớp học phần nào khả dụng để đăng ký (hoặc bạn đã đăng ký tất cả).</p>
-                    ) : (
-                      <table style={styles.table}>
-                        <thead>
-                          <tr>
-                            <th style={styles.th}>Mã lớp tín chỉ</th>
-                            <th style={styles.th}>Môn học</th>
-                            <th style={styles.th}>Mã môn</th>
-                            <th style={styles.th}>Hành động</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {availableClasses.map((c, i) => (
-                            <tr key={i}>
-                              <td style={styles.td}><strong>{c.class_id}</strong></td>
-                              <td style={styles.td}>{c.subject_name}</td>
-                              <td style={styles.td}>{c.subject_id}</td>
-                              <td style={styles.td}>
-                                <button 
-                                  onClick={() => handleRegisterCourse(c.class_id)}
-                                  style={{ ...styles.btn, padding: "4px 10px", fontSize: "0.75rem" }}
-                                >
-                                  Đăng ký học
-                                </button>
-                              </td>
+                    {/* Section 1: Enrolled classes & progress */}
+                    <div style={{ marginBottom: "25px" }}>
+                      <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Lớp Học Phần Đang Theo Học & Tiến Độ</h4>
+                      {studentClasses.length === 0 ? (
+                        <p style={{ fontSize: "0.8rem", color: "#6c8da3", padding: "10px", background: "#f8fbfd", borderRadius: "6px", border: "1px solid #eef2f6" }}>
+                          Bạn chưa đăng ký lớp tín chỉ nào. Vui lòng xem danh sách các lớp học phần bên dưới để đăng ký học.
+                        </p>
+                      ) : (
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              <th style={styles.th}>Lớp tín chỉ</th>
+                              <th style={styles.th}>Môn học</th>
+                              <th style={styles.th}>Số buổi đi học</th>
+                              <th style={styles.th}>Trạng thái</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                          </thead>
+                          <tbody>
+                            {studentClasses.map((c, i) => (
+                              <tr key={i}>
+                                <td style={styles.td}><strong>{c.class_id}</strong></td>
+                                <td style={styles.td}>
+                                  <strong>{c.subject_name}</strong><br/>
+                                  <small style={{ color: "#777" }}>{c.subject_id}</small>
+                                </td>
+                                <td style={styles.td}>
+                                  <strong>{c.attended_sessions}</strong> / {c.total_sessions} buổi
+                                </td>
+                                <td style={styles.td}>
+                                  <span style={{ 
+                                    padding: "3px 6px", 
+                                    borderRadius: "4px", 
+                                    fontSize: "0.75rem",
+                                    backgroundColor: c.status === 'Active' ? "#e6f8f0" : "#fdf0f0",
+                                    color: c.status === 'Active' ? "#10b981" : "#ef4444",
+                                    fontWeight: "600"
+                                  }}>
+                                    {c.status === 'Active' ? 'Học tập' : 'Cấm thi'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
+                    {/* Section 2: Available classes to register */}
+                    <div>
+                      <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Danh Sách Lớp Học Phần Đang Mở</h4>
+                      {availableClasses.length === 0 ? (
+                        <p style={{ fontSize: "0.8rem", color: "#6c8da3", padding: "10px", background: "#f8fbfd", borderRadius: "6px", border: "1px solid #eef2f6" }}>
+                          Hiện tại không có lớp học phần nào khả dụng để đăng ký (Bạn đã đăng ký học tất cả các lớp đang mở).
+                        </p>
+                      ) : (
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              <th style={styles.th}>Mã lớp tín chỉ</th>
+                              <th style={styles.th}>Môn học</th>
+                              <th style={styles.th}>Mã môn</th>
+                              <th style={styles.th}>Hành động</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {availableClasses.map((c, i) => (
+                              <tr key={i}>
+                                <td style={styles.td}><strong>{c.class_id}</strong></td>
+                                <td style={styles.td}>{c.subject_name}</td>
+                                <td style={styles.td}>{c.subject_id}</td>
+                                <td style={styles.td}>
+                                  <button 
+                                    onClick={() => handleRegisterCourse(c.class_id)}
+                                    style={{ ...styles.btn, padding: "4px 10px", fontSize: "0.75rem" }}
+                                  >
+                                    Đăng ký học
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
                   </div>
                 )}
               </>

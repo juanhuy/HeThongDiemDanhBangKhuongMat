@@ -5,7 +5,10 @@ import {
 } from 'lucide-react';
 
 const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
-  const role = user?.role || 'sinh_vien';
+  const rawRole = user?.role || 'sinh_vien';
+  const role = rawRole.toLowerCase();
+  const isAdmin = role === 'admin';
+  const isLecturer = role === 'giang_vien' || role === 'lecturer';
 
   const styles = {
     sidebar: {
@@ -37,14 +40,14 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
   };
 
   const renderMenuItems = () => {
-    if (role === 'admin') {
+    if (isAdmin) {
       return (
         <>
           <div className={`ptit-sidebar-item ${activeMenu === 'home' ? 'active' : ''}`} onClick={() => setActiveMenu('home')}>
             <Home size={16} /> Trang chủ
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'camera_dashboard' ? 'active' : ''}`} onClick={() => setActiveMenu('camera_dashboard')}>
-            <Camera size={16} /> Quản lý Camera
+            <Camera size={16} /> Điểm danh Camera
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'pending_faces' ? 'active' : ''}`} onClick={() => setActiveMenu('pending_faces')}>
             <ShieldAlert size={16} /> Duyệt Face ID
@@ -68,7 +71,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
       );
     }
 
-    if (role === 'giang_vien') {
+    if (isLecturer) {
       return (
         <>
           <div className={`ptit-sidebar-item ${activeMenu === 'home' ? 'active' : ''}`} onClick={() => setActiveMenu('home')}>
