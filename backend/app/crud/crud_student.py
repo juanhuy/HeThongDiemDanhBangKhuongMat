@@ -1,80 +1,93 @@
-from sqlalchemy.orm import Session
-from app.models.student import Student
+from sqlalchemy.orm import Session, joinedload
+from app.models.student import Student, UserProfile
 from app.models.account import Account
 from app.schemas.student import StudentCreate, StudentUpdate
 from sqlalchemy import or_
-from app.core.security import get_password_hash
+import hashlib
 
 def get_student(db: Session, student_id: str):
-    return db.query(Student).filter(Student.student_id == student_id).first()
+    # Dùng joinedload để load sẵn profile và account (Eager Loading) tránh lỗi N+1 Query
+    return db.query(Student).options(
+        joinedload(Student.profile).joinedload(UserProfile.account)
+    ).filter(Student.student_id == student_id).first()
 
 def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = None, status: str = None):
-    query = db.query(Student)
+    query = db.query(Student).options(joinedload(Student.profile))
     
+    # Lọc qua bảng liên kết (UserProfile)
     if search:
-        # Tìm kiếm theo tên hoặc MSSV
-        query = query.filter(or_(
-            Student.full_name.ilike(f"%{search}%"),
+        query = query.join(UserProfile).filter(or_(
+            UserProfile.full_name.ilike(f"%{search}%"),
             Student.student_id.ilike(f"%{search}%")
         ))
     if status:
-        # Lọc theo trạng thái học tập
         query = query.filter(Student.academic_status == status)
         
     return query.offset(skip).limit(limit).all()
 
 def create_student(db: Session, student: StudentCreate):
-    import hashlib
+    # Bước 1: Tạo Account
     default_password_hash = hashlib.sha256("123456".encode()).hexdigest() 
-    
     new_account = Account(
-        username=student.student_id.strip().lower(),
+        username=student.student_id.strip().lower(), # Dùng MSSV làm username
         password_hash=default_password_hash,
-        role="sinh_vien",
+        role="student",
         is_active=True
     )
     db.add(new_account)
-    db.flush() # flush() sẽ đẩy dữ liệu xuống DB để lấy account_id tự tăng mà chưa commit
+    db.flush() # Lấy account_id
+
+    # Bước 2: Tạo UserProfile
+    new_profile = UserProfile(
+        account_id=new_account.account_id,
+        full_name=student.full_name,
+        personal_email=student.email,
+        phone_number=student.phone_number
+    )
+    db.add(new_profile)
+    db.flush() # Lấy profile_id
+
+    # Bước 3: Tạo Student
+    new_student = Student(
+        student_id=student.student_id,
+        profile_id=new_profile.profile_id,
+        administrative_class=student.administrative_class,
+        major=student.major,
+        cohort=student.cohort,
+        training_program=student.training_program,
+        academic_status=student.academic_status
+    )
+    db.add(new_student)
     
-    # Bước 2: Tạo hồ sơ Sinh viên (Student) với account_id vừa lấy được
-    student_data = student.model_dump() # Nếu dùng Pydantic v1 thì dùng student.dict()
-    db_student = Student(**student_data, account_id=new_account.account_id)
-    
-    db.add(db_student)
-    
-    # Bước 3: Lưu toàn bộ (Commit Transaction)
     db.commit()
-    db.refresh(db_student)
-    
-    return db_student
+    db.refresh(new_student)
+    return new_student
 
 def update_student(db: Session, db_student: Student, student_update: StudentUpdate):
     update_data = student_update.model_dump(exclude_unset=True)
     
-    # Cập nhật thông tin sinh viên
-    for key, value in update_data.items():
-        setattr(db_student, key, value)
-        
-    # Logic nghiệp vụ: Khóa tài khoản nếu trạng thái là graduated hoặc dropped_out
+    # 1. Tách các trường thuộc bảng UserProfile
+    profile_fields = ["full_name", "email", "phone_number"]
+    for field in profile_fields:
+        if field in update_data:
+            # Map trường email của API thành personal_email của DB
+            db_field = "personal_email" if field == "email" else field
+            setattr(db_student.profile, db_field, update_data[field])
+
+    # 2. Tách các trường thuộc bảng Student
+    student_fields = ["administrative_class", "academic_status"]
+    for field in student_fields:
+        if field in update_data:
+            setattr(db_student, field, update_data[field])
+
+    # 3. Logic: Khóa tài khoản nếu bảo lưu, thôi học, tốt nghiệp
     if "academic_status" in update_data:
-        new_status = update_data["academic_status"]
-        if new_status in ["graduated", "dropped_out"]:
-            account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
-            if account:
-                account.is_active = False
-        elif new_status == "studying":
-            account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
-            if account:
-                account.is_active = True
-                
-    db.add(db_student)
+        status = update_data["academic_status"]
+        if status in ["Bảo lưu", "Đã tốt nghiệp", "Thôi học"]:
+            db_student.profile.account.is_active = False
+        else:
+            db_student.profile.account.is_active = True
+            
     db.commit()
     db.refresh(db_student)
-    return db_student
-
-def delete_student(db: Session, student_id: str):
-    db_student = get_student(db, student_id)
-    if db_student:
-        db.delete(db_student)
-        db.commit()
     return db_student
