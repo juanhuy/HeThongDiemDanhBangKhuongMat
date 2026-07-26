@@ -80,9 +80,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('class_management')}>
             <BookOpen size={16} /> Quản lý Lớp học
           </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'students_list' ? 'active' : ''}`} onClick={() => setActiveMenu('students_list')}>
-            <User size={16} /> Quản lý Sinh viên
-          </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'teaching_schedule' ? 'active' : ''}`} onClick={() => setActiveMenu('teaching_schedule')}>
             <Calendar size={16} /> Xem Lịch dạy
           </div>

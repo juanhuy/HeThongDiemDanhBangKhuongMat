@@ -19,6 +19,7 @@ if project_root not in sys.path:
 
 from core.face_analysis import FaceAnalyzer
 from config.settings import settings
+from app.models.subject import Subject
 from app.models.student import Student
 from app.models.credit_class import CreditClass
 from app.models.student_class import StudentClassEnrollment
@@ -154,7 +155,23 @@ def record_attendance_sqlalchemy(db: Session, mssv: str, ma_buoi_hoc: int = None
     if not enrolled:
         return False, "SV không thuộc lớp tín chỉ này.", None
 
-    # Đánh giá thời gian vào lớp (Muộn hay Đúng giờ)
+    sv_dict = {
+        "mssv": student.student_id,
+        "ho_ten": student.full_name,
+        "lop_base": student.administrative_class
+    }
+
+    # Kiểm tra xem sinh viên đã điểm danh cho buổi học này chưa
+    existing_att = db.query(AttendanceHistory).filter(
+        AttendanceHistory.student_id == mssv,
+        AttendanceHistory.schedule_id == ma_buoi_hoc
+    ).order_by(AttendanceHistory.check_in_time.asc()).first()
+
+    if existing_att:
+        # Giữ nguyên kết quả điểm danh ban đầu (không tạo bản ghi mới, không bị đổi từ Đúng giờ thành Đi muộn)
+        return True, existing_att.status, sv_dict
+
+    # Đánh giá thời gian vào lớp (Muộn hay Đúng giờ) cho lần quét đầu tiên
     try:
         clean_start = gio_bat_dau_str.strip()
         if len(clean_start) == 5:
@@ -173,15 +190,10 @@ def record_attendance_sqlalchemy(db: Session, mssv: str, ma_buoi_hoc: int = None
     # Kiểm tra cooldown
     current_ts = time.time()
     last_time = last_attendance.get(mssv, 0)
-    sv_dict = {
-        "mssv": student.student_id,
-        "ho_ten": student.full_name,
-        "lop_base": student.administrative_class
-    }
     if current_ts - last_time < cooldown_seconds:
         return True, trang_thai, sv_dict
 
-    # Ghi nhận vào DB
+    # Ghi nhận vào DB lần đầu
     try:
         new_att = AttendanceHistory(
             student_id=mssv,
@@ -195,6 +207,7 @@ def record_attendance_sqlalchemy(db: Session, mssv: str, ma_buoi_hoc: int = None
         db.rollback()
         print(f"Lỗi ghi nhận database: {e}")
         return False, "Lỗi ghi nhận database.", None
+
 
     # Ghi nhận log CSV backup
     now_str = now.strftime("%Y-%m-%d %H:%M:%S")

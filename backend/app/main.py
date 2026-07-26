@@ -28,6 +28,18 @@ from app.models.leave_request import LeaveRequest
 # Tạo bảng (Nếu dùng Alembic thì bỏ dòng này, nhưng để test nhanh thì dùng)
 Base.metadata.create_all(bind=engine)
 
+# Tự động cập nhật cấu trúc cơ sở dữ liệu nếu cột lecturer_id chưa tồn tại
+from sqlalchemy import text
+try:
+    with engine.begin() as conn:
+        res = conn.execute(text("SHOW COLUMNS FROM credit_classes LIKE 'lecturer_id'"))
+        if not res.fetchone():
+            print(">>> DATABASE UPDATE: Adding lecturer_id column to credit_classes table...")
+            conn.execute(text("ALTER TABLE credit_classes ADD COLUMN lecturer_id VARCHAR(20) NULL"))
+            conn.execute(text("ALTER TABLE credit_classes ADD CONSTRAINT fk_credit_classes_lecturers FOREIGN KEY (lecturer_id) REFERENCES lecturers(lecturer_id) ON DELETE SET NULL"))
+except Exception as e:
+    print(f">>> DATABASE UPDATE ERROR: {e}")
+
 app = FastAPI(
     title="AI Attendance API",
     description="API cho hệ thống điểm danh bằng khuôn mặt",

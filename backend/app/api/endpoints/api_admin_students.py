@@ -20,10 +20,11 @@ def get_all_students(
     skip: int = 0, limit: int = 100, 
     search: Optional[str] = None, 
     status: Optional[str] = None, 
+    lecturer_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Lấy danh sách sinh viên (Hỗ trợ phân trang, tìm kiếm theo tên/MSSV, lọc trạng thái)"""
-    return crud.get_students(db, skip=skip, limit=limit, search=search, status=status)
+    """Lấy danh sách sinh viên (Hỗ trợ phân trang, tìm kiếm theo tên/MSSV, lọc trạng thái, lọc giảng viên phụ trách)"""
+    return crud.get_students(db, skip=skip, limit=limit, search=search, status=status, lecturer_id=lecturer_id)
 
 #API Export danh sách sinh viên ra file Excel
 @router.get("/export")

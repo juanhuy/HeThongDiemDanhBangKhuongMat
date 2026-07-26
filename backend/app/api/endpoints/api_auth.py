@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.account import Account
 from app.models.student import Student
+from app.models.lecturer import Lecturer
 
 router = APIRouter()
 
@@ -18,18 +19,24 @@ def login(username: str = Form(...), password: str = Form(...), db: Session = De
     if not account:
         raise HTTPException(status_code=401, detail="Ten dang nhap hoac mat khau khong dung")
     
-    # Lấy thông tin sinh viên liên kết nếu có
+    # Lấy thông tin sinh viên hoặc giảng viên liên kết nếu có
     student_info = None
+    lecturer_info = None
     if account.role in ["sinh_vien", "student"]:
         student = db.query(Student).filter(Student.account_id == account.account_id).first()
         if student:
             student_info = student
+    elif account.role in ["giang_vien", "lecturer"]:
+        lecturer = db.query(Lecturer).filter(Lecturer.account_id == account.account_id).first()
+        if lecturer:
+            lecturer_info = lecturer
     
     user_data = {
         "username": account.username,
         "role": account.role,
         "mssv": student_info.student_id if student_info else None,
-        "ho_ten": student_info.full_name if student_info else None,
+        "lecturer_id": lecturer_info.lecturer_id if lecturer_info else None,
+        "ho_ten": student_info.full_name if student_info else (lecturer_info.full_name if lecturer_info else None),
         "lop_base": student_info.administrative_class if student_info else None
     }
     

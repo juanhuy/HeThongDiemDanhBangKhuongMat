@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Zap, UploadCloud, CheckCircle, XCircle, UserCheck, 
   ClipboardList, AlertTriangle, RefreshCw, FileText, Check, AlertOctagon,
-  Camera, StopCircle
+  Camera, StopCircle, Trash2, UserPlus, Users, BookOpen
 } from 'lucide-react';
 
 const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMenu }) => {
@@ -83,6 +83,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [schedules, setSchedules] = useState([]);
   const [availableClasses, setAvailableClasses] = useState([]);
   const [editingScheduleId, setEditingScheduleId] = useState(null);
+  const [lecturersList, setLecturersList] = useState([]);
+  const [ccLecturer, setCcLecturer] = useState('');
+  const [regModeTab, setRegModeTab] = useState('single');
+  const [classSearch, setClassSearch] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editRoom, setEditRoom] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -288,12 +292,15 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     } else if (activeTab === 'my_classes') {
       fetchStudentClasses();
       fetchSchedules();
-    } else if (activeTab === 'teaching_schedule' || activeTab === 'schedule') {
+    } else if (activeTab === 'teaching_schedule' || activeTab === 'schedule' || activeTab === 'summary_report' || activeTab === 'manual_checkin') {
       fetchSchedules();
       fetchCreditClasses();
     } else if (activeTab === 'course_registration') {
       fetchAvailableClasses();
       fetchStudentClasses();
+    } else if (activeTab === 'structure') {
+      fetchLecturersList();
+      fetchCreditClasses();
     }
   }, [activeTab]);
 
@@ -359,7 +366,11 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   const fetchSchedules = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/lich_hoc_chi_tiet`);
+      let url = `${API_BASE}/api/lich_hoc_chi_tiet`;
+      if (role === 'giang_vien' && user?.lecturer_id) {
+        url += `?lecturer_id=${user.lecturer_id}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setSchedules(data.schedules || []);
@@ -450,9 +461,25 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     }
   };
 
+  const fetchLecturersList = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/lecturers`);
+      if (res.ok) {
+        const data = await res.json();
+        setLecturersList(data || []);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải giảng viên:", err);
+    }
+  };
+
   const fetchCreditClasses = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/lop_tin_chi`);
+      let url = `${API_BASE}/api/lop_tin_chi`;
+      if (role === 'giang_vien' && user?.lecturer_id) {
+        url += `?lecturer_id=${user.lecturer_id}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setCreditClasses(data.classes || []);
@@ -497,6 +524,24 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         fetchEnrolledStudents(selectedClass);
       } else {
         showToast(data.detail || "Thêm sinh viên thất bại.", "danger");
+      }
+    } catch (err) {
+      showToast("Lỗi kết nối.", "danger");
+    }
+  };
+
+  const handleUnenrollStudent = async (mssv) => {
+    if (!selectedClass) return;
+    if (!window.confirm(`Bạn có chắc muốn xóa sinh viên ${mssv} khỏi lớp ${selectedClass}?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/sinh_vien_lop_tin_chi/${selectedClass}/${mssv}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        showToast(`Đã xóa sinh viên ${mssv} khỏi lớp.`);
+        fetchEnrolledStudents(selectedClass);
+      } else {
+        showToast("Xóa thất bại.", "danger");
       }
     } catch (err) {
       showToast("Lỗi kết nối.", "danger");
@@ -594,7 +639,11 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   const fetchStudentsList = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/students`);
+      let url = `${API_BASE}/api/admin/students`;
+      if (role === 'giang_vien' && user?.lecturer_id) {
+        url += `?lecturer_id=${user.lecturer_id}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setStudentsList(data || []);
@@ -663,10 +712,14 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   const fetchLeaveRequests = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/teacher/leave_requests`);
+      let url = `${API_BASE}/api/teacher/leave_requests`;
+      if (role === 'giang_vien' && user?.lecturer_id) {
+        url += `?lecturer_id=${user.lecturer_id}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setLeaveRequests(data.requests);
+        setLeaveRequests(data.requests || []);
       }
     } catch (err) {
       console.error(err);
@@ -772,6 +825,32 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       }
     } catch (err) {
       showToast("Lỗi kết nối.", "danger");
+    }
+  };
+
+  const exportAttendanceReport = async () => {
+    if (!reportClass) {
+      showToast("Vui lòng chọn lớp tín chỉ.", "danger");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/attendance/export?ma_lop_tc=${reportClass}`);
+      if (!res.ok) {
+        showToast("Lỗi khi kết xuất báo cáo.", "danger");
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bao_cao_tong_ket_${reportClass}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast("Đã xuất file báo cáo thành công!");
+    } catch (err) {
+      showToast("Lỗi kết nối khi xuất báo cáo.", "danger");
     }
   };
 
@@ -1048,6 +1127,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     const formData = new FormData();
     formData.append("ma_lop_tc", ccCode);
     formData.append("ma_mon", ccSub);
+    if (ccLecturer) {
+      formData.append("ma_gv", ccLecturer);
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/lop_tin_chi`, {
@@ -1058,6 +1140,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         showToast("Đã lưu lớp tín chỉ.");
         setCcCode('');
         setCcSub('');
+        setCcLecturer('');
+        fetchCreditClasses();
       }
     } catch (err) {
       showToast("Lỗi kết nối.", "danger");
@@ -1065,111 +1149,221 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   };
 
   const renderClassManagementTab = () => {
+    const filteredCreditClasses = creditClasses.filter(c => {
+      return (c.class_id || '').toLowerCase().includes(classSearch.toLowerCase()) || 
+             (c.subject_name || '').toLowerCase().includes(classSearch.toLowerCase());
+    });
+
     return (
-      <div>
-        <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Danh sách lớp tín chỉ đang mở</h4>
+      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: "20px", alignItems: "start" }}>
         
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "15px" }}>
-          <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "10px", maxHeight: "250px", overflowY: "auto" }}>
-            <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Chọn lớp học phần:</span>
-            {creditClasses.length === 0 ? (
-              <p style={{ fontSize: "0.75rem", color: "#6c8da3" }}>Chưa có lớp tín chỉ nào.</p>
-            ) : (
-              creditClasses.map(c => (
-                <div 
-                  key={c.class_id}
-                  onClick={() => fetchEnrolledStudents(c.class_id)}
-                  style={{ 
-                    padding: "8px 10px", 
-                    cursor: "pointer", 
-                    borderRadius: "4px", 
-                    fontSize: "0.8rem",
-                    marginBottom: "4px",
-                    background: selectedClass === c.class_id ? "#e0f2fe" : "transparent",
-                    color: selectedClass === c.class_id ? "#0284c7" : "#1c3240",
-                    fontWeight: selectedClass === c.class_id ? "600" : "400"
-                  }}
-                >
-                  📁 {c.class_id} - {c.subject_name}
-                </div>
-              ))
-            )}
+        {/* Cột trái: Danh sách lớp học phần */}
+        <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", borderBottom: "1px solid #f1f5f9", paddingBottom: "8px" }}>
+            <BookOpen size={16} color="#106fa6" />
+            <span style={{ fontSize: "0.85rem", fontWeight: "700", color: "#106fa6" }}>Lớp Học Phần Đang Mở</span>
           </div>
 
-          <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "10px", display: "flex", flexDirection: "column", gap: "12px" }}>
-            <div>
-              <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Đăng ký lẻ sinh viên:</span>
-              <form onSubmit={handleEnrollStudent} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Mã lớp tín chỉ đang chọn</label>
-                  <input style={{ ...styles.input, background: "#f1f5f9", padding: "6px" }} disabled value={selectedClass || "Vui lòng chọn lớp bên trái"} />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>MSSV Sinh viên</label>
-                  <input 
-                    style={{ ...styles.input, padding: "6px" }} 
-                    placeholder="Ví dụ: N22DCCN134" 
-                    value={enrollMssv} 
-                    onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
-                    required 
-                  />
-                </div>
-                <button disabled={!selectedClass} type="submit" style={{ ...styles.btn, padding: "6px 10px", fontSize: "0.75rem" }}>Đăng ký lẻ</button>
-              </form>
-            </div>
-            
-            <hr style={{ border: "0", borderTop: "1px solid #eef2f6", margin: "4px 0" }} />
-            
-            <div>
-              <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>Đăng ký cả lớp hành chính (Nhanh):</span>
-              <form onSubmit={handleBulkEnroll} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Tên lớp hành chính cần thêm</label>
-                  <input 
-                    style={{ ...styles.input, padding: "6px" }} 
-                    placeholder="Ví dụ: D22CQCNPM02-N" 
-                    value={bulkClassCode} 
-                    onChange={(e) => setBulkClassCode(e.target.value.toUpperCase())}
-                    required 
-                  />
-                </div>
-                <button disabled={!selectedClass} type="submit" style={{ ...styles.btn, padding: "6px 10px", fontSize: "0.75rem", backgroundColor: "#0284c7" }}>Đăng ký cả lớp hành chính</button>
-              </form>
-            </div>
+          <input 
+            style={{ ...styles.input, width: "100%", padding: "6px 10px", fontSize: "0.78rem", marginBottom: "12px" }} 
+            placeholder="🔍 Tìm mã lớp, môn học..."
+            value={classSearch}
+            onChange={(e) => setClassSearch(e.target.value)}
+          />
+
+          <div style={{ maxHeight: "400px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {filteredCreditClasses.length === 0 ? (
+              <p style={{ fontSize: "0.75rem", color: "#94a3b8", textAlign: "center", padding: "10px" }}>Không tìm thấy lớp nào.</p>
+            ) : (
+              filteredCreditClasses.map(c => {
+                const isSelected = selectedClass === c.class_id;
+                return (
+                  <div 
+                    key={c.class_id}
+                    onClick={() => fetchEnrolledStudents(c.class_id)}
+                    style={{ 
+                      padding: "10px 12px", 
+                      cursor: "pointer", 
+                      borderRadius: "8px", 
+                      border: isSelected ? "1px solid #0284c7" : "1px solid #e2edf5",
+                      background: isSelected ? "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)" : "#ffffff",
+                      transition: "all 0.15s ease",
+                      boxShadow: isSelected ? "0 2px 4px rgba(2, 132, 199, 0.08)" : "none"
+                    }}
+                    className="ptit-class-card"
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "4px" }}>
+                      <span style={{ fontSize: "0.8rem", fontWeight: "700", color: isSelected ? "#0284c7" : "#1e293b" }}>{c.class_id}</span>
+                      <span style={{ fontSize: "0.65rem", padding: "1px 5px", borderRadius: "4px", background: "#f1f5f9", color: "#64748b", fontWeight: "600" }}>{c.subject_id}</span>
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "#475569", fontWeight: "500", marginBottom: "6px" }}>
+                      {c.subject_name}
+                    </div>
+                    <div style={{ fontSize: "0.68rem", color: "#64748b", display: "flex", alignItems: "center", gap: "4px" }}>
+                      👤 <span style={{ fontStyle: "italic" }}>GV: {c.lecturer_name || "Chưa phân công"}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
-        {selectedClass && (
-          <div>
-            <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "8px" }}>
-              Danh sách sinh viên thuộc lớp: {selectedClass}
-            </span>
-            {enrolledStudents.length === 0 ? (
-              <p style={{ fontSize: "0.75rem", color: "#6c8da3" }}>Chưa có sinh viên nào đăng ký vào lớp này.</p>
-            ) : (
-              <div style={{ overflowY: "auto", maxHeight: "200px" }}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>MSSV</th>
-                      <th style={styles.th}>Họ Tên</th>
-                      <th style={styles.th}>Lớp Chuyên Ngành</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {enrolledStudents.map((st) => (
-                      <tr key={st.mssv}>
-                        <td style={styles.td}>{st.mssv}</td>
-                        <td style={styles.td}><strong>{st.ho_ten}</strong></td>
-                        <td style={styles.td}>{st.lop_base}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        {/* Cột phải: Chi tiết và Quản lý Đăng ký */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {!selectedClass ? (
+            <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "40px 20px", textAlign: "center", color: "#64748b" }}>
+              <BookOpen size={48} style={{ margin: "0 auto 12px auto", opacity: 0.5, color: "#106fa6" }} />
+              <h5 style={{ fontWeight: "700", color: "#1e293b", margin: "0 0 4px 0", fontSize: "0.95rem" }}>Chưa chọn lớp học phần</h5>
+              <p style={{ fontSize: "0.78rem", color: "#94a3b8", margin: 0 }}>Vui lòng nhấp chọn một lớp học phần ở cột bên trái để quản lý sinh viên đăng ký học.</p>
+            </div>
+          ) : (
+            <>
+              {/* Card thông tin lớp & form đăng ký */}
+              <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
+                  <div>
+                    <h4 style={{ color: "#1e293b", fontSize: "0.9rem", fontWeight: "700", margin: 0 }}>
+                      Quản lý Đăng ký Học: <span style={{ color: "#0284c7" }}>{selectedClass}</span>
+                    </h4>
+                  </div>
+                  
+                  {/* Segmented control tabs */}
+                  <div style={{ display: "flex", background: "#f1f5f9", padding: "3px", borderRadius: "6px" }}>
+                    <button 
+                      onClick={() => setRegModeTab('single')}
+                      style={{ 
+                        border: "none", 
+                        background: regModeTab === 'single' ? "#ffffff" : "transparent",
+                        color: regModeTab === 'single' ? "#0f172a" : "#64748b",
+                        padding: "4px 10px", 
+                        fontSize: "0.72rem", 
+                        fontWeight: "600", 
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        boxShadow: regModeTab === 'single' ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
+                      }}
+                    >
+                      <UserPlus size={12} style={{ display: "inline", marginRight: "4px", verticalAlign: "middle" }} />
+                      Đăng ký đơn lẻ
+                    </button>
+                    <button 
+                      onClick={() => setRegModeTab('bulk')}
+                      style={{ 
+                        border: "none", 
+                        background: regModeTab === 'bulk' ? "#ffffff" : "transparent",
+                        color: regModeTab === 'bulk' ? "#0f172a" : "#64748b",
+                        padding: "4px 10px", 
+                        fontSize: "0.72rem", 
+                        fontWeight: "600", 
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        boxShadow: regModeTab === 'bulk' ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
+                      }}
+                    >
+                      <Users size={12} style={{ display: "inline", marginRight: "4px", verticalAlign: "middle" }} />
+                      Đăng ký cả lớp HC
+                    </button>
+                  </div>
+                </div>
+
+                {regModeTab === 'single' ? (
+                  <form onSubmit={handleEnrollStudent} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
+                    <div style={{ ...styles.formGroup, margin: 0, flex: 1 }}>
+                      <label style={styles.label}>MSSV Sinh viên</label>
+                      <input 
+                        style={{ ...styles.input, padding: "8px 12px", fontSize: "0.82rem" }} 
+                        placeholder="Nhập MSSV sinh viên cần đăng ký (VD: N22DCCN134)" 
+                        value={enrollMssv} 
+                        onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
+                        required 
+                      />
+                    </div>
+                    <button type="submit" style={{ ...styles.btn, height: "38px", padding: "0 15px", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                      Thêm vào lớp
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleBulkEnroll} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
+                    <div style={{ ...styles.formGroup, margin: 0, flex: 1 }}>
+                      <label style={styles.label}>Tên Lớp Hành Chính</label>
+                      <input 
+                        style={{ ...styles.input, padding: "8px 12px", fontSize: "0.82rem" }} 
+                        placeholder="Nhập lớp hành chính để thêm cả lớp (VD: D22CQCNPM02-N)" 
+                        value={bulkClassCode} 
+                        onChange={(e) => setBulkClassCode(e.target.value.toUpperCase())}
+                        required 
+                      />
+                    </div>
+                    <button type="submit" style={{ ...styles.btn, height: "38px", padding: "0 15px", fontSize: "0.8rem", backgroundColor: "#0284c7", whiteSpace: "nowrap" }}>
+                      Đăng ký cả lớp
+                    </button>
+                  </form>
+                )}
               </div>
-            )}
-          </div>
-        )}
+
+              {/* Bảng danh sách thành viên */}
+              <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid #f1f5f9", paddingBottom: "8px" }}>
+                  <span style={{ fontSize: "0.8rem", fontWeight: "700", color: "#1e293b" }}>
+                    Danh sách sinh viên trong lớp học phần
+                  </span>
+                  <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "20px", background: "#e0f2fe", color: "#0369a1", fontWeight: "700" }}>
+                    Sĩ số: {enrolledStudents.length} SV
+                  </span>
+                </div>
+
+                {enrolledStudents.length === 0 ? (
+                  <p style={{ fontSize: "0.75rem", color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>Chưa có sinh viên nào đăng ký vào lớp này.</p>
+                ) : (
+                  <div style={{ overflowY: "auto", maxHeight: "250px" }}>
+                    <table style={styles.table}>
+                      <thead>
+                        <tr>
+                          <th style={styles.th}>MSSV</th>
+                          <th style={styles.th}>Họ Tên</th>
+                          <th style={styles.th}>Lớp Chuyên Ngành</th>
+                          <th style={{ ...styles.th, textAlign: "center" }}>Hành động</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {enrolledStudents.map((st) => (
+                          <tr key={st.mssv}>
+                            <td style={styles.td}>{st.mssv}</td>
+                            <td style={styles.td}><strong>{st.ho_ten}</strong></td>
+                            <td style={styles.td}>{st.lop_base}</td>
+                            <td style={{ ...styles.td, textAlign: "center" }}>
+                              <button 
+                                onClick={() => handleUnenrollStudent(st.mssv)}
+                                style={{ 
+                                  border: "none", 
+                                  background: "transparent", 
+                                  color: "#ef4444", 
+                                  cursor: "pointer", 
+                                  padding: "4px",
+                                  borderRadius: "4px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  transition: "background 0.15s"
+                                }}
+                                title="Xóa khỏi lớp"
+                                onMouseEnter={(e) => e.target.style.background = "#fee2e2"}
+                                onMouseLeave={(e) => e.target.style.background = "transparent"}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     );
   };
@@ -1188,7 +1382,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
     return (
       <div>
-        <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Danh sách Sinh viên hệ thống</h4>
+        <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>
+          {role === 'giang_vien' ? "Danh sách Sinh viên các lớp phụ trách" : "Danh sách Sinh viên hệ thống"}
+        </h4>
         
         <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
           <input 
@@ -1924,29 +2120,81 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 )}
 
                 {activeTab === 'structure' && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    <form onSubmit={handleCreateSubject}>
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Tạo môn học gốc</label>
-                        <input 
-                          type="text" 
-                          placeholder="Mã môn (VD: INT1306)" 
-                          required 
-                          style={{ ...styles.input, marginBottom: "6px" }}
-                          value={subCode}
-                          onChange={(e) => setSubCode(e.target.value)}
-                        />
-                        <input 
-                          type="text" 
-                          placeholder="Tên môn học" 
-                          required 
-                          style={styles.input}
-                          value={subName}
-                          onChange={(e) => setSubName(e.target.value)}
-                        />
-                      </div>
-                      <button type="submit" style={{ ...styles.btn, width: "100%", padding: "8px" }}>Tạo môn học</button>
-                    </form>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                    {/* Form tạo môn học */}
+                    <div style={{ background: "#f8fbfd", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "15px" }}>
+                      <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "12px" }}>Tạo môn học gốc</span>
+                      <form onSubmit={handleCreateSubject}>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Mã môn học</label>
+                          <input 
+                            type="text" 
+                            placeholder="Mã môn (VD: INT1306)" 
+                            required 
+                            style={styles.input}
+                            value={subCode}
+                            onChange={(e) => setSubCode(e.target.value.toUpperCase())}
+                          />
+                        </div>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Tên môn học</label>
+                          <input 
+                            type="text" 
+                            placeholder="Tên môn học" 
+                            required 
+                            style={styles.input}
+                            value={subName}
+                            onChange={(e) => setSubName(e.target.value)}
+                          />
+                        </div>
+                        <button type="submit" style={{ ...styles.btn, width: "100%", marginTop: "10px" }}>Tạo môn học</button>
+                      </form>
+                    </div>
+
+                    {/* Form tạo lớp tín chỉ */}
+                    <div style={{ background: "#f8fbfd", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "15px" }}>
+                      <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "12px" }}>Tạo lớp học phần (Tín chỉ)</span>
+                      <form onSubmit={handleCreateCreditClass}>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Mã lớp tín chỉ</label>
+                          <input 
+                            type="text" 
+                            placeholder="Mã lớp (VD: D22CQCNPM02-N)" 
+                            required 
+                            style={styles.input}
+                            value={ccCode}
+                            onChange={(e) => setCcCode(e.target.value.toUpperCase())}
+                          />
+                        </div>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Môn học liên kết</label>
+                          <input 
+                            type="text" 
+                            placeholder="Mã môn học liên kết (VD: INT1306)" 
+                            required 
+                            style={styles.input}
+                            value={ccSub}
+                            onChange={(e) => setCcSub(e.target.value.toUpperCase())}
+                          />
+                        </div>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Phân công Giảng viên dạy</label>
+                          <select 
+                            style={styles.input}
+                            value={ccLecturer}
+                            onChange={(e) => setCcLecturer(e.target.value)}
+                          >
+                            <option value="">-- Không phân công / Tự do --</option>
+                            {lecturersList.map(l => (
+                              <option key={l.lecturer_id} value={l.lecturer_id}>
+                                {l.lecturer_id} - {l.full_name} ({l.department || "Khoa CNTT"})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button type="submit" style={{ ...styles.btn, width: "100%", marginTop: "10px", backgroundColor: "#0284c7" }}>Tạo lớp tín chỉ</button>
+                      </form>
+                    </div>
                   </div>
                 )}
                 {activeTab === 'students_list' && renderStudentsListTab()}
@@ -1965,11 +2213,18 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     <div style={{ display: "flex", gap: "10px", marginBottom: "15px", alignItems: "flex-end" }}>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Mã lớp tín chỉ</label>
-                        <input 
-                          style={styles.input} 
+                        <select 
+                          style={{ ...styles.input, width: "220px" }} 
                           value={manualClass}
                           onChange={(e) => setManualClass(e.target.value)}
-                        />
+                        >
+                          <option value="">-- Chọn lớp tín chỉ --</option>
+                          {creditClasses.map(c => (
+                            <option key={c.class_id} value={c.class_id}>
+                              {c.class_id} - {c.subject_name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Mã buổi học</label>
@@ -2145,14 +2400,26 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 {activeTab === 'summary_report' && (
                   <div>
                     <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Tổng kết Chuyên cần học kỳ & Cảnh báo Cấm thi</h4>
-                    <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
-                      <input 
-                        style={styles.input} 
-                        placeholder="Nhập mã lớp tín chỉ"
-                        value={reportClass}
-                        onChange={(e) => setReportClass(e.target.value)}
-                      />
-                      <button onClick={fetchAttendanceReport} style={styles.btn}>Tổng kết lớp</button>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "15px", alignItems: "flex-end" }}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Chọn lớp tín chỉ giảng dạy</label>
+                        <select 
+                          style={{ ...styles.input, width: "250px" }}
+                          value={reportClass}
+                          onChange={(e) => setReportClass(e.target.value)}
+                        >
+                          <option value="">-- Chọn lớp tín chỉ --</option>
+                          {creditClasses.map(c => (
+                            <option key={c.class_id} value={c.class_id}>
+                              {c.class_id} - {c.subject_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button onClick={fetchAttendanceReport} style={{ ...styles.btn, height: "38px" }}>Tổng kết lớp</button>
+                      {attendanceReport.length > 0 && (
+                        <button onClick={exportAttendanceReport} style={{ ...styles.btn, height: "38px", backgroundColor: "#10b981" }}>Xuất Excel</button>
+                      )}
                     </div>
 
                     {attendanceReport.length > 0 && (

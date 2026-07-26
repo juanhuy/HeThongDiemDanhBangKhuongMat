@@ -8,9 +8,14 @@ from app.core.security import get_password_hash
 def get_student(db: Session, student_id: str):
     return db.query(Student).filter(Student.student_id == student_id).first()
 
-def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = None, status: str = None):
+def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = None, status: str = None, lecturer_id: str = None):
     query = db.query(Student)
     
+    if lecturer_id:
+        from app.models.student_class import StudentClassEnrollment
+        from app.models.credit_class import CreditClass
+        query = query.join(StudentClassEnrollment).join(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip())
+        
     if search:
         # Tìm kiếm theo tên hoặc MSSV
         query = query.filter(or_(
@@ -20,6 +25,10 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
     if status:
         # Lọc theo trạng thái học tập
         query = query.filter(Student.academic_status == status)
+        
+    # Loại bỏ bản ghi trùng lặp (nếu sinh viên đăng ký nhiều lớp của cùng giảng viên)
+    if lecturer_id:
+        query = query.distinct()
         
     return query.offset(skip).limit(limit).all()
 
