@@ -1,2 +1,15 @@
 .venv
 .env
+/node_modules
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Môi trường ảo (Virtual environments)
+.venv/
+venv/
+env/
+
+# IDE files (ví dụ: thư mục cài đặt của VS Code)
+.vscode/

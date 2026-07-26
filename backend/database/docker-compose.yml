@@ -1,20 +1,16 @@
-
 services:
   mysql_db:
     image: mysql:8.0
-    container_name: ai_attendance_mysql
+    container_name: ptit_diem_danh_mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: ai_attendance_db
-      MYSQL_USER: admin
-      MYSQL_PASSWORD: adminpassword
+      # Cấu hình y hệt máy của Nhật Huy
+      MYSQL_ROOT_PASSWORD: "19082004"
+      MYSQL_DATABASE: ptit_diem_danh
     ports:
-      - "3306:3306"
+      - "3306:3306" 
     volumes:
-      # Ánh xạ thư mục chứa script SQL để tự động chạy khi khởi tạo container lần đầu
       - ./init:/docker-entrypoint-initdb.d
-      # Mount volume lưu trữ data thực tế để data tồn tại (persistent)
       - mysql_data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password
 
@@ -22,6 +18,7 @@ volumes:
   mysql_data:
 
 
+# -------------------------------------------------------------------------------------------
 
 # services:
 #   ai_mysql_db:
