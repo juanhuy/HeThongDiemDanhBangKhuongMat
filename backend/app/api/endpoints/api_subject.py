@@ -28,11 +28,10 @@ def update_subject(subject_id: str, subject: schemas.SubjectUpdate, db: Session 
 def read_subjects(
     skip: int = 0, 
     limit: int = 100, 
-    query: str = None,  
+    query: str | None = None,  
     db: Session = Depends(get_db)
 ):
     if query:
-        print(f"Debug Query: {query}")
         return crud.search_subjects(db, query=query)
     # Nếu không có từ khóa, trả về danh sách mặc định
     return crud.get_subjects(db, skip=skip, limit=limit)
