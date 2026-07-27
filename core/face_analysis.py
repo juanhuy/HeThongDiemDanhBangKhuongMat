@@ -42,6 +42,19 @@ class FaceAnalyzer:
         self.known_embeddings = []
         self.known_names = []
         self.load_database()
+
+        # Tự động đăng ký sinh viên mặc định N22DCCN134 nếu chưa tồn tại
+        if "N22DCCN134" not in self.known_names:
+            img_path = os.path.join(project_root, "database", "registered_images", "N22DCCN134.jpg")
+            if os.path.exists(img_path):
+                print(f"-> [AI Seeding] Tu dong dang ky sinh vien mac dinh N22DCCN134 tu {img_path}...")
+                self.dang_ky_mat(
+                    image_path=img_path,
+                    mssv="N22DCCN134",
+                    ho_ten="Nguyễn Huy Hoàng",
+                    lop_base="D22CQCN01-N",
+                    email="n22dccn134@student.ptit.edu.vn"
+                )
         
         # Các biến phục vụ luồng nhận dạng song song (AI Worker)
         self.current_frame = None
@@ -134,8 +147,24 @@ class FaceAnalyzer:
                 # Kiểm tra/Cập nhật thông tin sinh viên
                 student = db.query(Student).filter(Student.student_id == mssv).first()
                 if not student:
+                    # 0. Tạo tài khoản đăng nhập tự động
+                    username_lower = str(mssv).strip().lower()
+                    account = db.query(Account).filter(Account.username == username_lower).first()
+                    if not account:
+                        import hashlib
+                        pw_hash = hashlib.sha256("123456".encode()).hexdigest()
+                        account = Account(
+                            username=username_lower,
+                            password_hash=pw_hash,
+                            role="sinh_vien",
+                            is_active=True
+                        )
+                        db.add(account)
+                        db.flush()
+                    
                     student = Student(
                         student_id=mssv,
+                        account_id=account.account_id,
                         full_name=ho_ten,
                         administrative_class=lop_base,
                         email=kwargs.get("email") or f"{mssv}@student.ptit.edu.vn",
@@ -145,6 +174,23 @@ class FaceAnalyzer:
                     db.add(student)
                     db.flush()
                 else:
+                    # Đảm bảo sinh viên có tài khoản liên kết
+                    if not student.account_id:
+                        username_lower = str(mssv).strip().lower()
+                        account = db.query(Account).filter(Account.username == username_lower).first()
+                        if not account:
+                            import hashlib
+                            pw_hash = hashlib.sha256("123456".encode()).hexdigest()
+                            account = Account(
+                                username=username_lower,
+                                password_hash=pw_hash,
+                                role="sinh_vien",
+                                is_active=True
+                            )
+                            db.add(account)
+                            db.flush()
+                        student.account_id = account.account_id
+                    
                     student.full_name = ho_ten
                     student.administrative_class = lop_base
                     if kwargs.get("sdt"):

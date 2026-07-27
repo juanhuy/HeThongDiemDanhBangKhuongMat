@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from app.core.security import get_password_hash
 
 def get_student(db: Session, student_id: str):
-    return db.query(Student).filter(Student.student_id == student_id).first()
+    return db.query(Student).filter(Student.student_id == student_id.strip().upper()).first()
 
 def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = None, status: str = None, lecturer_id: str = None):
     query = db.query(Student)

@@ -73,10 +73,8 @@ class DatabaseService:
                 # Xóa toàn bộ dữ liệu sinh viên giả lập/thử nghiệm nếu tồn tại
                 cursor.execute("SHOW TABLES LIKE 'students'")
                 if cursor.fetchone():
-                    # Xoá liên kết khoá ngoại trước
-                    cursor.execute("DELETE FROM face_features WHERE student_id IN ('N22DCCN134', 'TEST01')")
-                    cursor.execute("DELETE FROM students WHERE student_id IN ('N22DCCN134', 'TEST01')")
-                    cursor.execute("DELETE FROM accounts WHERE username IN ('n22dccn134', 'test01')")
+                    # Chỉ xóa TEST01 nếu cần thiết, hoặc không cần xóa gì cả để bảo toàn dữ liệu kiểm thử
+                    pass
             conn.commit()
         except Exception as e:
             print(f"Loi khoi tao cau truc/du lieu mac dinh MySQL: {e}")
@@ -106,18 +104,34 @@ class DatabaseService:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                # 1. Thêm hoặc cập nhật bảng students
+                # 0. Tạo tài khoản đăng nhập tự động cho sinh viên nếu chưa có
+                username_lower = str(mssv).strip().lower()
+                cursor.execute("SELECT account_id FROM accounts WHERE username = %s", (username_lower,))
+                account_row = cursor.fetchone()
+                if account_row:
+                    account_id = account_row[0]
+                else:
+                    # Tạo tài khoản mới với mật khẩu mặc định 123456
+                    pw_hash = self.hash_password("123456")
+                    cursor.execute("""
+                        INSERT INTO accounts (username, password_hash, role, is_active)
+                        VALUES (%s, %s, 'sinh_vien', True)
+                    """, (username_lower, pw_hash))
+                    account_id = cursor.lastrowid
+
+                # 1. Thêm hoặc cập nhật bảng students (bao gồm account_id)
                 email_val = email or f"{mssv}@student.ptit.edu.vn"
                 cursor.execute("""
                     INSERT INTO students (
-                        student_id, full_name, email, phone_number, administrative_class, academic_status
-                    ) VALUES (%s, %s, %s, %s, %s, 'studying')
+                        student_id, account_id, full_name, email, phone_number, administrative_class, academic_status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, 'studying')
                     ON DUPLICATE KEY UPDATE 
+                        account_id=COALESCE(students.account_id, VALUES(account_id)),
                         full_name=VALUES(full_name), 
                         administrative_class=VALUES(administrative_class),
                         phone_number=VALUES(phone_number),
                         email=VALUES(email)
-                """, (mssv, ho_ten, email_val, sdt, lop_base))
+                """, (mssv, account_id, ho_ten, email_val, sdt, lop_base))
                 
                 # 2. Xóa các đặc trưng khuôn mặt cũ của sinh viên này
                 cursor.execute("DELETE FROM face_features WHERE student_id = %s", (mssv,))

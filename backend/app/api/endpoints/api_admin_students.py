@@ -116,6 +116,24 @@ def import_students_from_excel(file: UploadFile = File(...), db: Session = Depen
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi đọc file: {str(e)}")
 
+#API Xóa sinh viên
+@router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_existing_student(student_id: str, db: Session = Depends(get_db)):
+    """Xóa một sinh viên và tài khoản liên quan"""
+    db_student = crud.get_student(db, student_id=student_id)
+    if not db_student:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
+    
+    # Xoá tài khoản (account) liên kết nếu có
+    if db_student.account_id:
+        from app.models.account import Account
+        account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
+        if account:
+            db.delete(account)
+            
+    crud.delete_student(db=db, student_id=student_id)
+    return None
+
 
 # #--------------------------------------------
 # #--------API nghiep vu face ----------

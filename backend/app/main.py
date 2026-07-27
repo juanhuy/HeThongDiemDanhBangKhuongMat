@@ -13,7 +13,7 @@ if project_root not in sys.path:
 from config.settings import settings
 from app.db.session import engine, Base
 
-# Import các model để SQLAlchemy nhận diện được cấu trúc bảng
+# Import các model để SQLAlchemy nhận diện được cấu trúc bảng (trigger reload 1)
 from app.models.account import Account
 from app.models.student import Student
 from app.models.subject import Subject 

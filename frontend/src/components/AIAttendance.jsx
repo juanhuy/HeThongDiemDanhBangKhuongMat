@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Zap, UploadCloud, CheckCircle, XCircle, UserCheck, 
+import {
+  Zap, UploadCloud, CheckCircle, XCircle, UserCheck,
   ClipboardList, AlertTriangle, RefreshCw, FileText, Check, AlertOctagon,
   Camera, StopCircle, Trash2, UserPlus, Users, BookOpen
 } from 'lucide-react';
@@ -9,7 +9,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const rawRole = (user?.role || 'sinh_vien').toLowerCase();
   const role = rawRole === 'student' ? 'sinh_vien' : (rawRole === 'lecturer' ? 'giang_vien' : rawRole);
   const username = user?.username || 'anonymous';
-  
+
   if (user && role === 'sinh_vien' && (!user.mssv || user.mssv === 'N/A')) {
     user.mssv = user.username.toUpperCase();
   }
@@ -27,7 +27,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [regWebcamStream, setRegWebcamStream] = useState(null);
   const [regPreviewSrc, setRegPreviewSrc] = useState('');
   const regVideoRef = useRef(null);
-  
+
   const [schClass, setSchClass] = useState('D22CQCNPM02-N');
   const [schDate, setSchDate] = useState(new Date().toISOString().substring(0, 10));
   const [schRoom, setSchRoom] = useState('A2-301');
@@ -94,6 +94,47 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentClass, setEditStudentClass] = useState('');
   const [scheduleViewMode, setScheduleViewMode] = useState('grid');
+
+  // Week navigation helper functions
+  const getMonday = (d) => {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(date.setDate(diff));
+  };
+
+  const getMondayStr = (date) => {
+    const mon = getMonday(date);
+    return mon.toISOString().split('T')[0];
+  };
+
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => {
+    return getMondayStr(new Date());
+  });
+
+  const getDaysOfWeek = (monStr) => {
+    const mon = new Date(monStr);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(mon);
+      d.setDate(mon.getDate() + i);
+      days.push({
+        label: i === 6 ? "Chủ Nhật" : `Thứ ${i + 2}`,
+        dateStr: d.toISOString().split('T')[0],
+        displayDate: `${d.getDate()}/${d.getMonth() + 1}`
+      });
+    }
+    return days;
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  };
   const fileInputRef = useRef(null);
   const imageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -122,18 +163,18 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
-          
+
           const tempCanvas = document.createElement("canvas");
           tempCanvas.width = video.videoWidth || 640;
           tempCanvas.height = video.videoHeight || 480;
           const tempCtx = tempCanvas.getContext("2d");
           tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-          
+
           tempCanvas.toBlob(async (blob) => {
             if (!blob) return;
             const formData = new FormData();
             formData.append("file", blob, "webcam_capture.jpg");
-            
+
             try {
               const url = `${API_BASE}/api/recognize?phong_hoc=${encodeURIComponent(cameraRoom)}`;
               const res = await fetch(url, {
@@ -143,39 +184,39 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
               if (res.ok) {
                 const data = await res.json();
                 setDetectionLogs(data.results || []);
-                
+
                 if (canvas && video) {
                   canvas.width = video.clientWidth;
                   canvas.height = video.clientHeight;
                   const ctx = canvas.getContext("2d");
                   ctx.clearRect(0, 0, canvas.width, canvas.height);
-                  
+
                   const scaleX = canvas.width / tempCanvas.width;
                   const scaleY = canvas.height / tempCanvas.height;
-                  
+
                   (data.results || []).forEach(resItem => {
                     const [x1, y1, x2, y2] = resItem.box;
                     const bx = x1 * scaleX;
                     const by = y1 * scaleY;
                     const bw = (x2 - x1) * scaleX;
                     const bh = (y2 - y1) * scaleY;
-                    
+
                     const color = resItem.is_known ? "#10b981" : "#ef4444";
                     ctx.strokeStyle = color;
                     ctx.lineWidth = 3;
                     ctx.strokeRect(bx, by, bw, bh);
-                    
+
                     ctx.fillStyle = color;
                     ctx.font = "bold 13px 'Inter', sans-serif";
                     const label = resItem.is_known ? `${resItem.fullname} - ${resItem.trang_thai}` : "Chưa đăng ký";
                     const textWidth = ctx.measureText(label).width;
-                    
+
                     ctx.fillRect(bx, by - 24, textWidth + 14, 24);
                     ctx.fillStyle = "#ffffff";
                     ctx.fillText(label, bx + 7, by - 7);
                   });
                 }
-                
+
                 if (onAttendanceLogged) {
                   onAttendanceLogged();
                 }
@@ -208,7 +249,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       setUseWebcam(true);
       setRecognizeImageSrc('');
       setRecognizeFile(null);
-      
+
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -235,7 +276,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       setRegPreviewSrc('');
       setRegPhoto(null);
       setRegPhotoName('');
-      
+
       setTimeout(() => {
         if (regVideoRef.current) {
           regVideoRef.current.srcObject = stream;
@@ -262,18 +303,18 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       canvas.height = video.videoHeight || 480;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
+
       canvas.toBlob((blob) => {
         if (blob) {
           const file = new File([blob], `${regMssv || "captured"}_face.jpg`, { type: "image/jpeg" });
           setRegPhoto(file);
           setRegPhotoName(`Ảnh chụp webcam: ${file.name}`);
-          
+
           const previewUrl = URL.createObjectURL(blob);
           setRegPreviewSrc(previewUrl);
         }
       }, "image/jpeg");
-      
+
       stopRegWebcam();
     }
   };
@@ -608,10 +649,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       const cam = activeCams[Math.floor(Math.random() * activeCams.length)];
       const testMssvs = ["N22DCCN134", "B21DCCN123", "Unknown"];
       const randomMssv = testMssvs[Math.floor(Math.random() * testMssvs.length)];
-      
+
       const timestamp = new Date().toLocaleTimeString();
       let logMsg = "";
-      
+
       if (randomMssv === "Unknown") {
         logMsg = `[${timestamp}] [${cam.room}] Quét thất bại: Khuôn mặt lạ.`;
       } else {
@@ -946,7 +987,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       tempCanvas.height = videoRef.current.videoHeight || 480;
       const tempCtx = tempCanvas.getContext("2d");
       tempCtx.drawImage(videoRef.current, 0, 0, tempCanvas.width, tempCanvas.height);
-      
+
       const dataUrl = tempCanvas.toDataURL("image/jpeg");
       setRecognizeImageSrc(dataUrl);
 
@@ -954,7 +995,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       const blob = await (await fetch(dataUrl)).blob();
       fileToUpload = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
       setRecognizeFile(fileToUpload);
-      
+
       // Stop webcam so we can display the captured frame and bounding boxes
       stopWebcam();
     }
@@ -1150,13 +1191,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   const renderClassManagementTab = () => {
     const filteredCreditClasses = creditClasses.filter(c => {
-      return (c.class_id || '').toLowerCase().includes(classSearch.toLowerCase()) || 
-             (c.subject_name || '').toLowerCase().includes(classSearch.toLowerCase());
+      return (c.class_id || '').toLowerCase().includes(classSearch.toLowerCase()) ||
+        (c.subject_name || '').toLowerCase().includes(classSearch.toLowerCase());
     });
 
     return (
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: "20px", alignItems: "start" }}>
-        
+
         {/* Cột trái: Danh sách lớp học phần */}
         <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", borderBottom: "1px solid #f1f5f9", paddingBottom: "8px" }}>
@@ -1164,8 +1205,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
             <span style={{ fontSize: "0.85rem", fontWeight: "700", color: "#106fa6" }}>Lớp Học Phần Đang Mở</span>
           </div>
 
-          <input 
-            style={{ ...styles.input, width: "100%", padding: "6px 10px", fontSize: "0.78rem", marginBottom: "12px" }} 
+          <input
+            style={{ ...styles.input, width: "100%", padding: "6px 10px", fontSize: "0.78rem", marginBottom: "12px" }}
             placeholder="🔍 Tìm mã lớp, môn học..."
             value={classSearch}
             onChange={(e) => setClassSearch(e.target.value)}
@@ -1178,13 +1219,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
               filteredCreditClasses.map(c => {
                 const isSelected = selectedClass === c.class_id;
                 return (
-                  <div 
+                  <div
                     key={c.class_id}
                     onClick={() => fetchEnrolledStudents(c.class_id)}
-                    style={{ 
-                      padding: "10px 12px", 
-                      cursor: "pointer", 
-                      borderRadius: "8px", 
+                    style={{
+                      padding: "10px 12px",
+                      cursor: "pointer",
+                      borderRadius: "8px",
                       border: isSelected ? "1px solid #0284c7" : "1px solid #e2edf5",
                       background: isSelected ? "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)" : "#ffffff",
                       transition: "all 0.15s ease",
@@ -1227,18 +1268,18 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       Quản lý Đăng ký Học: <span style={{ color: "#0284c7" }}>{selectedClass}</span>
                     </h4>
                   </div>
-                  
+
                   {/* Segmented control tabs */}
                   <div style={{ display: "flex", background: "#f1f5f9", padding: "3px", borderRadius: "6px" }}>
-                    <button 
+                    <button
                       onClick={() => setRegModeTab('single')}
-                      style={{ 
-                        border: "none", 
+                      style={{
+                        border: "none",
                         background: regModeTab === 'single' ? "#ffffff" : "transparent",
                         color: regModeTab === 'single' ? "#0f172a" : "#64748b",
-                        padding: "4px 10px", 
-                        fontSize: "0.72rem", 
-                        fontWeight: "600", 
+                        padding: "4px 10px",
+                        fontSize: "0.72rem",
+                        fontWeight: "600",
                         borderRadius: "4px",
                         cursor: "pointer",
                         boxShadow: regModeTab === 'single' ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
@@ -1247,15 +1288,15 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       <UserPlus size={12} style={{ display: "inline", marginRight: "4px", verticalAlign: "middle" }} />
                       Đăng ký đơn lẻ
                     </button>
-                    <button 
+                    <button
                       onClick={() => setRegModeTab('bulk')}
-                      style={{ 
-                        border: "none", 
+                      style={{
+                        border: "none",
                         background: regModeTab === 'bulk' ? "#ffffff" : "transparent",
                         color: regModeTab === 'bulk' ? "#0f172a" : "#64748b",
-                        padding: "4px 10px", 
-                        fontSize: "0.72rem", 
-                        fontWeight: "600", 
+                        padding: "4px 10px",
+                        fontSize: "0.72rem",
+                        fontWeight: "600",
                         borderRadius: "4px",
                         cursor: "pointer",
                         boxShadow: regModeTab === 'bulk' ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
@@ -1271,12 +1312,12 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   <form onSubmit={handleEnrollStudent} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
                     <div style={{ ...styles.formGroup, margin: 0, flex: 1 }}>
                       <label style={styles.label}>MSSV Sinh viên</label>
-                      <input 
-                        style={{ ...styles.input, padding: "8px 12px", fontSize: "0.82rem" }} 
-                        placeholder="Nhập MSSV sinh viên cần đăng ký (VD: N22DCCN134)" 
-                        value={enrollMssv} 
+                      <input
+                        style={{ ...styles.input, padding: "8px 12px", fontSize: "0.82rem" }}
+                        placeholder="Nhập MSSV sinh viên cần đăng ký (VD: N22DCCN134)"
+                        value={enrollMssv}
                         onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
-                        required 
+                        required
                       />
                     </div>
                     <button type="submit" style={{ ...styles.btn, height: "38px", padding: "0 15px", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
@@ -1287,12 +1328,12 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   <form onSubmit={handleBulkEnroll} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
                     <div style={{ ...styles.formGroup, margin: 0, flex: 1 }}>
                       <label style={styles.label}>Tên Lớp Hành Chính</label>
-                      <input 
-                        style={{ ...styles.input, padding: "8px 12px", fontSize: "0.82rem" }} 
-                        placeholder="Nhập lớp hành chính để thêm cả lớp (VD: D22CQCNPM02-N)" 
-                        value={bulkClassCode} 
+                      <input
+                        style={{ ...styles.input, padding: "8px 12px", fontSize: "0.82rem" }}
+                        placeholder="Nhập lớp hành chính để thêm cả lớp (VD: D22CQCNPM02-N)"
+                        value={bulkClassCode}
                         onChange={(e) => setBulkClassCode(e.target.value.toUpperCase())}
-                        required 
+                        required
                       />
                     </div>
                     <button type="submit" style={{ ...styles.btn, height: "38px", padding: "0 15px", fontSize: "0.8rem", backgroundColor: "#0284c7", whiteSpace: "nowrap" }}>
@@ -1333,13 +1374,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                             <td style={styles.td}><strong>{st.ho_ten}</strong></td>
                             <td style={styles.td}>{st.lop_base}</td>
                             <td style={{ ...styles.td, textAlign: "center" }}>
-                              <button 
+                              <button
                                 onClick={() => handleUnenrollStudent(st.mssv)}
-                                style={{ 
-                                  border: "none", 
-                                  background: "transparent", 
-                                  color: "#ef4444", 
-                                  cursor: "pointer", 
+                                style={{
+                                  border: "none",
+                                  background: "transparent",
+                                  color: "#ef4444",
+                                  cursor: "pointer",
                                   padding: "4px",
                                   borderRadius: "4px",
                                   display: "inline-flex",
@@ -1374,8 +1415,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       const ho_ten = st.ho_ten || st.full_name || "";
       const lop_base = st.lop_base || st.administrative_class || "";
 
-      const matchSearch = mssv.toLowerCase().includes(searchKeyword.toLowerCase()) || 
-                          ho_ten.toLowerCase().includes(searchKeyword.toLowerCase());
+      const matchSearch = mssv.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        ho_ten.toLowerCase().includes(searchKeyword.toLowerCase());
       const matchClass = filterClass ? lop_base.toLowerCase().includes(filterClass.toLowerCase()) : true;
       return matchSearch && matchClass;
     });
@@ -1385,16 +1426,16 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>
           {role === 'giang_vien' ? "Danh sách Sinh viên các lớp phụ trách" : "Danh sách Sinh viên hệ thống"}
         </h4>
-        
+
         <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
-          <input 
-            style={styles.input} 
+          <input
+            style={styles.input}
             placeholder="Tìm theo MSSV, Họ tên..."
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
           />
-          <input 
-            style={{ ...styles.input, width: "130px" }} 
+          <input
+            style={{ ...styles.input, width: "130px" }}
             placeholder="Lọc theo Lớp"
             value={filterClass}
             onChange={(e) => setFilterClass(e.target.value)}
@@ -1427,38 +1468,38 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     <tr key={mssv}>
                       <td style={styles.td}>
                         {editingStudentId === mssv ? (
-                          <input 
-                            type="text" 
-                            style={{ ...styles.input, padding: "2px 6px", fontSize: "0.8rem" }} 
-                            value={editStudentName} 
-                            onChange={(e) => setEditStudentName(e.target.value)} 
+                          <input
+                            type="text"
+                            style={{ ...styles.input, padding: "2px 6px", fontSize: "0.8rem" }}
+                            value={editStudentName}
+                            onChange={(e) => setEditStudentName(e.target.value)}
                           />
                         ) : (
                           <strong>{ho_ten}</strong>
                         )}
-                        <br/>
+                        <br />
                         <small style={{ color: "#777" }}>{mssv}</small>
                       </td>
                       <td style={styles.td}>
                         {editingStudentId === mssv ? (
-                          <input 
-                            type="text" 
-                            style={{ ...styles.input, padding: "2px 6px", fontSize: "0.8rem" }} 
-                            value={editStudentClass} 
-                            onChange={(e) => setEditStudentClass(e.target.value)} 
+                          <input
+                            type="text"
+                            style={{ ...styles.input, padding: "2px 6px", fontSize: "0.8rem" }}
+                            value={editStudentClass}
+                            onChange={(e) => setEditStudentClass(e.target.value)}
                           />
                         ) : (
                           lop_base
                         )}
                       </td>
                       <td style={styles.td}>
-                        <small>{st.ngay_sinh || 'N/A'}</small><br/>
+                        <small>{st.ngay_sinh || 'N/A'}</small><br />
                         <small>{st.gioi_tinh || 'N/A'}</small>
                       </td>
                       <td style={styles.td}>
-                        <span style={{ 
-                          padding: "3px 6px", 
-                          borderRadius: "4px", 
+                        <span style={{
+                          padding: "3px 6px",
+                          borderRadius: "4px",
                           fontSize: "0.75rem",
                           backgroundColor: st.trang_thai_ho_so === 'Approved' || st.academic_status === 'studying' ? "#e6f8f0" : "#fff7e6",
                           color: st.trang_thai_ho_so === 'Approved' || st.academic_status === 'studying' ? "#10b981" : "#d48806"
@@ -1475,18 +1516,18 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                             </div>
                           ) : (
                             <div style={{ display: "flex", gap: "4px" }}>
-                              <button 
+                              <button
                                 onClick={() => {
                                   setEditingStudentId(mssv);
                                   setEditStudentName(ho_ten);
                                   setEditStudentClass(lop_base);
-                                }} 
+                                }}
                                 style={{ ...styles.btn, padding: "3px 6px", fontSize: "0.75rem", backgroundColor: "#f59e0b" }}
                               >
                                 Sửa
                               </button>
-                              <button 
-                                onClick={() => handleDeleteStudent(mssv)} 
+                              <button
+                                onClick={() => handleDeleteStudent(mssv)}
                                 style={{ ...styles.btn, padding: "3px 6px", fontSize: "0.75rem", backgroundColor: "#ef4444" }}
                               >
                                 Xóa
@@ -1667,23 +1708,23 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
             <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#54738c" }}>Camera tại phòng:</span>
-                <input 
-                  style={{ ...styles.input, padding: "4px 8px", width: "100px" }} 
-                  value={cameraRoom} 
-                  onChange={(e) => setCameraRoom(e.target.value)} 
+                <input
+                  style={{ ...styles.input, padding: "4px 8px", width: "100px" }}
+                  value={cameraRoom}
+                  onChange={(e) => setCameraRoom(e.target.value)}
                 />
               </div>
 
               <div style={{ display: "flex", gap: "10px" }}>
-                <button 
+                <button
                   type="button"
-                  onClick={() => { if(useWebcam) { stopWebcam(); } else { startWebcam(); } }}
-                  style={{ 
-                    ...styles.btn, 
-                    ...(!useWebcam ? styles.btnSecondary : { backgroundColor: "#ef4444" }), 
-                    padding: "6px 12px", 
-                    fontSize: "0.8rem", 
-                    flex: 1 
+                  onClick={() => { if (useWebcam) { stopWebcam(); } else { startWebcam(); } }}
+                  style={{
+                    ...styles.btn,
+                    ...(!useWebcam ? styles.btnSecondary : { backgroundColor: "#ef4444" }),
+                    padding: "6px 12px",
+                    fontSize: "0.8rem",
+                    flex: 1
                   }}
                 >
                   {useWebcam ? (
@@ -1697,16 +1738,16 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   )}
                 </button>
               </div>
-              
-              <div 
+
+              <div
                 style={{ ...styles.dropzone, cursor: "default" }}
               >
                 {useWebcam ? (
                   <div style={{ ...styles.previewWrapper, width: "100%", height: "100%", position: "relative" }}>
-                    <video 
-                      ref={videoRef} 
-                      autoPlay 
-                      playsInline 
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
                       style={{ ...styles.previewImage, width: "100%", height: "100%", objectFit: "cover" }}
                       onLoadedMetadata={() => {
                         if (canvasRef.current && videoRef.current) {
@@ -1715,13 +1756,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         }
                       }}
                     />
-                    <canvas ref={canvasRef} style={{ 
-                      position: "absolute", 
-                      top: 0, 
-                      left: 0, 
-                      width: "100%", 
-                      height: "100%", 
-                      pointerEvents: "none" 
+                    <canvas ref={canvasRef} style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      height: "100%",
+                      pointerEvents: "none"
                     }}></canvas>
                   </div>
                 ) : (
@@ -1736,9 +1777,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
               </div>
 
               <div style={{ display: "flex", gap: "10px" }}>
-                <button 
+                <button
                   onClick={() => { stopWebcam(); resetRecognition(); }}
-                  className="btn btn-secondary" 
+                  className="btn btn-secondary"
                   style={{ ...styles.btn, ...styles.btnSecondary, width: "100%" }}
                 >
                   Làm mới
@@ -1752,20 +1793,20 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   </span>
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     {detectionLogs.map((l, idx) => (
-                      <div key={idx} style={{ 
-                        display: "flex", 
-                        alignItems: "center", 
-                        gap: "12px", 
-                        padding: "8px", 
-                        borderRadius: "6px", 
-                        background: "#ffffff", 
-                        border: "1px solid #e2edf5" 
+                      <div key={idx} style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        padding: "8px",
+                        borderRadius: "6px",
+                        background: "#ffffff",
+                        border: "1px solid #e2edf5"
                       }}>
                         {l.is_known ? (
                           <>
-                            <img 
-                              src={`${API_BASE}/images/${l.mssv}.jpg`} 
-                              alt={l.fullname} 
+                            <img
+                              src={`${API_BASE}/images/${l.mssv}.jpg`}
+                              alt={l.fullname}
                               onError={(e) => { e.target.src = "https://via.placeholder.com/40?text=SV"; }}
                               style={{ width: "45px", height: "45px", borderRadius: "50%", objectFit: "cover", border: "2px solid #10b981" }}
                             />
@@ -1779,15 +1820,15 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                           </>
                         ) : (
                           <>
-                            <div style={{ 
-                              width: "45px", 
-                              height: "45px", 
-                              borderRadius: "50%", 
-                              background: "#fee2e2", 
-                              display: "flex", 
-                              alignItems: "center", 
+                            <div style={{
+                              width: "45px",
+                              height: "45px",
+                              borderRadius: "50%",
+                              background: "#fee2e2",
+                              display: "flex",
+                              alignItems: "center",
                               justifyContent: "center",
-                              border: "2px solid #ef4444" 
+                              border: "2px solid #ef4444"
                             }}>
                               <span style={{ color: "#ef4444", fontWeight: "bold", fontSize: "1.2rem" }}>?</span>
                             </div>
@@ -1805,11 +1846,11 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
           )}
 
           {/* Phải: Các phân hệ Quản lý & Nghiệp vụ theo vai trò */}
-          <div style={{ 
-            borderLeft: role === 'admin' ? "1px solid #d0e0eb" : "none", 
-            paddingLeft: role === 'admin' ? "1.5rem" : "0" 
+          <div style={{
+            borderLeft: role === 'admin' ? "1px solid #d0e0eb" : "none",
+            paddingLeft: role === 'admin' ? "1.5rem" : "0"
           }}>
-            
+
             {/* TABS CHO ADMIN */}
             {role === 'admin' && (
               <>
@@ -1836,7 +1877,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                               <td style={styles.td}>{f.ho_ten}</td>
                               <td style={styles.td}>{f.lop_base}</td>
                               <td style={styles.td}>
-                                <button 
+                                <button
                                   onClick={() => handleApproveFace(f.mssv)}
                                   style={{ ...styles.btn, padding: "4px 8px", fontSize: "0.75rem" }}
                                 >
@@ -1855,30 +1896,30 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   <form onSubmit={handleRegister}>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>MSSV</label>
-                      <input 
-                        type="text" 
-                        required 
-                        style={styles.input} 
+                      <input
+                        type="text"
+                        required
+                        style={styles.input}
                         value={regMssv}
                         onChange={(e) => setRegMssv(e.target.value.toUpperCase())}
                       />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Họ tên sinh viên</label>
-                      <input 
-                        type="text" 
-                        required 
-                        style={styles.input} 
+                      <input
+                        type="text"
+                        required
+                        style={styles.input}
                         value={regName}
                         onChange={(e) => setRegName(e.target.value)}
                       />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Lớp chuyên ngành</label>
-                      <input 
-                        type="text" 
-                        required 
-                        style={styles.input} 
+                      <input
+                        type="text"
+                        required
+                        style={styles.input}
                         value={regLop}
                         onChange={(e) => setRegLop(e.target.value)}
                       />
@@ -1886,13 +1927,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Ảnh đại diện / Ảnh gốc chụp thẻ SV</label>
                       <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          id="reg-photo-file-ptit-admin" 
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id="reg-photo-file-ptit-admin"
                           style={{ display: "none" }}
                           onChange={(e) => {
-                            if(e.target.files.length > 0) {
+                            if (e.target.files.length > 0) {
                               setRegPhoto(e.target.files[0]);
                               setRegPhotoName(e.target.files[0].name);
                               setRegPreviewSrc(URL.createObjectURL(e.target.files[0]));
@@ -1900,41 +1941,41 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                             }
                           }}
                         />
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           style={{ ...styles.btn, ...styles.btnSecondary, padding: "8px 14px", fontSize: "0.8rem" }}
                           onClick={() => document.getElementById("reg-photo-file-ptit-admin").click()}
                         >
                           Chọn file ảnh gốc
                         </button>
-                        <button 
-                          type="button" 
-                          style={{ 
-                            ...styles.btn, 
-                            ...(regUseWebcam ? { backgroundColor: "#ef4444" } : styles.btnSecondary), 
-                            padding: "8px 14px", 
-                            fontSize: "0.8rem" 
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.btn,
+                            ...(regUseWebcam ? { backgroundColor: "#ef4444" } : styles.btnSecondary),
+                            padding: "8px 14px",
+                            fontSize: "0.8rem"
                           }}
-                          onClick={() => { if(regUseWebcam) { stopRegWebcam(); } else { startRegWebcam(); } }}
+                          onClick={() => { if (regUseWebcam) { stopRegWebcam(); } else { startRegWebcam(); } }}
                         >
                           {regUseWebcam ? "Tắt Camera" : "Chụp từ Camera"}
                         </button>
                       </div>
 
                       {regUseWebcam && (
-                        <div style={{ 
-                          position: "relative", 
-                          width: "320px", 
-                          height: "240px", 
-                          borderRadius: "8px", 
-                          overflow: "hidden", 
+                        <div style={{
+                          position: "relative",
+                          width: "320px",
+                          height: "240px",
+                          borderRadius: "8px",
+                          overflow: "hidden",
                           border: "2px solid #1d92d1",
                           marginBottom: "10px"
                         }}>
-                          <video 
-                            ref={regVideoRef} 
-                            autoPlay 
-                            playsInline 
+                          <video
+                            ref={regVideoRef}
+                            autoPlay
+                            playsInline
                             style={{ width: "100%", height: "100%", objectFit: "cover" }}
                           />
                           <button
@@ -1964,10 +2005,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       {regPreviewSrc && (
                         <div style={{ marginBottom: "10px" }}>
                           <span style={{ fontSize: "0.75rem", color: "#54738c", display: "block", marginBottom: "4px" }}>Ảnh xem trước:</span>
-                          <img 
-                            src={regPreviewSrc} 
-                            alt="Registration Preview" 
-                            style={{ width: "150px", height: "150px", borderRadius: "8px", objectFit: "cover", border: "1px solid #d0e0eb" }} 
+                          <img
+                            src={regPreviewSrc}
+                            alt="Registration Preview"
+                            style={{ width: "150px", height: "150px", borderRadius: "8px", objectFit: "cover", border: "1px solid #d0e0eb" }}
                           />
                         </div>
                       )}
@@ -1986,16 +2027,16 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   <div>
                     <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Quản lý Lịch Học Phần & Buổi Học</h4>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "20px", marginBottom: "20px" }}>
-                      
+
                       {/* Left: Create Form */}
                       <div style={{ background: "#f8fbfd", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "12px" }}>
                         <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "10px" }}>Thêm lịch học mới</span>
                         <form onSubmit={handleCreateSchedule}>
                           <div style={styles.formGroup}>
                             <label style={styles.label}>Chọn lớp tín chỉ (Môn học)</label>
-                            <select 
-                              required 
-                              style={styles.input} 
+                            <select
+                              required
+                              style={styles.input}
                               value={schClass}
                               onChange={(e) => setSchClass(e.target.value)}
                             >
@@ -2009,30 +2050,30 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                           </div>
                           <div style={styles.formGroup}>
                             <label style={styles.label}>Ngày học</label>
-                            <input 
-                              type="date" 
-                              required 
-                              style={styles.input} 
+                            <input
+                              type="date"
+                              required
+                              style={styles.input}
                               value={schDate}
                               onChange={(e) => setSchDate(e.target.value)}
                             />
                           </div>
                           <div style={styles.formGroup}>
                             <label style={styles.label}>Phòng học</label>
-                            <input 
-                              type="text" 
-                              required 
-                              style={styles.input} 
+                            <input
+                              type="text"
+                              required
+                              style={styles.input}
                               value={schRoom}
                               onChange={(e) => setSchRoom(e.target.value)}
                             />
                           </div>
                           <div style={styles.formGroup}>
                             <label style={styles.label}>Giờ bắt đầu</label>
-                            <input 
-                              type="time" 
-                              required 
-                              style={styles.input} 
+                            <input
+                              type="time"
+                              required
+                              style={styles.input}
                               value={schTime}
                               onChange={(e) => setSchTime(e.target.value)}
                             />
@@ -2044,7 +2085,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       {/* Right: List of Schedules with Edit / Delete */}
                       <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "12px" }}>
                         <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "10px" }}>Danh sách buổi học hệ thống</span>
-                        
+
                         {schedules.length === 0 ? (
                           <p style={{ fontSize: "0.75rem", color: "#6c8da3" }}>Chưa có buổi học nào.</p>
                         ) : (
@@ -2063,7 +2104,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                                   <tr key={s.schedule_id}>
                                     <td style={styles.td}><strong>#{s.schedule_id}</strong></td>
                                     <td style={styles.td}>
-                                      <strong>{s.class_id}</strong><br/>
+                                      <strong>{s.class_id}</strong><br />
                                       <small style={{ color: "#777" }}>{s.subject_name}</small>
                                     </td>
                                     <td style={styles.td}>
@@ -2075,7 +2116,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                                         </div>
                                       ) : (
                                         <div>
-                                          📅 {s.study_date}<br/>
+                                          📅 {s.study_date}<br />
                                           🚪 {s.room} | ⏰ {s.start_time}
                                         </div>
                                       )}
@@ -2088,19 +2129,19 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                                         </div>
                                       ) : (
                                         <div style={{ display: "flex", gap: "4px" }}>
-                                          <button 
+                                          <button
                                             onClick={() => {
                                               setEditingScheduleId(s.schedule_id);
                                               setEditDate(s.study_date);
                                               setEditRoom(s.room);
                                               setEditTime(s.start_time.substring(0, 5));
-                                            }} 
+                                            }}
                                             style={{ ...styles.btn, padding: "2px 6px", fontSize: "0.7rem", backgroundColor: "#f59e0b" }}
                                           >
                                             Sửa
                                           </button>
-                                          <button 
-                                            onClick={() => handleDeleteSchedule(s.schedule_id)} 
+                                          <button
+                                            onClick={() => handleDeleteSchedule(s.schedule_id)}
                                             style={{ ...styles.btn, padding: "2px 6px", fontSize: "0.7rem", backgroundColor: "#ef4444" }}
                                           >
                                             Xóa
@@ -2127,10 +2168,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       <form onSubmit={handleCreateSubject}>
                         <div style={styles.formGroup}>
                           <label style={styles.label}>Mã môn học</label>
-                          <input 
-                            type="text" 
-                            placeholder="Mã môn (VD: INT1306)" 
-                            required 
+                          <input
+                            type="text"
+                            placeholder="Mã môn (VD: INT1306)"
+                            required
                             style={styles.input}
                             value={subCode}
                             onChange={(e) => setSubCode(e.target.value.toUpperCase())}
@@ -2138,10 +2179,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         </div>
                         <div style={styles.formGroup}>
                           <label style={styles.label}>Tên môn học</label>
-                          <input 
-                            type="text" 
-                            placeholder="Tên môn học" 
-                            required 
+                          <input
+                            type="text"
+                            placeholder="Tên môn học"
+                            required
                             style={styles.input}
                             value={subName}
                             onChange={(e) => setSubName(e.target.value)}
@@ -2157,10 +2198,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       <form onSubmit={handleCreateCreditClass}>
                         <div style={styles.formGroup}>
                           <label style={styles.label}>Mã lớp tín chỉ</label>
-                          <input 
-                            type="text" 
-                            placeholder="Mã lớp (VD: D22CQCNPM02-N)" 
-                            required 
+                          <input
+                            type="text"
+                            placeholder="Mã lớp (VD: D22CQCNPM02-N)"
+                            required
                             style={styles.input}
                             value={ccCode}
                             onChange={(e) => setCcCode(e.target.value.toUpperCase())}
@@ -2168,10 +2209,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         </div>
                         <div style={styles.formGroup}>
                           <label style={styles.label}>Môn học liên kết</label>
-                          <input 
-                            type="text" 
-                            placeholder="Mã môn học liên kết (VD: INT1306)" 
-                            required 
+                          <input
+                            type="text"
+                            placeholder="Mã môn học liên kết (VD: INT1306)"
+                            required
                             style={styles.input}
                             value={ccSub}
                             onChange={(e) => setCcSub(e.target.value.toUpperCase())}
@@ -2179,7 +2220,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         </div>
                         <div style={styles.formGroup}>
                           <label style={styles.label}>Phân công Giảng viên dạy</label>
-                          <select 
+                          <select
                             style={styles.input}
                             value={ccLecturer}
                             onChange={(e) => setCcLecturer(e.target.value)}
@@ -2213,8 +2254,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     <div style={{ display: "flex", gap: "10px", marginBottom: "15px", alignItems: "flex-end" }}>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Mã lớp tín chỉ</label>
-                        <select 
-                          style={{ ...styles.input, width: "220px" }} 
+                        <select
+                          style={{ ...styles.input, width: "220px" }}
                           value={manualClass}
                           onChange={(e) => setManualClass(e.target.value)}
                         >
@@ -2228,14 +2269,14 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       </div>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Mã buổi học</label>
-                        <input 
-                          style={{ ...styles.input, width: "80px" }} 
+                        <input
+                          style={{ ...styles.input, width: "80px" }}
                           value={manualSessionId}
                           onChange={(e) => setManualSessionId(e.target.value)}
                         />
                       </div>
-                      <button 
-                        onClick={fetchManualClassStudents} 
+                      <button
+                        onClick={fetchManualClassStudents}
                         disabled={manualLoading}
                         style={{ ...styles.btn, height: "40px" }}
                       >
@@ -2256,31 +2297,31 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                           {manualClassStudents.map((st) => (
                             <tr key={st.mssv}>
                               <td style={styles.td}>
-                                <strong>{st.ho_ten}</strong><br/>
+                                <strong>{st.ho_ten}</strong><br />
                                 <small style={{ color: "#777" }}>{st.mssv}</small>
                               </td>
                               <td style={styles.td}>{st.lop_base}</td>
                               <td style={styles.td}>
                                 <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-                                  <button 
+                                  <button
                                     onClick={() => handleQuickCheckin(st.mssv, "Đúng giờ")}
                                     style={{ ...styles.btn, padding: "4px 8px", fontSize: "0.75rem", backgroundColor: "#10b981" }}
                                   >
                                     Đúng giờ
                                   </button>
-                                  <button 
+                                  <button
                                     onClick={() => handleQuickCheckin(st.mssv, "Đi muộn")}
                                     style={{ ...styles.btn, padding: "4px 8px", fontSize: "0.75rem", backgroundColor: "#f59e0b" }}
                                   >
                                     Muộn
                                   </button>
-                                  <button 
+                                  <button
                                     onClick={() => handleQuickCheckin(st.mssv, "Có phép")}
                                     style={{ ...styles.btn, padding: "4px 8px", fontSize: "0.75rem", backgroundColor: "#3b82f6" }}
                                   >
                                     Phép
                                   </button>
-                                  <button 
+                                  <button
                                     onClick={() => handleQuickCheckin(st.mssv, "Vắng không phép")}
                                     style={{ ...styles.btn, padding: "4px 8px", fontSize: "0.75rem", backgroundColor: "#ef4444" }}
                                   >
@@ -2304,9 +2345,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                         <div style={styles.formGroup}>
                           <label style={styles.label}>MSSV</label>
-                          <input 
-                            type="text" 
-                            required 
+                          <input
+                            type="text"
+                            required
                             placeholder="MSSV cần điểm danh"
                             style={styles.input}
                             value={manualMssv}
@@ -2315,7 +2356,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         </div>
                         <div style={styles.formGroup}>
                           <label style={styles.label}>Trạng thái</label>
-                          <select 
+                          <select
                             style={styles.input}
                             value={manualStatus}
                             onChange={(e) => setManualStatus(e.target.value)}
@@ -2352,18 +2393,18 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                           {leaveRequests.map((l, i) => (
                             <tr key={i}>
                               <td style={styles.td}>
-                                <strong>{l.ho_ten}</strong><br/>
+                                <strong>{l.ho_ten}</strong><br />
                                 <small style={{ color: "#777" }}>{l.mssv}</small>
                               </td>
                               <td style={styles.td}>
-                                <small>Lớp: {l.ma_lop_tc}</small><br/>
+                                <small>Lớp: {l.ma_lop_tc}</small><br />
                                 <small>Ngày: {l.ngay_hoc}</small>
                               </td>
                               <td style={styles.td}>{l.ly_do}</td>
                               <td style={styles.td}>
-                                <span style={{ 
-                                  padding: "3px 6px", 
-                                  borderRadius: "4px", 
+                                <span style={{
+                                  padding: "3px 6px",
+                                  borderRadius: "4px",
                                   fontSize: "0.75rem",
                                   backgroundColor: l.trang_thai === 'Approved' ? "#e6f8f0" : l.trang_thai === 'Pending' ? "#fff7e6" : "#fdf0f0",
                                   color: l.trang_thai === 'Approved' ? "#10b981" : l.trang_thai === 'Pending' ? "#d48806" : "#ef4444"
@@ -2374,14 +2415,14 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                               <td style={styles.td}>
                                 {l.trang_thai === 'Pending' && (
                                   <div style={{ display: "flex", gap: "5px" }}>
-                                    <button 
-                                      onClick={() => handleApproveLeave(l.id)} 
+                                    <button
+                                      onClick={() => handleApproveLeave(l.id)}
                                       style={{ ...styles.btn, padding: "3px 6px", fontSize: "0.7rem", backgroundColor: "#10b981" }}
                                     >
                                       Duyệt
                                     </button>
-                                    <button 
-                                      onClick={() => handleRejectLeave(l.id)} 
+                                    <button
+                                      onClick={() => handleRejectLeave(l.id)}
                                       style={{ ...styles.btn, padding: "3px 6px", fontSize: "0.7rem", backgroundColor: "#ef4444" }}
                                     >
                                       Hủy
@@ -2403,7 +2444,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     <div style={{ display: "flex", gap: "10px", marginBottom: "15px", alignItems: "flex-end" }}>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Chọn lớp tín chỉ giảng dạy</label>
-                        <select 
+                        <select
                           style={{ ...styles.input, width: "250px" }}
                           value={reportClass}
                           onChange={(e) => setReportClass(e.target.value)}
@@ -2518,9 +2559,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Nộp đơn xin phép nghỉ buổi học</h4>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Mã buổi học nghỉ phép</label>
-                      <input 
-                        type="number" 
-                        required 
+                      <input
+                        type="number"
+                        required
                         placeholder="Mã số buổi học trong lịch học (ví dụ: 1)"
                         style={styles.input}
                         value={leaveSessionId}
@@ -2529,8 +2570,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Lý do xin nghỉ</label>
-                      <textarea 
-                        required 
+                      <textarea
+                        required
                         rows={3}
                         placeholder="Nêu rõ lý do (VD: Bị ốm có giấy ra viện, Lý do gia đình...)"
                         style={{ ...styles.input, resize: "none" }}
@@ -2540,8 +2581,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Minh chứng đính kèm</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         style={styles.input}
                         value={leaveProof}
                         onChange={(e) => setLeaveProof(e.target.value)}
@@ -2557,23 +2598,23 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     <p style={{ fontSize: "0.75rem", color: "#6c8da3", lineHeight: "1.35", margin: "0 0 12px 0" }}>
                       Sinh viên được phép cập nhật sinh trắc học mới 6 tháng một lần để đảm bảo độ chính xác nhận dạng đạt ≥99.2%. Ảnh tải lên sẽ cần được Phòng Đào tạo duyệt hậu kiểm trước khi kích hoạt.
                     </p>
-                    
+
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Chọn ảnh chân dung Face ID mới</label>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        id="refresh-biometric-file" 
+                      <input
+                        type="file"
+                        accept="image/*"
+                        id="refresh-biometric-file"
                         style={{ display: "none" }}
                         onChange={(e) => {
-                          if(e.target.files.length > 0) {
+                          if (e.target.files.length > 0) {
                             setRegPhoto(e.target.files[0]);
                             setRegPhotoName(e.target.files[0].name);
                           }
                         }}
                       />
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         style={{ ...styles.btn, ...styles.btnSecondary, padding: "8px 14px", fontSize: "0.8rem" }}
                         onClick={() => document.getElementById("refresh-biometric-file").click()}
                       >
@@ -2585,7 +2626,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         </div>
                       )}
                     </div>
-                    
+
                     <button type="submit" style={{ ...styles.btn, width: "100%", marginTop: "10px" }}>Yêu cầu cập nhật Face ID</button>
                   </form>
                 )}
@@ -2610,16 +2651,16 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                             <tr key={i}>
                               <td style={styles.td}>{c.class_id}</td>
                               <td style={styles.td}>
-                                <strong>{c.subject_name}</strong><br/>
+                                <strong>{c.subject_name}</strong><br />
                                 <small style={{ color: "#777" }}>{c.subject_id}</small>
                               </td>
                               <td style={styles.td}>
                                 <strong>{c.attended_sessions}</strong> / {c.total_sessions} buổi
                               </td>
                               <td style={styles.td}>
-                                <span style={{ 
-                                  padding: "3px 6px", 
-                                  borderRadius: "4px", 
+                                <span style={{
+                                  padding: "3px 6px",
+                                  borderRadius: "4px",
                                   fontSize: "0.75rem",
                                   backgroundColor: c.status === 'Active' ? "#e6f8f0" : "#fdf0f0",
                                   color: c.status === 'Active' ? "#10b981" : "#ef4444",
@@ -2640,13 +2681,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid #e2edf5", paddingBottom: "6px" }}>
                           <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: 0 }}>Thời khóa biểu học tập của tôi</h4>
                           <div style={{ display: "flex", gap: "6px" }}>
-                            <button 
+                            <button
                               type="button"
                               onClick={() => setScheduleViewMode('grid')}
-                              style={{ 
-                                ...styles.btn, 
-                                padding: "4px 8px", 
-                                fontSize: "0.7rem", 
+                              style={{
+                                ...styles.btn,
+                                padding: "4px 8px",
+                                fontSize: "0.7rem",
                                 backgroundColor: scheduleViewMode === 'grid' ? "#106fa6" : "#ffffff",
                                 color: scheduleViewMode === 'grid' ? "#ffffff" : "#475569",
                                 border: "1px solid #cbd5e1"
@@ -2654,13 +2695,13 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                             >
                               📅 Dạng Lịch Tuần
                             </button>
-                            <button 
+                            <button
                               type="button"
                               onClick={() => setScheduleViewMode('list')}
-                              style={{ 
-                                ...styles.btn, 
-                                padding: "4px 8px", 
-                                fontSize: "0.7rem", 
+                              style={{
+                                ...styles.btn,
+                                padding: "4px 8px",
+                                fontSize: "0.7rem",
                                 backgroundColor: scheduleViewMode === 'list' ? "#106fa6" : "#ffffff",
                                 color: scheduleViewMode === 'list' ? "#ffffff" : "#475569",
                                 border: "1px solid #cbd5e1"
@@ -2674,11 +2715,11 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                         {(() => {
                           const myClassIds = (studentClasses || []).map(c => c ? c.class_id : "");
                           const mySchedules = (schedules || []).filter(s => s && myClassIds.includes(s.class_id));
-                          
+
                           if (mySchedules.length === 0) {
                             return <p style={{ fontSize: "0.8rem", color: "#6c8da3", padding: "10px", background: "#f8fbfd", borderRadius: "6px", border: "1px solid #eef2f6" }}>Chưa xếp lịch học cụ thể cho các môn học này.</p>;
                           }
-                          
+
                           if (scheduleViewMode === 'list') {
                             return (
                               <table style={styles.table}>
@@ -2692,38 +2733,45 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                                   </tr>
                                 </thead>
                                 <tbody>
-                                    {mySchedules.map((s, idx) => (
-                                      <tr key={idx}>
-                                        <td style={styles.td}><strong>{s.subject_name || "N/A"}</strong></td>
-                                        <td style={styles.td}>{s.class_id || "N/A"}</td>
-                                        <td style={styles.td}>{s.study_date || "N/A"}</td>
-                                        <td style={styles.td}>{s.start_time ? s.start_time.substring(0, 5) : "N/A"}</td>
-                                        <td style={styles.td}>
-                                          <span style={{ 
-                                            padding: "3px 6px", 
-                                            borderRadius: "4px", 
-                                            backgroundColor: "#f0f9ff", 
-                                            color: "#0369a1", 
-                                            fontWeight: "600",
-                                            fontSize: "0.75rem"
-                                          }}>
-                                            🚪 {s.room || "N/A"}
-                                          </span>
-                                        </td>
-                                      </tr>
-                                    ))}
+                                  {mySchedules.map((s, idx) => (
+                                    <tr key={idx}>
+                                      <td style={styles.td}><strong>{s.subject_name || "N/A"}</strong></td>
+                                      <td style={styles.td}>{s.class_id || "N/A"}</td>
+                                      <td style={styles.td}>{s.study_date || "N/A"}</td>
+                                      <td style={styles.td}>{s.start_time ? s.start_time.substring(0, 5) : "N/A"}</td>
+                                      <td style={styles.td}>
+                                        <span style={{
+                                          padding: "3px 6px",
+                                          borderRadius: "4px",
+                                          backgroundColor: "#f0f9ff",
+                                          color: "#0369a1",
+                                          fontWeight: "600",
+                                          fontSize: "0.75rem"
+                                        }}>
+                                          🚪 {s.room || "N/A"}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
                                 </tbody>
                               </table>
                             );
                           }
 
                           // Grid Mode: Group by day of week
+                          const daysOfWeek = getDaysOfWeek(selectedWeekStart);
+
+                          // Filter schedules that fall within the selected week (Monday to Sunday)
+                          const weekSchedules = mySchedules.filter(s => {
+                            return s.study_date >= selectedWeekStart && s.study_date <= daysOfWeek[6].dateStr;
+                          });
+
                           const weekdays = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"];
                           const groupedSchedules = {
                             "Thứ 2": [], "Thứ 3": [], "Thứ 4": [], "Thứ 5": [], "Thứ 6": [], "Thứ 7": [], "Chủ Nhật": []
                           };
 
-                          mySchedules.forEach(s => {
+                          weekSchedules.forEach(s => {
                             const dateObj = new Date(s.study_date);
                             const day = dateObj.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
                             const dayLabel = day === 0 ? "Chủ Nhật" : `Thứ ${day + 1}`;
@@ -2732,66 +2780,142 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                             }
                           });
 
+                          const handlePrevWeek = () => {
+                            const prev = new Date(selectedWeekStart);
+                            prev.setDate(prev.getDate() - 7);
+                            setSelectedWeekStart(prev.toISOString().split('T')[0]);
+                          };
+
+                          const handleNextWeek = () => {
+                            const next = new Date(selectedWeekStart);
+                            next.setDate(next.getDate() + 7);
+                            setSelectedWeekStart(next.toISOString().split('T')[0]);
+                          };
+
                           return (
-                            <div style={{ 
-                              display: "grid", 
-                              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", 
-                              gap: "10px", 
-                              marginTop: "10px" 
-                            }}>
-                              {weekdays.map(day => (
-                                <div key={day} style={{ 
-                                  background: "#f8fbfd", 
-                                  border: "1px solid #e2edf5", 
-                                  borderRadius: "6px", 
-                                  padding: "8px",
-                                  minHeight: "150px"
-                                }}>
-                                  <div style={{ 
-                                    fontSize: "0.72rem", 
-                                    fontWeight: "bold", 
-                                    color: "#1e293b", 
-                                    textAlign: "center", 
-                                    borderBottom: "2px solid #106fa6", 
-                                    paddingBottom: "4px", 
-                                    marginBottom: "8px" 
-                                  }}>
-                                    {day}
-                                  </div>
-                                  
-                                  {groupedSchedules[day].length === 0 ? (
-                                    <div style={{ 
-                                      fontSize: "0.7rem", 
-                                      color: "#94a3b8", 
-                                      textAlign: "center", 
-                                      marginTop: "20px" 
+                            <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "10px" }}>
+                              {/* Week Selector UI */}
+                              <div style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "12px",
+                                background: "#ffffff",
+                                padding: "10px 18px",
+                                borderRadius: "8px",
+                                boxShadow: "0 2px 8px rgba(16, 111, 166, 0.08)",
+                                border: "1px solid #d0e0eb",
+                                width: "fit-content",
+                                alignSelf: "center"
+                              }}>
+                                <button
+                                  type="button"
+                                  onClick={handlePrevWeek}
+                                  style={{
+                                    background: "#1d92d1",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    padding: "6px 14px",
+                                    cursor: "pointer",
+                                    fontSize: "0.78rem",
+                                    fontWeight: "600",
+                                    transition: "background-color 0.2s"
+                                  }}
+                                  onMouseOver={(e) => e.target.style.backgroundColor = "#106fa6"}
+                                  onMouseOut={(e) => e.target.style.backgroundColor = "#1d92d1"}
+                                >
+                                  ◀ Tuần trước
+                                </button>
+                                <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#1e293b", minWidth: "180px", textAlign: "center" }}>
+                                  📅 {formatDate(selectedWeekStart)} - {formatDate(daysOfWeek[6].dateStr)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={handleNextWeek}
+                                  style={{
+                                    background: "#1d92d1",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    padding: "6px 14px",
+                                    cursor: "pointer",
+                                    fontSize: "0.78rem",
+                                    fontWeight: "600",
+                                    transition: "background-color 0.2s"
+                                  }}
+                                  onMouseOver={(e) => e.target.style.backgroundColor = "#106fa6"}
+                                  onMouseOut={(e) => e.target.style.backgroundColor = "#1d92d1"}
+                                >
+                                  Tuần sau ▶
+                                </button>
+                              </div>
+
+                              <div style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+                                gap: "10px"
+                              }}>
+                                {weekdays.map(day => {
+                                  const dayInfo = daysOfWeek.find(d => d.label === day);
+                                  return (
+                                    <div key={day} style={{
+                                      background: "#f8fbfd",
+                                      border: "1px solid #e2edf5",
+                                      borderRadius: "6px",
+                                      padding: "8px",
+                                      minHeight: "150px"
                                     }}>
-                                      Trống
-                                    </div>
-                                  ) : (
-                                    groupedSchedules[day].sort((a,b) => (a.start_time || "").localeCompare(b.start_time || "")).map((s, idx) => (
-                                      <div key={idx} style={{ 
-                                        background: "#ffffff", 
-                                        borderLeft: "3px solid #0284c7", 
-                                        borderRadius: "4px", 
-                                        padding: "6px", 
-                                        marginBottom: "6px",
-                                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                                      <div style={{
+                                        fontSize: "0.72rem",
+                                        fontWeight: "bold",
+                                        color: "#1e293b",
+                                        textAlign: "center",
+                                        borderBottom: "2px solid #106fa6",
+                                        paddingBottom: "4px",
+                                        marginBottom: "8px"
                                       }}>
-                                        <div style={{ fontSize: "0.7rem", fontWeight: "bold", color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={s.subject_name || ""}>
-                                          {s.subject_name || "N/A"}
-                                        </div>
-                                        <div style={{ fontSize: "0.62rem", color: "#64748b", margin: "2px 0" }}>
-                                          🕒 {s.start_time ? s.start_time.substring(0, 5) : "N/A"}
-                                        </div>
-                                        <div style={{ fontSize: "0.62rem", fontWeight: "600", color: "#0369a1" }}>
-                                          🚪 {s.room || "N/A"}
+                                        <div>{day}</div>
+                                        <div style={{ fontSize: "0.6rem", color: "#64748b", fontWeight: "normal", marginTop: "2px" }}>
+                                          {dayInfo ? dayInfo.displayDate : ""}
                                         </div>
                                       </div>
-                                    ))
-                                  )}
-                                </div>
-                              ))}
+
+                                      {groupedSchedules[day].length === 0 ? (
+                                        <div style={{
+                                          fontSize: "0.7rem",
+                                          color: "#94a3b8",
+                                          textAlign: "center",
+                                          marginTop: "20px"
+                                        }}>
+                                          Trống
+                                        </div>
+                                      ) : (
+                                        groupedSchedules[day].sort((a, b) => (a.start_time || "").localeCompare(b.start_time || "")).map((s, idx) => (
+                                          <div key={idx} style={{
+                                            background: "#ffffff",
+                                            borderLeft: "3px solid #0284c7",
+                                            borderRadius: "4px",
+                                            padding: "6px",
+                                            marginBottom: "6px",
+                                            boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                                          }}>
+                                            <div style={{ fontSize: "0.7rem", fontWeight: "bold", color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={s.subject_name || ""}>
+                                              {s.subject_name || "N/A"}
+                                            </div>
+                                            <div style={{ fontSize: "0.62rem", color: "#64748b", margin: "2px 0" }}>
+                                              🕒 {s.start_time ? s.start_time.substring(0, 5) : "N/A"}
+                                            </div>
+                                            <div style={{ fontSize: "0.62rem", fontWeight: "600", color: "#0369a1" }}>
+                                              🚪 {s.room || "N/A"}
+                                            </div>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           );
                         })()}
@@ -2824,16 +2948,16 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                               <tr key={i}>
                                 <td style={styles.td}><strong>{c.class_id}</strong></td>
                                 <td style={styles.td}>
-                                  <strong>{c.subject_name}</strong><br/>
+                                  <strong>{c.subject_name}</strong><br />
                                   <small style={{ color: "#777" }}>{c.subject_id}</small>
                                 </td>
                                 <td style={styles.td}>
                                   <strong>{c.attended_sessions}</strong> / {c.total_sessions} buổi
                                 </td>
                                 <td style={styles.td}>
-                                  <span style={{ 
-                                    padding: "3px 6px", 
-                                    borderRadius: "4px", 
+                                  <span style={{
+                                    padding: "3px 6px",
+                                    borderRadius: "4px",
                                     fontSize: "0.75rem",
                                     backgroundColor: c.status === 'Active' ? "#e6f8f0" : "#fdf0f0",
                                     color: c.status === 'Active' ? "#10b981" : "#ef4444",
@@ -2873,7 +2997,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                                 <td style={styles.td}>{c.subject_name}</td>
                                 <td style={styles.td}>{c.subject_id}</td>
                                 <td style={styles.td}>
-                                  <button 
+                                  <button
                                     onClick={() => handleRegisterCourse(c.class_id)}
                                     style={{ ...styles.btn, padding: "4px 10px", fontSize: "0.75rem" }}
                                   >

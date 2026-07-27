@@ -171,20 +171,25 @@ def record_attendance_sqlalchemy(db: Session, mssv: str, ma_buoi_hoc: int = None
         # Giữ nguyên kết quả điểm danh ban đầu (không tạo bản ghi mới, không bị đổi từ Đúng giờ thành Đi muộn)
         return True, existing_att.status, sv_dict
 
-    # Đánh giá thời gian vào lớp (Muộn hay Đúng giờ) cho lần quét đầu tiên
+    # Đánh giá thời gian vào lớp (Đúng giờ, Đi muộn, hay Vắng không phép) cho lần quét đầu tiên
     try:
         clean_start = gio_bat_dau_str.strip()
         if len(clean_start) == 5:
             clean_start += ":00"
-        start_time_only = datetime.strptime(clean_start, "%H:%M:%S").time()
-        current_time_only = now.time()
         
-        if current_time_only <= start_time_only:
+        # Xác định mốc thời gian của buổi học
+        study_date_str = session["ngay_hoc"]
+        start_datetime = datetime.strptime(f"{study_date_str} {clean_start}", "%Y-%m-%d %H:%M:%S")
+        end_datetime = start_datetime + timedelta(hours=3)  # Mỗi ca học/buổi học mặc định kéo dài 3 tiếng
+        
+        if now <= start_datetime:
             trang_thai = "Đúng giờ"
-        else:
+        elif start_datetime < now <= end_datetime:
             trang_thai = "Đi muộn"
+        else:
+            trang_thai = "Vắng không phép"
     except Exception as e:
-        print(f"Loi so sanh gio hoc: {e}")
+        print(f"Lỗi so sánh giờ học: {e}")
         trang_thai = "Đúng giờ"
 
     # Kiểm tra cooldown

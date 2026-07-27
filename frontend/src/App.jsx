@@ -117,7 +117,18 @@ function App() {
       const res = await fetch(`${API_BASE}/api/admin/students/${mssv}`);
       if (res.ok) {
         const data = await res.json();
-        setStudentProfile(data);
+        const mapped = {
+          mssv: data.student_id,
+          ho_ten: data.full_name,
+          lop_base: data.administrative_class || 'N/A',
+          email: data.email,
+          sdt: data.phone_number || 'N/A',
+          ngay_sinh: 'N/A',
+          gioi_tinh: 'N/A',
+          noi_sinh: 'N/A',
+          dia_chi: 'N/A'
+        };
+        setStudentProfile(mapped);
       }
     } catch (e) {
       console.error("Lỗi khi tải thông tin sinh viên:", e);

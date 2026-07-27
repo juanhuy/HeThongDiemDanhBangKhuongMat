@@ -217,6 +217,23 @@ def add_schedule(
                 detail=f"Trùng lịch: Phòng {phong_hoc.strip()} đã có lớp {conflict_class_id} học lúc {conflict_time_str} cùng ngày."
             )
 
+    # Kiểm tra trùng lịch giảng viên (thời lượng lệch dưới 3 tiếng)
+    if cc.lecturer_id:
+        lecturer_conflicts = db.query(ClassSchedule).join(CreditClass).filter(
+            CreditClass.lecturer_id == cc.lecturer_id,
+            ClassSchedule.study_date == dt_date,
+            ClassSchedule.class_id != ma_lop_tc.strip()
+        ).all()
+        for lc in lecturer_conflicts:
+            lc_seconds = lc.start_time.hour * 3600 + lc.start_time.minute * 60 + lc.start_time.second
+            new_seconds = dt_time.hour * 3600 + dt_time.minute * 60 + dt_time.second
+            if abs(lc_seconds - new_seconds) < 10800:
+                conflict_time_str = lc.start_time.strftime("%H:%M")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Trùng lịch giảng viên: Giảng viên phụ trách đã có lịch dạy lớp {lc.class_id} lúc {conflict_time_str} cùng ngày."
+                )
+
     sched = ClassSchedule(
         class_id=ma_lop_tc.strip(),
         study_date=dt_date,
@@ -333,14 +350,56 @@ def update_schedule(
         sched = db.query(ClassSchedule).filter(ClassSchedule.schedule_id == schedule_id).first()
         if not sched:
             raise HTTPException(status_code=404, detail="Không tìm thấy lịch học")
-        sched.study_date = datetime.strptime(study_date, "%Y-%m-%d").date()
-        sched.room = room
-        # support both HH:MM and HH:MM:SS formats
-        time_parts = [int(p) for p in start_time.split(":")]
-        if len(time_parts) >= 2:
-            sched.start_time = datetime.strptime(start_time[:5], "%H:%M").time()
+            
+        dt_date = datetime.strptime(study_date.strip(), "%Y-%m-%d").date()
+        
+        # Hỗ trợ định dạng cả HH:MM và HH:MM:SS
+        time_str = start_time.strip()
+        if len(time_str) == 5:
+            time_str += ":00"
+        dt_time = datetime.strptime(time_str, "%H:%M:%S").time()
+        
+        # 1. Kiểm tra trùng lịch phòng học (loại trừ chính bản ghi schedule_id này)
+        room_conflicts = db.query(ClassSchedule).filter(
+            ClassSchedule.room == room.strip(),
+            ClassSchedule.study_date == dt_date,
+            ClassSchedule.schedule_id != schedule_id
+        ).all()
+        
+        new_seconds = dt_time.hour * 3600 + dt_time.minute * 60 + dt_time.second
+        for c in room_conflicts:
+            c_seconds = c.start_time.hour * 3600 + c.start_time.minute * 60 + c.start_time.second
+            if abs(c_seconds - new_seconds) < 10800:
+                conflict_class_id = c.class_id
+                conflict_time_str = c.start_time.strftime("%H:%M")
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Trùng lịch: Phòng {room.strip()} đã có lớp {conflict_class_id} học lúc {conflict_time_str} cùng ngày."
+                )
+
+        # 2. Kiểm tra trùng lịch giảng viên (loại trừ chính bản ghi schedule_id này)
+        if sched.credit_class and sched.credit_class.lecturer_id:
+            lecturer_conflicts = db.query(ClassSchedule).join(CreditClass).filter(
+                CreditClass.lecturer_id == sched.credit_class.lecturer_id,
+                ClassSchedule.study_date == dt_date,
+                ClassSchedule.schedule_id != schedule_id
+            ).all()
+            for lc in lecturer_conflicts:
+                lc_seconds = lc.start_time.hour * 3600 + lc.start_time.minute * 60 + lc.start_time.second
+                if abs(lc_seconds - new_seconds) < 10800:
+                    conflict_time_str = lc.start_time.strftime("%H:%M")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Trùng lịch giảng viên: Giảng viên phụ trách đã có lịch dạy lớp {lc.class_id} lúc {conflict_time_str} cùng ngày."
+                    )
+                    
+        sched.study_date = dt_date
+        sched.room = room.strip()
+        sched.start_time = dt_time
         db.commit()
         return {"status": "success", "message": "Cập nhật lịch học thành công"}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
