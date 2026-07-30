@@ -142,10 +142,12 @@ class DatabaseService:
                         vector_bytes = face_vector.tobytes()
                     else:
                         vector_bytes = face_vector
+                    from core.crypto_utils import encrypt_vector
+                    encrypted_bytes = encrypt_vector(vector_bytes)
                     cursor.execute("""
                         INSERT INTO face_features (student_id, face_vector, is_primary)
                         VALUES (%s, %s, True)
-                    """, (mssv, vector_bytes))
+                    """, (mssv, encrypted_bytes))
             conn.commit()
             return True
         except Exception as e:
@@ -169,7 +171,12 @@ class DatabaseService:
                 if row:
                     face_vector = None
                     if row[4]:
-                        face_vector = np.frombuffer(row[4], dtype=np.float32)
+                        from core.crypto_utils import decrypt_vector
+                        try:
+                            decrypted = decrypt_vector(row[4])
+                            face_vector = np.frombuffer(decrypted, dtype=np.float32)
+                        except Exception:
+                            face_vector = np.frombuffer(row[4], dtype=np.float32)
                     return {
                         "mssv": mssv,
                         "ho_ten": row[0],
@@ -208,7 +215,12 @@ class DatabaseService:
                 for r in rows:
                     face_vector = None
                     if r[3]:
-                        face_vector = np.frombuffer(r[3], dtype=np.float32)
+                        from core.crypto_utils import decrypt_vector
+                        try:
+                            decrypted = decrypt_vector(r[3])
+                            face_vector = np.frombuffer(decrypted, dtype=np.float32)
+                        except Exception:
+                            face_vector = np.frombuffer(r[3], dtype=np.float32)
                     result.append({
                         "mssv": r[0],
                         "ho_ten": r[1],

@@ -253,7 +253,7 @@ def get_attendance_history(db: Session = Depends(get_db)):
             logs.append({
                 "id": r.attendance_id,
                 "mssv": r.student_id,
-                "fullname": r.student.full_name if r.student else "N/A",
+                "fullname": r.student.profile.full_name if (r.student and r.student.profile) else "N/A",
                 "lop_base": r.student.administrative_class if r.student else "N/A",
                 "ma_buoi_hoc": r.schedule_id,
                 "timestamp": r.check_in_time.strftime("%Y-%m-%d %H:%M:%S") if r.check_in_time else "N/A",
@@ -480,7 +480,7 @@ def get_class_attendance_report(ma_lop_tc: str, db: Session = Depends(get_db)):
             
             report.append({
                 "mssv": student.student_id,
-                "ho_ten": student.full_name,
+                "ho_ten": student.profile.full_name if student.profile else "N/A",
                 "lop_base": student.administrative_class or "N/A",
                 "di_muon": di_muon,
                 "vang_kp": vang_kp,
@@ -561,7 +561,7 @@ def export_class_attendance_report(ma_lop_tc: str, db: Session = Depends(get_db)
             
             report_data.append({
                 "MSSV": student.student_id,
-                "Họ và Tên": student.full_name,
+                "Họ và Tên": student.profile.full_name if student.profile else "N/A",
                 "Lớp hành chính": student.administrative_class or "N/A",
                 "Đi muộn": di_muon,
                 "Vắng không phép": vang_kp,
@@ -679,7 +679,7 @@ def get_teacher_leave_requests(lecturer_id: Optional[str] = None, db: Session = 
                 {
                     "id": r.request_id,
                     "mssv": r.student_id,
-                    "ho_ten": r.student.full_name if r.student else "N/A",
+                    "ho_ten": r.student.profile.full_name if (r.student and r.student.profile) else "N/A",
                     "ma_lop_tc": r.schedule.class_id if r.schedule else "N/A",
                     "ngay_hoc": str(r.schedule.study_date) if r.schedule else "N/A",
                     "ly_do": r.reason,

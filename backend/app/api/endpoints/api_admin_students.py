@@ -125,9 +125,9 @@ def delete_existing_student(student_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
     
     # Xoá tài khoản (account) liên kết nếu có
-    if db_student.account_id:
+    if db_student.profile and db_student.profile.account_id:
         from app.models.account import Account
-        account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
+        account = db.query(Account).filter(Account.account_id == db_student.profile.account_id).first()
         if account:
             db.delete(account)
             

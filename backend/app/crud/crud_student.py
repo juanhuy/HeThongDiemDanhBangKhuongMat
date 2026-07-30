@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.student import Student
+from app.models.student import Student, UserProfile
 from app.models.account import Account
 from app.schemas.student import StudentCreate, StudentUpdate
 from sqlalchemy import or_
@@ -17,9 +17,10 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
         query = query.join(StudentClassEnrollment).join(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip())
         
     if search:
-        # Tìm kiếm theo tên hoặc MSSV
-        query = query.filter(or_(
-            Student.full_name.ilike(f"%{search}%"),
+        # Tìm kiếm theo tên (trong UserProfile) hoặc MSSV
+        from app.models.student import UserProfile
+        query = query.join(UserProfile).filter(or_(
+            UserProfile.full_name.ilike(f"%{search}%"),
             Student.student_id.ilike(f"%{search}%")
         ))
     if status:
@@ -43,15 +44,28 @@ def create_student(db: Session, student: StudentCreate):
         is_active=True
     )
     db.add(new_account)
-    db.flush() # flush() sẽ đẩy dữ liệu xuống DB để lấy account_id tự tăng mà chưa commit
+    db.flush()
     
-    # Bước 2: Tạo hồ sơ Sinh viên (Student) với account_id vừa lấy được
-    student_data = student.model_dump() # Nếu dùng Pydantic v1 thì dùng student.dict()
-    db_student = Student(**student_data, account_id=new_account.account_id)
+    # Tạo UserProfile liên kết
+    profile = UserProfile(
+        account_id=new_account.account_id,
+        full_name=student.full_name,
+        personal_email=student.email,
+        phone_number=student.phone_number
+    )
+    db.add(profile)
+    db.flush()
     
+    db_student = Student(
+        student_id=student.student_id.strip().upper(),
+        profile_id=profile.profile_id,
+        administrative_class=student.administrative_class,
+        major=student.major,
+        cohort=student.cohort,
+        training_program=student.training_program,
+        academic_status=student.academic_status or "Đang học"
+    )
     db.add(db_student)
-    
-    # Bước 3: Lưu toàn bộ (Commit Transaction)
     db.commit()
     db.refresh(db_student)
     
@@ -60,21 +74,36 @@ def create_student(db: Session, student: StudentCreate):
 def update_student(db: Session, db_student: Student, student_update: StudentUpdate):
     update_data = student_update.model_dump(exclude_unset=True)
     
-    # Cập nhật thông tin sinh viên
+    # Cập nhật thông tin sinh viên và hồ sơ cá nhân
     for key, value in update_data.items():
-        setattr(db_student, key, value)
+        if key in ["full_name", "email", "phone_number"]:
+            if not db_student.profile:
+                profile = UserProfile(
+                    account_id=None,
+                    full_name="",
+                )
+                db.add(profile)
+                db.flush()
+                db_student.profile_id = profile.profile_id
+            
+            if key == "full_name":
+                db_student.profile.full_name = value
+            elif key == "email":
+                db_student.profile.personal_email = value
+            elif key == "phone_number":
+                db_student.profile.phone_number = value
+        else:
+            setattr(db_student, key, value)
         
     # Logic nghiệp vụ: Khóa tài khoản nếu trạng thái là graduated hoặc dropped_out
     if "academic_status" in update_data:
         new_status = update_data["academic_status"]
-        if new_status in ["graduated", "dropped_out"]:
-            account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
-            if account:
-                account.is_active = False
-        elif new_status == "studying":
-            account = db.query(Account).filter(Account.account_id == db_student.account_id).first()
-            if account:
-                account.is_active = True
+        if new_status in ["graduated", "dropped_out", "Thôi học", "Tốt nghiệp"]:
+            if db_student.profile and db_student.profile.account:
+                db_student.profile.account.is_active = False
+        elif new_status in ["studying", "Đang học"]:
+            if db_student.profile and db_student.profile.account:
+                db_student.profile.account.is_active = True
                 
     db.add(db_student)
     db.commit()

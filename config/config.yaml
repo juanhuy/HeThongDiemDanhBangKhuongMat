@@ -17,6 +17,7 @@ database:
   password: "19082004"
   db_name: "ptit_diem_danh"
   images_dir: "./database/registered_images"
+  encryption_key: "j9z1S0Hpx3D5D-zD5vQo_N_T5yP6yS1z4aB8c7D9eFg="
 
 attendance:
   cooldown_seconds: 30

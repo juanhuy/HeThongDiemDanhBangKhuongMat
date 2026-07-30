@@ -41,3 +41,15 @@ class Student(Base):
     academic_status = Column(String(50), default="Đang học")
 
     profile = relationship("UserProfile", back_populates="student_info")
+
+    @property
+    def full_name(self):
+        return self.profile.full_name if self.profile else "N/A"
+
+    @property
+    def email(self):
+        return self.profile.personal_email if self.profile else None
+
+    @property
+    def phone_number(self):
+        return self.profile.phone_number if self.profile else None

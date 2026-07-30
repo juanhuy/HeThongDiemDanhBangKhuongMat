@@ -56,6 +56,8 @@ def record_attendance_sqlalchemy(db: Session, mssv: str, ma_buoi_hoc: int = None
     """
     Quy trình điểm danh tự động 6 bước sử dụng SQLAlchemy
     """
+    if mssv == "Spoof/Fake":
+        return False, "Phát hiện giả mạo khuôn mặt!", None
     if mssv == "Unknown":
         return False, "Người lạ/Chưa đăng ký mặt.", None
 

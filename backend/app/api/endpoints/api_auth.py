@@ -23,7 +23,8 @@ def login(username: str = Form(...), password: str = Form(...), db: Session = De
     student_info = None
     lecturer_info = None
     if account.role in ["sinh_vien", "student"]:
-        student = db.query(Student).filter(Student.account_id == account.account_id).first()
+        from app.models.student import UserProfile
+        student = db.query(Student).join(UserProfile).filter(UserProfile.account_id == account.account_id).first()
         if student:
             student_info = student
     elif account.role in ["giang_vien", "lecturer"]:
@@ -67,7 +68,17 @@ def register(username: str = Form(...), password: str = Form(...), mssv: str = F
     db.refresh(new_account)
     
     if student:
-        student.account_id = new_account.account_id
+        if not student.profile:
+            from app.models.student import UserProfile
+            profile = UserProfile(
+                account_id=new_account.account_id,
+                full_name=student.student_id
+            )
+            db.add(profile)
+            db.flush()
+            student.profile_id = profile.profile_id
+        else:
+            student.profile.account_id = new_account.account_id
         db.commit()
         
     return {"status": "success", "message": f"Tai khoan {username} da duoc tao."}
