@@ -365,6 +365,11 @@ class FaceAnalyzer:
             x1, y1 = int(bbox[0]), int(bbox[1])
             x2, y2 = int(bbox[2]), int(bbox[3])
             
+            # Khởi tạo giá trị mặc định cho mỗi khuôn mặt
+            best_name = "Unknown"
+            best_score = -1.0
+            is_known = False
+            
             # Kiểm tra Liveness (chống giả mạo)
             is_real, liveness_score = self.liveness_detector.is_real_face(img, bbox)
             
@@ -376,7 +381,7 @@ class FaceAnalyzer:
             else:
                 if self.index is not None and len(self.known_embeddings) > 0:
                     import faiss
-                    query_vector = np.array([current_embedding]).astype('float32')
+                    query_vector = np.array([face.normed_embedding]).astype('float32')
                     faiss.normalize_L2(query_vector)
                     scores, indices = self.index.search(query_vector, 1)
                     best_idx = indices[0][0]

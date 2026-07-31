@@ -119,24 +119,38 @@ class DatabaseService:
                     """, (username_lower, pw_hash))
                     account_id = cursor.lastrowid
 
-                # 1. Thêm hoặc cập nhật bảng students (bao gồm account_id)
+                # 1. Thêm hoặc cập nhật bảng user_profiles
                 email_val = email or f"{mssv}@student.ptit.edu.vn"
-                cursor.execute("""
-                    INSERT INTO students (
-                        student_id, account_id, full_name, email, phone_number, administrative_class, academic_status
-                    ) VALUES (%s, %s, %s, %s, %s, %s, 'studying')
-                    ON DUPLICATE KEY UPDATE 
-                        account_id=COALESCE(students.account_id, VALUES(account_id)),
-                        full_name=VALUES(full_name), 
-                        administrative_class=VALUES(administrative_class),
-                        phone_number=VALUES(phone_number),
-                        email=VALUES(email)
-                """, (mssv, account_id, ho_ten, email_val, sdt, lop_base))
+                cursor.execute("SELECT profile_id FROM user_profiles WHERE account_id = %s", (account_id,))
+                profile_row = cursor.fetchone()
                 
-                # 2. Xóa các đặc trưng khuôn mặt cũ của sinh viên này
+                if profile_row:
+                    profile_id = profile_row[0]
+                    cursor.execute("""
+                        UPDATE user_profiles 
+                        SET full_name = %s, phone_number = %s, personal_email = %s
+                        WHERE profile_id = %s
+                    """, (ho_ten, sdt, email_val, profile_id))
+                else:
+                    cursor.execute("""
+                        INSERT INTO user_profiles (account_id, full_name, phone_number, personal_email)
+                        VALUES (%s, %s, %s, %s)
+                    """, (account_id, ho_ten, sdt, email_val))
+                    profile_id = cursor.lastrowid
+
+                # 2. Thêm hoặc cập nhật bảng students
+                cursor.execute("""
+                    INSERT INTO students (student_id, profile_id, administrative_class, academic_status)
+                    VALUES (%s, %s, %s, 'studying')
+                    ON DUPLICATE KEY UPDATE 
+                        profile_id = COALESCE(students.profile_id, VALUES(profile_id)),
+                        administrative_class = VALUES(administrative_class)
+                """, (mssv, profile_id, lop_base))
+                
+                # 3. Xóa các đặc trưng khuôn mặt cũ của sinh viên này
                 cursor.execute("DELETE FROM face_features WHERE student_id = %s", (mssv,))
                 
-                # 3. Thêm vector khuôn mặt nhị phân mới vào bảng face_features
+                # 4. Thêm vector khuôn mặt nhị phân mới vào bảng face_features
                 if face_vector is not None:
                     if isinstance(face_vector, np.ndarray):
                         vector_bytes = face_vector.tobytes()
@@ -162,8 +176,9 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT s.full_name, s.administrative_class, s.email, s.phone_number, f.face_vector
+                    SELECT p.full_name, s.administrative_class, p.personal_email, p.phone_number, f.face_vector
                     FROM students s
+                    JOIN user_profiles p ON s.profile_id = p.profile_id
                     LEFT JOIN face_features f ON s.student_id = f.student_id AND f.is_primary = True
                     WHERE s.student_id = %s
                 """, (mssv,))
@@ -206,8 +221,9 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT s.student_id, s.full_name, s.administrative_class, f.face_vector, s.email, s.phone_number
+                    SELECT s.student_id, p.full_name, s.administrative_class, f.face_vector, p.personal_email, p.phone_number
                     FROM students s
+                    JOIN user_profiles p ON s.profile_id = p.profile_id
                     INNER JOIN face_features f ON s.student_id = f.student_id AND f.is_primary = True
                 """)
                 rows = cursor.fetchall()
@@ -354,10 +370,11 @@ class DatabaseService:
         try:
             with conn.cursor() as cursor:
                 query = """
-                    SELECT lr.request_id, lr.student_id, s.full_name, lr.schedule_id, cs.study_date, cs.start_time, cs.class_id,
+                    SELECT lr.request_id, lr.student_id, p.full_name, lr.schedule_id, cs.study_date, cs.start_time, cs.class_id,
                            lr.reason, lr.evidence, lr.status, lr.approved_by
                     FROM leave_requests lr
                     JOIN students s ON lr.student_id = s.student_id
+                    JOIN user_profiles p ON s.profile_id = p.profile_id
                     JOIN class_schedules cs ON lr.schedule_id = cs.schedule_id
                 """
                 params = []
@@ -466,11 +483,12 @@ class DatabaseService:
                 buoi_hoc_ids = [r[0] for r in buoi_hoc_rows]
                 tong_buoi = len(buoi_hoc_ids)
                 
-                # 2. Lấy danh sách sinh viên đăng ký lớp (student_class_enrollment join students)
+                # 2. Lấy danh sách sinh viên đăng ký lớp (student_class_enrollment join students join user_profiles)
                 cursor.execute("""
-                    SELECT s.student_id, s.full_name, s.administrative_class 
+                    SELECT s.student_id, p.full_name, s.administrative_class 
                     FROM student_class_enrollment sv_tc
                     JOIN students s ON sv_tc.student_id = s.student_id
+                    JOIN user_profiles p ON s.profile_id = p.profile_id
                     WHERE sv_tc.class_id = %s
                 """, (ma_lop_tc,))
                 sinh_vien_list = cursor.fetchall()
@@ -575,12 +593,14 @@ class DatabaseService:
                 )
                 acc_id = cursor.lastrowid
                 
-                # 2. Nếu có mssv, cập nhật account_id cho sinh viên
+                # 2. Nếu có mssv, cập nhật account_id cho sinh viên trong user_profiles
                 if mssv:
-                    cursor.execute(
-                        "UPDATE students SET account_id = %s WHERE student_id = %s",
-                        (acc_id, mssv)
-                    )
+                    cursor.execute("""
+                        UPDATE user_profiles p
+                        JOIN students s ON s.profile_id = p.profile_id
+                        SET p.account_id = %s 
+                        WHERE s.student_id = %s
+                    """, (acc_id, mssv))
             conn.commit()
             return True
         except Exception as e:
@@ -596,9 +616,10 @@ class DatabaseService:
             pw_hash = self.hash_password(password)
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT tk.username, tk.role, s.student_id, s.full_name, s.administrative_class 
+                    SELECT tk.username, tk.role, s.student_id, p.full_name, s.administrative_class 
                     FROM accounts tk
-                    LEFT JOIN students s ON tk.account_id = s.account_id
+                    LEFT JOIN user_profiles p ON tk.account_id = p.account_id
+                    LEFT JOIN students s ON p.profile_id = s.profile_id
                     WHERE tk.username = %s AND tk.password_hash = %s AND tk.is_active = True
                 """, (username.strip().lower(), pw_hash))
                 row = cursor.fetchone()
