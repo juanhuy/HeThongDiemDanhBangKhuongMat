@@ -504,7 +504,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   const fetchLecturersList = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/lecturers`);
+      const res = await fetch(`${API_BASE}/api/admin/lecturers/`);
       if (res.ok) {
         const data = await res.json();
         setLecturersList(data || []);
@@ -680,7 +680,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   const fetchStudentsList = async () => {
     try {
-      let url = `${API_BASE}/api/admin/students`;
+      let url = `${API_BASE}/api/admin/students/`;
       if (role === 'giang_vien' && user?.lecturer_id) {
         url += `?lecturer_id=${user.lecturer_id}`;
       }
@@ -768,22 +768,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   };
 
   const handleApproveFace = async (mssv) => {
-    const formData = new FormData();
-    formData.append("mssv", mssv);
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/approve_face`, {
-        method: "POST",
-        body: formData
-      });
-      if (res.ok) {
-        showToast(`Đã duyệt hồ sơ khuôn mặt cho SV ${mssv}`);
-        fetchPendingFaces();
-      } else {
-        showToast("Lỗi duyệt hồ sơ.", "danger");
-      }
-    } catch (err) {
-      showToast("Lỗi kết nối.", "danger");
-    }
+    showToast("Backend hiện tại không hỗ trợ duyệt hồ sơ khuôn mặt qua API cũ.", "danger");
+    return Promise.resolve();
   };
 
   const handleApproveLeave = async (reqId) => {
@@ -1144,14 +1130,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   const handleCreateSubject = async (e) => {
     e.preventDefault();
-    const formData = new FormData();
-    formData.append("ma_mon", subCode);
-    formData.append("ten_mon", subName);
-
     try {
-      const res = await fetch(`${API_BASE}/api/mon_hoc`, {
-        method: "POST",
-        body: formData
+      const res = await subjectService.createSubject({
+        ma_mon: subCode,
+        ten_mon: subName
       });
       if (res.ok) {
         showToast("Đã lưu môn học mới.");

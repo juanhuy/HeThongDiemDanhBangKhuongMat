@@ -1,0 +1,195 @@
+.panel-card {
+  background: #fff;
+  border: 1px solid #d0e0eb;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.form-grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.form-grid input,
+.form-grid textarea,
+.form-grid select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.btn {
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 8px 16px;
+}
+
+.btn-primary {
+  background: #106fa6;
+  color: #fff;    
+  font-size: 14px;          
+  font-weight: 500;
+  margin: 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-approve {
+  background: #22c55e;
+  color: #fff;
+}
+
+.btn-reject {
+  background: #ef4444;
+  color: #fff;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table {
+  width: max-content;
+  table-layout: fixed;
+  min-width: 1000px;
+  border-collapse: collapse;
+}
+
+tbody {
+    word-break: break-word;
+    font-size: 13px;
+}
+
+th,
+td {
+  padding: 10px;
+  border-bottom: 1px solid #eef2f7;
+  text-align: left;
+  word-break: break-word;
+  white-space: nowrap;   
+  overflow: hidden;      
+  text-overflow: ellipsis;
+}
+
+td {
+  overflow-wrap: anywhere;
+}
+
+.table-fit {
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+
+.table-fit th,
+.table-fit td {
+  word-break: break-word; 
+  padding: 10px 12px;
+}
+
+.list-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+}
+
+researcher-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.search-form {
+  background: #dde9f6;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end; /* Căn lề dưới để ô input và button thẳng hàng */
+  gap: 16px;             /* Khoảng cách giữa các ô nhập liệu */
+  margin-bottom: 16px;
+  padding: 12px;
+  flex-wrap: wrap;       /* Tự xuống dòng nếu màn hình di động quá hẹp */
+}
+
+.search-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;               /* Cho phép các ô tự co giãn đều nhau */
+  min-width: 200px;      /* Chiều rộng tối thiểu của mỗi ô */
+}
+
+.search-input-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;  /* Không ngắt dòng tiêu đề label */
+}
+
+.search-box input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+.search-box1 input {
+  width: 30%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+.search-box input:focus {
+  border-color: #106fa6;
+  box-shadow: 0 0 0 3px rgba(16, 111, 166, 0.15);
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #000408;
+  margin: 20px 0;        
+}

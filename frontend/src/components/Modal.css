@@ -1,0 +1,120 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px); /* Làm mờ hậu cảnh giúp modal nổi bật hơn */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 480px; /* Tăng nhẹ chiều rộng để form thở hơn */
+  background-color: #ffffff;
+  padding: 28px 32px; /* Tăng padding bên trong */
+  border-radius: 12px; /* Bo góc mềm mại hơn */
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  animation: slideUp 0.25s ease-out;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px; /* Tăng khoảng cách từ header xuống body */
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0; /* Thêm đường gạch nhẹ phân chia header */
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #999;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close-btn:hover {
+  color: #333;
+  background-color: #f3f4f6;
+}
+
+/* Khoảng cách cho Form bên trong Modal */
+.modal-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px; /* Tự động tạo khoảng cách đều 18px giữa các ô Input */
+}
+
+.modal-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* Khoảng cách giữa chữ Label và ô Input */
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.modal-card input {
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.modal-card input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* Khoảng cách cho khu vực nút bấm ở cuối Form */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px; /* Khoảng cách giữa nút Hủy và Lưu */
+  margin-top: 12px; /* Cách mảng input phía trên */
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* Hiệu ứng mượt mà */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -4,7 +4,7 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import StudentInfoCard from './components/StudentInfoCard';
 import CourseInfoCard from './components/CourseInfoCard';
-import AIAttendance from './components/AIAttendance';
+import AIAttendance from './pages/AIAttendance/AIAttendance';
 import AttendanceLogs from './components/AttendanceLogs';
 import Toast from './components/Toast';
 import Login from './components/Login';
@@ -194,9 +194,6 @@ function App() {
 
          <main style={styles.contentArea}>
           <div style={styles.welcomeHeader}>
-            <h2 style={styles.welcomeText}>
-              👋 Chào mừng {isStudent ? profileToRender.ho_ten : (isLecturer ? 'Giảng viên' : 'Quản trị viên')} {isStudent && `(${activeMenu === 'home' ? 'Trang chủ' : activeMenu === 'my_classes' ? 'Lớp học của tôi' : activeMenu === 'course_registration' ? 'Đăng ký học phần' : activeMenu === 'submit_leave' ? 'Xin nghỉ phép' : 'Sinh trắc học'})`}
-            </h2>
             <div style={styles.dateText}>
               <Calendar size={14} /> {getVietnameseDate()}
             </div>

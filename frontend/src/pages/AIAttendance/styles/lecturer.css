@@ -1,0 +1,10 @@
+.lecturer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.lecturer-panel-title {
+  color: #106fa6;
+  font-size: 1.2rem;
+}
