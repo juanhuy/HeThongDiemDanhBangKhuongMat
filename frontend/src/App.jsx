@@ -59,6 +59,7 @@ function App() {
   const [activeMenu, setActiveMenu] = useState('home');
 
   const [studentProfile, setStudentProfile] = useState(null);
+  const [notifications, setNotifications] = useState([]);
 
   const userRole = user?.role ? user.role.toLowerCase() : '';
   const isStudent = userRole === 'sinh_vien' || userRole === 'student';
@@ -111,6 +112,10 @@ function App() {
     showToast("Đã đăng xuất khỏi hệ thống.");
   };
 
+  const handleMarkAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
   const fetchStudentProfile = async (mssv) => {
     if (!mssv) return;
     try {
@@ -152,6 +157,13 @@ function App() {
               const latestNew = newStudentLogs[0];
               const latestPrev = prevStudentLogs[0];
               if (!latestPrev || latestNew.id !== latestPrev.id) {
+                const newNotif = {
+                  id: latestNew.id || Date.now(),
+                  message: `Bạn vừa được điểm danh tự động [${latestNew.trang_thai}] tại Buổi học số ${latestNew.ma_buoi_hoc}!`,
+                  timestamp: new Date().toLocaleTimeString(),
+                  read: false
+                };
+                setNotifications(prev => [newNotif, ...prev]);
                 showToast(`🔔 Hệ thống: Bạn vừa được điểm danh tự động [${latestNew.trang_thai}] tại Buổi học số ${latestNew.ma_buoi_hoc}!`);
               }
             }
@@ -183,7 +195,12 @@ function App() {
 
   return (
     <div style={styles.appWrapper}>
-      <Header studentProfile={profileToRender} onLogout={handleLogout} />
+      <Header 
+        studentProfile={profileToRender} 
+        onLogout={handleLogout} 
+        notifications={notifications}
+        onMarkAllAsRead={handleMarkAllAsRead}
+      />
       
       <div style={styles.mainLayout}>
         <Sidebar 
