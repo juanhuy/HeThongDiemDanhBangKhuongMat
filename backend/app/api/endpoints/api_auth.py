@@ -1,34 +1,31 @@
-import hashlib
 from fastapi import APIRouter, Depends, HTTPException, Form
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.account import Account
 from app.models.student import Student
 from app.models.lecturer import Lecturer
+from app.core.security import get_password_hash, verify_password
 
 router = APIRouter()
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
-
 @router.post("/login")
 def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    pw_hash = hash_password(password)
-    # Tìm tài khoản
-    account = db.query(Account).filter(Account.username == username.strip().lower(), Account.password_hash == pw_hash).first()
-    if not account:
+    username_lower = username.strip().lower()
+    account = db.query(Account).filter(Account.username == username_lower).first()
+    if not account or not verify_password(password, account.password_hash):
         raise HTTPException(status_code=401, detail="Ten dang nhap hoac mat khau khong dung")
     
     # Lấy thông tin sinh viên hoặc giảng viên liên kết nếu có
     student_info = None
     lecturer_info = None
     if account.role in ["sinh_vien", "student"]:
-        from app.models.student import UserProfile
+        from app.models import UserProfile
         student = db.query(Student).join(UserProfile).filter(UserProfile.account_id == account.account_id).first()
         if student:
             student_info = student
     elif account.role in ["giang_vien", "lecturer"]:
-        lecturer = db.query(Lecturer).filter(Lecturer.account_id == account.account_id).first()
+        from app.models import UserProfile
+        lecturer = db.query(Lecturer).join(UserProfile).filter(UserProfile.account_id == account.account_id).first()
         if lecturer:
             lecturer_info = lecturer
     
@@ -57,10 +54,9 @@ def register(username: str = Form(...), password: str = Form(...), mssv: str = F
         if not student:
             raise HTTPException(status_code=404, detail=f"Khong tim thay sinh vien {mssv} de lien ket tai khoan.")
     
-    pw_hash = hash_password(password)
     new_account = Account(
         username=username_lower,
-        password_hash=pw_hash,
+        password_hash=get_password_hash(password),
         role="sinh_vien" if mssv else "giang_vien"
     )
     db.add(new_account)
@@ -69,7 +65,7 @@ def register(username: str = Form(...), password: str = Form(...), mssv: str = F
     
     if student:
         if not student.profile:
-            from app.models.student import UserProfile
+            from app.models import UserProfile
             profile = UserProfile(
                 account_id=new_account.account_id,
                 full_name=student.student_id

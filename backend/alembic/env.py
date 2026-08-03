@@ -3,10 +3,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Import Base và tất cả các file Model của bạn vào đây
-from app.db.session import Base
-from app.models.subject import Subject  # Nhớ import đủ các model bạn viết
-# from app.models.student import Student
-
+from app.db.session import Base, SQLALCHEMY_DATABASE_URL
+from app.models import *
 
 from logging.config import fileConfig
 
@@ -67,8 +65,10 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    ini_section = config.get_section(config.config_ini_section, {})
+    ini_section["sqlalchemy.url"] = SQLALCHEMY_DATABASE_URL
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        ini_section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

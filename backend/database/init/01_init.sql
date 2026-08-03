@@ -1,12 +1,11 @@
 -- =========================================================================
 -- 0. XÓA DATABASE CŨ VÀ TẠO LẠI (CLEAN SLATE)
 -- =========================================================================
-DROP DATABASE IF EXISTS ai_attendance_db;
-CREATE DATABASE ai_attendance_db;
-ALTER DATABASE ai_attendance_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE ai_attendance_db;
+DROP DATABASE IF EXISTS ptit_diem_danh;
+CREATE DATABASE ptit_diem_danh;
+ALTER DATABASE ptit_diem_danh CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE ptit_diem_danh;
 
-USE ai_attendance_db;
 
 -- 1. Bảng accounts
 CREATE TABLE accounts (
@@ -43,6 +42,7 @@ CREATE TABLE user_profiles (
     phone_number VARCHAR(15),                         -- Số điện thoại liên lạc
     personal_email VARCHAR(100),                      -- Email cá nhân (Khác với email trường cấp)
     address TEXT,                                     -- Địa chỉ thường trú/tạm trú
+    place_of_birth VARCHAR(100),                      -- Nơi sinh
     avatar_url VARCHAR(255),                          -- Đường dẫn lưu ảnh đại diện/ảnh thẻ
     
     FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE SET NULL
@@ -116,9 +116,17 @@ CREATE TABLE classrooms (
 CREATE TABLE subjects (
     subject_id VARCHAR(20) PRIMARY KEY,                   -- KHÓA CHÍNH: Mã môn học (VD: INT1152)
     subject_name VARCHAR(150) NOT NULL,                   -- Tên môn học (VD: Nhập môn Lập trình)
+    
     theory_credits INT DEFAULT 0,                         -- Số tín chỉ lý thuyết
     practical_credits INT DEFAULT 0,                      -- Số tín chỉ thực hành
     credits INT DEFAULT 0,                                -- Tổng tín chỉ (sẽ được trigger cập nhật)
+    
+
+    -- TỰ ĐỘNG TÍNH SỐ TIẾT HỌC DỰA TRÊN TÍN CHỈ
+    theory_periods INT GENERATED ALWAYS AS (theory_credits * 15) STORED,
+    practical_periods INT GENERATED ALWAYS AS (practical_credits * 45) STORED,
+    total_periods INT GENERATED ALWAYS AS ((theory_credits * 15) + (practical_credits * 45)) STORED,
+
     department VARCHAR(100) NULL,                         -- Khoa/Bộ môn phụ trách
     is_active BOOLEAN DEFAULT TRUE                        -- Trạng thái môn học
 );
@@ -152,8 +160,10 @@ DELIMITER ;
 -- ==================================================================
 CREATE TABLE credit_classes (
     class_id VARCHAR(50) PRIMARY KEY,                                                       -- KHÓA CHÍNH: ID tự động
+    
     subject_id VARCHAR(20) NOT NULL,                                                        -- KHÓA NGOẠI: Liên kết với bảng subjects (Môn học)
     lecturer_id VARCHAR(20) NOT NULL,                                                       -- KHÓA NGOẠI: Liên kết với bảng lecturers (Giảng viên)
+    administrative_class_id VARCHAR(50) NULL,                         -- Mã lớp biên chế (VD: D20CQCN01) - Có thể NULL nếu học chung
     semester INT NOT NULL,                                                                  -- Học kỳ (VD: 1, 2, 3, Hè)
     academic_year VARCHAR(20) NOT NULL,                                                     -- Niên khóa (VD: 2024-2025)
 
@@ -164,6 +174,9 @@ CREATE TABLE credit_classes (
 
     FOREIGN KEY (subject_id) REFERENCES subjects(subject_id) ON DELETE CASCADE,         -- KHÓA NGOẠI: Liên kết với bảng subjects (Môn học)
     FOREIGN KEY (lecturer_id) REFERENCES lecturers(lecturer_id) ON DELETE CASCADE       -- KHÓA NGOẠI: Liên kết với bảng lecturers (Giảng viên)
+
+    -- Nếu bạn có bảng classes (Lớp biên chế), có thể thêm Khóa ngoại ở đây: (hiện tại chưa có)
+    -- FOREIGN KEY (administrative_class_id) REFERENCES administrative_classes(class_id) ON DELETE SET NULL
 );
 
 -- ==================================================================
@@ -351,125 +364,175 @@ END$$
 DELIMITER ;
 
 
+-- ==================================================================
+-- BẢNG MỚI: CLASS_SCHEDULES (Thời khóa biểu định kỳ)
+-- ==================================================================
+CREATE TABLE class_schedules (
+    schedule_id INT AUTO_INCREMENT PRIMARY KEY,               -- ID Tự động
+    class_id VARCHAR(50) NOT NULL,                            -- Thuộc lớp tín chỉ nào
+    room_id VARCHAR(20) NOT NULL,                             -- Học ở phòng nào
+    
+    day_of_week INT NOT NULL,                                 -- Thứ trong tuần (2 -> 8, với 8 là Chủ Nhật)
+    start_shift INT NOT NULL,                                 -- Tiết bắt đầu (VD: 1)
+    end_shift INT NOT NULL,                                   -- Tiết kết thúc (VD: 3)
+    
+    session_type VARCHAR(20) DEFAULT 'Theory', 
+    
+    FOREIGN KEY (class_id) REFERENCES credit_classes(class_id) ON DELETE CASCADE,
+    FOREIGN KEY (room_id) REFERENCES classrooms(room_id) ON DELETE RESTRICT,
+    
+    -- Ràng buộc dữ liệu cơ bản
+    CONSTRAINT chk_day_of_week CHECK (day_of_week BETWEEN 2 AND 8),
+    CONSTRAINT chk_shifts CHECK (end_shift >= start_shift AND start_shift > 0)
+);
 
 
+DELIMITER $$
+
+CREATE TRIGGER trg_prevent_schedule_conflict
+BEFORE INSERT ON class_schedules
+FOR EACH ROW
+BEGIN
+    DECLARE conflict_count INT;
+    DECLARE v_lecturer_id VARCHAR(20);
+
+    -- 1. Kiểm tra trùng lịch Phòng Học
+    SELECT COUNT(*) INTO conflict_count
+    FROM class_schedules cs
+    WHERE cs.room_id = NEW.room_id
+      AND cs.day_of_week = NEW.day_of_week
+      -- Công thức bắt trùng lặp khoảng thời gian: (StartA <= EndB) AND (EndA >= StartB)
+      AND NEW.start_shift <= cs.end_shift 
+      AND NEW.end_shift >= cs.start_shift;
+
+    IF conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lỗi Xếp Lịch: Phòng học đã được sử dụng trong khoảng thời gian này!';
+    END IF;
+
+    -- 2. Kiểm tra trùng lịch Giảng Viên
+    -- Lấy ID giảng viên của lớp tín chỉ đang xếp lịch
+    SELECT lecturer_id INTO v_lecturer_id 
+    FROM credit_classes 
+    WHERE class_id = NEW.class_id;
+
+    SELECT COUNT(*) INTO conflict_count
+    FROM class_schedules cs
+    JOIN credit_classes cc ON cs.class_id = cc.class_id
+    WHERE cc.lecturer_id = v_lecturer_id
+      AND cs.day_of_week = NEW.day_of_week
+      AND NEW.start_shift <= cs.end_shift 
+      AND NEW.end_shift >= cs.start_shift;
+
+    IF conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lỗi Xếp Lịch: Giảng viên đã bị kẹt lịch dạy lớp khác trong khoảng thời gian này!';
+    END IF;
+END$$
+
+DELIMITER ;
 
 
+DELIMITER $$
 
--- =================================================================================================
--- Đặt charset mặc định để hỗ trợ Tiếng Việt
--- ALTER DATABASE ai_attendance_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE TRIGGER trg_prevent_student_enrollment_conflict
+BEFORE INSERT ON class_enrollments
+FOR EACH ROW
+BEGIN
+    DECLARE conflict_count INT;
 
--- USE ai_attendance_db;
+    -- Chỉ kiểm tra nếu trạng thái là Enrolled
+    IF NEW.status = 'Enrolled' THEN
+        SELECT COUNT(*) INTO conflict_count
+        FROM class_schedules ns -- Lịch của lớp chuẩn bị đăng ký (New Schedule)
+        JOIN class_schedules es ON ns.day_of_week = es.day_of_week -- So khớp trùng Thứ với lịch đang học (Existing Schedule)
+        JOIN class_enrollments ce ON ce.class_id = es.class_id
+        WHERE ns.class_id = NEW.class_id                -- Điều kiện lịch mới
+          AND ce.student_id = NEW.student_id            -- Điều kiện sinh viên
+          AND ce.status = 'Enrolled'                    -- Chỉ check lớp SV đang học
+          -- Công thức bắt trùng lặp tiết học
+          AND ns.start_shift <= es.end_shift 
+          AND ns.end_shift >= ns.start_shift;
 
--- -- 1. Bảng accounts
--- CREATE TABLE accounts (
---     account_id INT AUTO_INCREMENT PRIMARY KEY,
---     username VARCHAR(30) UNIQUE NOT NULL,
---     password_hash VARCHAR(255) NOT NULL,
---     role VARCHAR(20) NOT NULL,
---     is_active BOOLEAN DEFAULT TRUE,
---     last_login DATETIME NULL,
---     refresh_token VARCHAR(255) NULL,
---     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
--- );
+        IF conflict_count > 0 THEN
+            SIGNAL SQLSTATE '45000' 
+            SET MESSAGE_TEXT = 'Đăng ký thất bại: Thời khóa biểu của lớp này bị trùng với lớp khác bạn đã đăng ký!';
+        END IF;
+    END IF;
+END$$
 
--- -- 2. Bảng students
--- CREATE TABLE students (
---     student_id VARCHAR(20) PRIMARY KEY,
---     account_id INT UNIQUE,
---     full_name VARCHAR(100) NOT NULL,
---     email VARCHAR(100) UNIQUE NOT NULL,
---     phone_number VARCHAR(15),
---     administrative_class VARCHAR(50),
---     major VARCHAR(100),
---     cohort VARCHAR(20),
---     training_program VARCHAR(50),
---     academic_status VARCHAR(50),
---     FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE SET NULL
--- );
+DELIMITER ;
 
--- -- 3. Bảng lecturers
--- CREATE TABLE lecturers (
---     lecturer_id VARCHAR(20) PRIMARY KEY,
---     account_id INT UNIQUE,
---     full_name VARCHAR(50) NOT NULL,
---     email VARCHAR(50) UNIQUE NOT NULL,
---     phone_number VARCHAR(15),
---     department VARCHAR(50),
---     FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE SET NULL
--- );
 
--- -- 4. Bảng face_features (LONGBLOB để lưu mảng Float32)
--- CREATE TABLE face_features (
---     feature_id INT AUTO_INCREMENT PRIMARY KEY,
---     student_id VARCHAR(20) NOT NULL,
---     face_vector LONGBLOB NOT NULL,
---     is_primary BOOLEAN DEFAULT FALSE,
---     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
---     FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE
--- );
+-- ==================================================================
+-- BẢNG: SEMESTERS (Khung thời gian các học kỳ)
+-- ==================================================================
+CREATE TABLE semesters (
+    semester_id VARCHAR(20) PRIMARY KEY,                  -- ID học kỳ (VD: 2024_2025_1)
+    academic_year VARCHAR(20) NOT NULL,                   -- Niên khóa (VD: 2024-2025)
+    semester_number INT NOT NULL,                         -- Học kỳ (1, 2, 3)
+    
+    start_date DATE NOT NULL,                             -- Ngày bắt đầu học kỳ
+    end_date DATE NOT NULL,                               -- Ngày kết thúc học kỳ
+    
+    status VARCHAR(20) DEFAULT 'Upcoming',                -- Trạng thái: Upcoming, Active, Completed
+    
+    CONSTRAINT chk_semester_dates CHECK (end_date > start_date)
+);
 
--- -- 5. Bảng classrooms
--- CREATE TABLE classrooms (
---     room_id VARCHAR(20) PRIMARY KEY,
---     room_name VARCHAR(100) NOT NULL,
---     camera_rtsp_url VARCHAR(255) NULL,
---     building VARCHAR(50)
--- );
+-- Dữ liệu mẫu (Hệ thống sẽ lấy range ngày ở đây để tự động rải lịch)
+-- Học kỳ 1: 10/08 -> 31/12
+-- Học kỳ 2: 01/01 -> 31/05
+-- Học kỳ 3 (Hè): 01/06 -> 09/08
 
--- -- 6. Bảng subjects
--- CREATE TABLE subjects (
---     subject_id VARCHAR(20) PRIMARY KEY,
---     subject_name VARCHAR(150) NOT NULL,
---     credits INT NOT NULL
--- );
 
--- -- 7. Bảng credit_classes
--- CREATE TABLE credit_classes (
---     class_id VARCHAR(50) PRIMARY KEY,
---     subject_id VARCHAR(20) NOT NULL,
---     lecturer_id VARCHAR(20) NOT NULL,
---     semester INT NOT NULL,
---     academic_year VARCHAR(20) NOT NULL,
---     FOREIGN KEY (subject_id) REFERENCES subjects(subject_id) ON DELETE CASCADE,
---     FOREIGN KEY (lecturer_id) REFERENCES lecturers(lecturer_id) ON DELETE CASCADE
--- );
+-- ==================================================================
+-- BẢNG MỚI: LECTURER_BUSY_TIMES (Lịch bận/không thể dạy của GV)
+-- ==================================================================
+CREATE TABLE lecturer_busy_times (
+    busy_id INT AUTO_INCREMENT PRIMARY KEY,
+    lecturer_id VARCHAR(20) NOT NULL,                     -- KHÓA NGOẠI: Mã giảng viên
+    semester_id VARCHAR(20) NOT NULL,                     -- KHÓA NGOẠI: Áp dụng cho học kỳ nào
+    
+    day_of_week INT NOT NULL,                             -- Thứ trong tuần (2 -> 8)
+    start_shift INT NOT NULL,                             -- Tiết bắt đầu (VD: 1 cho Ca Sáng, 5 cho Ca Chiều)
+    end_shift INT NOT NULL,                               -- Tiết kết thúc (VD: 4 cho Ca Sáng, 8 cho Ca Chiều)
+    
+    notes VARCHAR(255) NULL,                              -- Ghi chú (VD: "Bận họp công ty ngoài", "Đi công tác")
+    
+    FOREIGN KEY (lecturer_id) REFERENCES lecturers(lecturer_id) ON DELETE CASCADE,
+    CONSTRAINT chk_busy_day_of_week CHECK (day_of_week BETWEEN 2 AND 8),
+    CONSTRAINT chk_busy_shifts CHECK (end_shift >= start_shift AND start_shift > 0)
+);
 
--- -- 8. Bảng class_enrollments (Bảng trung gian N-N)
--- CREATE TABLE class_enrollments (
---     class_id VARCHAR(50) NOT NULL,
---     student_id VARCHAR(20) NOT NULL,
---     enrollment_date DATETIME DEFAULT CURRENT_TIMESTAMP,
---     PRIMARY KEY (class_id, student_id),
---     FOREIGN KEY (class_id) REFERENCES credit_classes(class_id) ON DELETE CASCADE,
---     FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE
--- );
 
--- -- 9. Bảng class_sessions
--- CREATE TABLE class_sessions (
---     session_id INT AUTO_INCREMENT PRIMARY KEY,
---     class_id VARCHAR(50) NOT NULL,
---     room_id VARCHAR(20) NOT NULL,
---     session_date DATE NOT NULL,
---     shift INT NOT NULL,
---     start_time DATETIME NOT NULL,
---     end_time DATETIME NOT NULL,
---     FOREIGN KEY (class_id) REFERENCES credit_classes(class_id) ON DELETE CASCADE,
---     FOREIGN KEY (room_id) REFERENCES classrooms(room_id) ON DELETE RESTRICT
--- );
+DELIMITER $$
 
--- -- 10. Bảng attendance_records
--- CREATE TABLE attendance_records (
---     record_id INT AUTO_INCREMENT PRIMARY KEY,
---     session_id INT NOT NULL,
---     student_id VARCHAR(20) NOT NULL,
---     status VARCHAR(20) NOT NULL,
---     recorded_at DATETIME NULL,
---     confidence_score FLOAT NULL,
---     proof_image_url VARCHAR(255) NULL,
---     notes VARCHAR(255) NULL,
---     updated_by VARCHAR(20) NULL,
---     FOREIGN KEY (session_id) REFERENCES class_sessions(session_id) ON DELETE CASCADE,
---     FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE
--- );
+CREATE TRIGGER trg_prevent_schedule_conflict
+BEFORE INSERT ON class_schedules
+FOR EACH ROW
+BEGIN
+    DECLARE conflict_count INT;
+    DECLARE v_lecturer_id VARCHAR(20);
+
+    -- Lấy ID giảng viên của lớp tín chỉ
+    SELECT lecturer_id INTO v_lecturer_id FROM credit_classes WHERE class_id = NEW.class_id;
+
+    -- [Bỏ qua phần Code kiểm tra trùng Phòng và trùng Lớp đã viết ở trên để tập trung vào phần mới]...
+
+    -- 3. KIỂM TRA LỊCH BẬN CÁ NHÂN CỦA GIẢNG VIÊN (Time Constraints)
+    SELECT COUNT(*) INTO conflict_count
+    FROM lecturer_busy_times lbt
+    WHERE lbt.lecturer_id = v_lecturer_id
+      AND lbt.day_of_week = NEW.day_of_week
+      -- Check trùng lặp khoảng thời gian giữa Lịch xếp và Lịch bận
+      AND NEW.start_shift <= lbt.end_shift 
+      AND NEW.end_shift >= lbt.start_shift;
+
+    IF conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lỗi Xếp Lịch: Giảng viên đã đăng ký BẬN (Không thể dạy) vào khung giờ này!';
+    END IF;
+END$$
+
+DELIMITER ;

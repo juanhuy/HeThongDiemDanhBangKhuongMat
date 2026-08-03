@@ -4,13 +4,10 @@ import time
 import threading
 import numpy as np
 import cv2 as cv
-import insightface
 from insightface.app import FaceAnalysis
 from config.settings import settings
-from core.face_matcher import tinh_cosine_similarity
-from services.database_service import DatabaseService
 
-# Thiết lập PATH cho CUDA/CuDNN trong venv (chạy từ thư mục con core/)
+# Thiết lập PATH cho CUDA/CuDNN trong venv
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 venv_path = os.path.join(project_root, 'venv', 'Lib', 'site-packages')
 os.environ["PATH"] += os.pathsep + os.path.join(venv_path, 'nvidia', 'cublas', 'bin')
@@ -19,11 +16,8 @@ os.environ["PATH"] += os.pathsep + os.path.join(venv_path, 'onnxruntime', 'capi'
 
 class FaceAnalyzer:
     def __init__(self):
-        # Đọc cấu hình từ settings
         ai_config = settings.ai
-        db_config = settings.database
         
-        self.db_service = DatabaseService()
         self.threshold = ai_config.get("threshold", 0.65)
         self.det_size = tuple(ai_config.get("det_size", [480, 480]))
         
@@ -41,23 +35,13 @@ class FaceAnalyzer:
             
         self.known_embeddings = []
         self.known_names = []
-        self.index = None  # Khởi tạo FAISS index
+        self.index = None 
+        
         from core.liveness_detection import LivenessDetector
         self.liveness_detector = LivenessDetector()
+        
+        # Load database ngay khi khởi động
         self.load_database()
-
-        # Tự động đăng ký sinh viên mặc định N22DCCN134 nếu chưa tồn tại
-        if "N22DCCN134" not in self.known_names:
-            img_path = os.path.join(project_root, "database", "registered_images", "N22DCCN134.jpg")
-            if os.path.exists(img_path):
-                print(f"-> [AI Seeding] Tu dong dang ky sinh vien mac dinh N22DCCN134 tu {img_path}...")
-                self.dang_ky_mat(
-                    image_path=img_path,
-                    mssv="N22DCCN134",
-                    ho_ten="Nguyễn Huy Hoàng",
-                    lop_base="D22CQCN01-N",
-                    email="n22dccn134@student.ptit.edu.vn"
-                )
         
         # Các biến phục vụ luồng nhận dạng song song (AI Worker)
         self.current_frame = None
@@ -71,7 +55,6 @@ class FaceAnalyzer:
         import faiss
         if len(self.known_embeddings) > 0:
             embeddings_arr = np.array(self.known_embeddings).astype('float32')
-            # Chuẩn hóa L2 để Inner Product bằng Cosine Similarity
             faiss.normalize_L2(embeddings_arr)
             self.index = faiss.IndexFlatIP(512)
             self.index.add(embeddings_arr)
@@ -81,19 +64,12 @@ class FaceAnalyzer:
             print("-> [FAISS] Khong co vector nao de xay dung chi muc.")
 
     def load_database(self):
+        """Tải toàn bộ Vector khuôn mặt từ bảng FaceFeature lên RAM (FAISS)"""
         self.known_embeddings = []
         self.known_names = []
         
-        # Thử dùng SQLAlchemy qua SessionLocal nếu import được
         try:
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            backend_path = os.path.join(project_root, 'backend')
-            if backend_path not in sys.path:
-                sys.path.append(backend_path)
-                
             from app.db.session import SessionLocal
-            from app.models.account import Account
-            from app.models.student import Student
             from app.models.face_feature import FaceFeature
             
             db = SessionLocal()
@@ -101,9 +77,8 @@ class FaceAnalyzer:
                 features = db.query(FaceFeature).all()
                 for feat in features:
                     if feat.face_vector:
-                        # Giải mã vector trước khi convert sang numpy
-                        from core.crypto_utils import decrypt_vector
                         try:
+                            from core.crypto_utils import decrypt_vector
                             decrypted = decrypt_vector(feat.face_vector)
                             vec = np.frombuffer(decrypted, dtype=np.float32)
                         except Exception:
@@ -113,33 +88,19 @@ class FaceAnalyzer:
                             self.known_embeddings.append(vec)
                             self.known_names.append(feat.student_id)
                         else:
-                            print(f"-> [SQLAlchemy] Bo qua vector gia lap/loi: {feat.student_id} (chieu: {len(vec)})")
-                print(f"-> [SQLAlchemy] Da tai {len(self.known_names)} khuon mat hop le tu database vector.")
+                            print(f"-> [AI] Bo qua vector loi cua: {feat.student_id}")
+                            
+                print(f"-> [AI] Da tai {len(self.known_names)} khuon mat hop le tu Database.")
                 self.build_faiss_index()
-                return
             except Exception as db_err:
-                print(f"Loi truy van FaceFeature qua SQLAlchemy: {db_err}. fallback to DatabaseService.")
+                print(f"Loi truy van FaceFeature: {db_err}")
             finally:
                 db.close()
         except Exception as e:
-            print(f"Khong the import app/db/session, su dung DatabaseService cu: {e}")
+            print(f"Khong the ket noi Database de tai vector: {e}")
 
-        # Fallback cũ sử dụng DatabaseService
-        students = self.db_service.get_all_sinh_vien()
-        for sv in students:
-            if sv["face_vector"] is not None:
-                vec = sv["face_vector"]
-                if len(vec) == 512:
-                    self.known_embeddings.append(vec)
-                    self.known_names.append(sv["mssv"])
-                else:
-                    print(f"-> [Fallback] Bo qua vector gia lap/loi: {sv['mssv']} (chieu: {len(vec)})")
-        print(f"-> [Fallback] Da tai {len(self.known_names)} khuon mat hop le tu database vector.")
-        self.build_faiss_index()
-
-
-    def dang_ky_mat(self, image_path, mssv, ho_ten, lop_base, **kwargs):
-        """Trích xuất và lưu vector khuôn mặt của một sinh viên"""
+    def dang_ky_mat(self, image_path, mssv, ho_ten="Unknown", lop_base="Unknown", **kwargs):
+        """Trích xuất và lưu vector khuôn mặt vào bảng FaceFeature"""
         img = cv.imread(image_path)
         if img is None:
             print(f"Khong the doc duoc anh tai: {image_path}")
@@ -155,101 +116,22 @@ class FaceAnalyzer:
             
         embedding = faces[0].normed_embedding
         
-        # Thử lưu bằng SQLAlchemy qua SessionLocal nếu được
         try:
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            backend_path = os.path.join(project_root, 'backend')
-            if backend_path not in sys.path:
-                sys.path.append(backend_path)
-                
             from app.db.session import SessionLocal
-            from app.models.account import Account
-            from app.models.student import Student, UserProfile
             from app.models.face_feature import FaceFeature
             
             db = SessionLocal()
             try:
-                # Kiểm tra/Cập nhật thông tin sinh viên
-                student = db.query(Student).filter(Student.student_id == mssv).first()
-                if not student:
-                    # 0. Tạo tài khoản đăng nhập tự động
-                    username_lower = str(mssv).strip().lower()
-                    account = db.query(Account).filter(Account.username == username_lower).first()
-                    if not account:
-                        import hashlib
-                        pw_hash = hashlib.sha256("123456".encode()).hexdigest()
-                        account = Account(
-                            username=username_lower,
-                            password_hash=pw_hash,
-                            role="sinh_vien",
-                            is_active=True
-                        )
-                        db.add(account)
-                        db.flush()
-                    
-                    # Tạo UserProfile liên kết
-                    profile = UserProfile(
-                        account_id=account.account_id,
-                        full_name=ho_ten,
-                        personal_email=kwargs.get("email") or f"{mssv}@student.ptit.edu.vn",
-                        phone_number=kwargs.get("sdt")
-                    )
-                    db.add(profile)
-                    db.flush()
-
-                    student = Student(
-                        student_id=mssv,
-                        profile_id=profile.profile_id,
-                        administrative_class=lop_base,
-                        academic_status="studying"
-                    )
-                    db.add(student)
-                    db.flush()
-                else:
-                    # Đảm bảo sinh viên có tài khoản/hồ sơ liên kết
-                    if not student.profile:
-                        # 0. Lấy hoặc tạo tài khoản
-                        username_lower = str(mssv).strip().lower()
-                        account = db.query(Account).filter(Account.username == username_lower).first()
-                        if not account:
-                            import hashlib
-                            pw_hash = hashlib.sha256("123456".encode()).hexdigest()
-                            account = Account(
-                                username=username_lower,
-                                password_hash=pw_hash,
-                                role="sinh_vien",
-                                is_active=True
-                            )
-                            db.add(account)
-                            db.flush()
-
-                        # Tạo profile mới
-                        profile = UserProfile(
-                            account_id=account.account_id,
-                            full_name=ho_ten,
-                            personal_email=kwargs.get("email") or f"{mssv}@student.ptit.edu.vn",
-                            phone_number=kwargs.get("sdt")
-                        )
-                        db.add(profile)
-                        db.flush()
-                        student.profile_id = profile.profile_id
-                    else:
-                        student.profile.full_name = ho_ten
-                        if kwargs.get("sdt"):
-                            student.profile.phone_number = kwargs.get("sdt")
-                        if kwargs.get("email"):
-                            student.profile.personal_email = kwargs.get("email")
-                    
-                    student.administrative_class = lop_base
-                    db.add(student)
-                    db.flush()
-                
-                # Xóa các vector khuôn mặt cũ và thêm vector mới
+                # 1. Xóa các vector khuôn mặt cũ của sinh viên này
                 db.query(FaceFeature).filter(FaceFeature.student_id == mssv).delete()
                 
-                # Ghi vector dưới dạng bytes (đã mã hóa)
-                from core.crypto_utils import encrypt_vector
-                encrypted_emb = encrypt_vector(embedding.tobytes())
+                # 2. Mã hóa Vector (nếu có hàm) và lưu vào bảng
+                try:
+                    from core.crypto_utils import encrypt_vector
+                    encrypted_emb = encrypt_vector(embedding.tobytes())
+                except ImportError:
+                    encrypted_emb = embedding.tobytes()
+                    
                 new_feat = FaceFeature(
                     student_id=mssv,
                     face_vector=encrypted_emb,
@@ -257,27 +139,77 @@ class FaceAnalyzer:
                 )
                 db.add(new_feat)
                 db.commit()
-                print(f"[SQLAlchemy] Dang ky thanh cong khuon mat cho {ho_ten} ({mssv})")
-                self.load_database()
+                
+                print(f"[AI] Dang ky thanh cong khuon mat cho MSSV: {mssv}")
+                self.load_database() # Cập nhật lại FAISS Index ngay lập tức
                 return True
             except Exception as db_err:
                 db.rollback()
-                print(f"Loi ghi DB qua SQLAlchemy trong dang_ky_mat: {db_err}")
+                print(f"Loi ghi FaceFeature vao Database: {db_err}")
             finally:
                 db.close()
         except Exception as e:
-            print(f"Khong the su dung SQLAlchemy trong dang_ky_mat: {e}")
-
-        # Fallback cũ sử dụng DatabaseService
-        success = self.db_service.add_sinh_vien(mssv, ho_ten, lop_base, embedding, **kwargs)
-        if success:
-            print(f"[Fallback] Dang ky thanh cong khuon mat cho {ho_ten} ({mssv})")
-            self.load_database()
-            return True
+            print(f"Khong the ket noi Database: {e}")
+            
         return False
 
+    def recognize_image(self, img):
+        """Nhận diện khuôn mặt từ một ảnh tĩnh (OpenCV Image)"""
+        if img is None:
+            print("-> [AI] Anh nhan vao bi null!")
+            return []
+            
+        faces = self.app.get(img)
+        results = []
+        
+        for face in faces:
+            bbox = face.bbox
+            x1, y1 = int(bbox[0]), int(bbox[1])
+            x2, y2 = int(bbox[2]), int(bbox[3])
+            
+            # ĐÃ FIX BUG: Khai báo biến current_embedding
+            current_embedding = face.normed_embedding 
+            
+            # Kiểm tra Liveness (chống giả mạo)
+            is_real, liveness_score = self.liveness_detector.is_real_face(img, bbox)
+            
+            if not is_real:
+                best_name = "Spoof/Fake"
+                best_score = float(liveness_score)
+                is_known = False
+            else:
+                best_name = "Unknown"
+                best_score = 0.0
+                is_known = False
+                
+                if self.index is not None and len(self.known_embeddings) > 0:
+                    import faiss
+                    query_vector = np.array([current_embedding]).astype('float32')
+                    faiss.normalize_L2(query_vector)
+                    scores, indices = self.index.search(query_vector, 1)
+                    
+                    best_idx = indices[0][0]
+                    best_score = float(scores[0][0])
+                    
+                    if best_idx != -1 and best_score > self.threshold:
+                        raw_name = self.known_names[best_idx]
+                        best_name = raw_name.split("_")[0] if "_" in raw_name else raw_name
+                        is_known = True
+            
+            results.append({
+                "box": (x1, y1, x2, y2),
+                "name": best_name,
+                "score": best_score,
+                "is_known": is_known,
+                "is_real": is_real
+            })
+            
+        return results
+
+    # =========================================================================
+    # CÁC HÀM XỬ LÝ WORKER CHẠY NGẦM DÀNH CHO CAMERA THỰC TẾ
+    # =========================================================================
     def start_worker(self):
-        """Khởi động luồng AI chạy ngầm"""
         if self.running:
             return
         self.running = True
@@ -285,14 +217,12 @@ class FaceAnalyzer:
         self.worker_thread.start()
 
     def stop_worker(self):
-        """Dừng luồng AI chạy ngầm"""
         self.running = False
-        self.frame_ready_event.set() # Đánh thức luồng để thoát
+        self.frame_ready_event.set()
         if self.worker_thread:
             self.worker_thread.join(timeout=2.0)
 
     def update_frame(self, frame):
-        """Gửi khung hình mới cho luồng AI xử lý"""
         self.current_frame = frame
         self.frame_ready_event.set()
 
@@ -306,7 +236,6 @@ class FaceAnalyzer:
                 continue
                 
             frame_to_process = self.current_frame.copy()
-            # Resize về kích thước det_size cấu hình để tăng tốc độ AI
             target_w, target_h = self.det_size
             small_frame = cv.resize(frame_to_process, (target_w, target_h))
             
@@ -323,10 +252,10 @@ class FaceAnalyzer:
                 
                 current_embedding = face.normed_embedding
                 
-                # So sánh độ tương đồng bằng FAISS
                 best_name = "Unknown"
-                best_score = -1.0
+                best_score = 0.0
                 is_known = False
+                
                 if self.index is not None and len(self.known_embeddings) > 0:
                     import faiss
                     query_vector = np.array([current_embedding]).astype('float32')
@@ -334,6 +263,7 @@ class FaceAnalyzer:
                     scores, indices = self.index.search(query_vector, 1)
                     best_idx = indices[0][0]
                     best_score = float(scores[0][0])
+                    
                     if best_idx != -1 and best_score > self.threshold:
                         raw_name = self.known_names[best_idx]
                         best_name = raw_name.split("_")[0] if "_" in raw_name else raw_name
@@ -348,50 +278,3 @@ class FaceAnalyzer:
                 
             self.results = temp_results
             time.sleep(0.01)
-
-    def recognize_image(self, img):
-        """Nhận diện khuôn mặt từ một ảnh tĩnh (OpenCV Image)"""
-        if img is None:
-            print("-> [AI] Anh nhan vao bi null!")
-            return []
-            
-        print(f"-> [AI] Dang xu ly nhan dang khung hinh (Kich thuoc: {img.shape})")
-        faces = self.app.get(img)
-        print(f"-> [AI] Phat hien {len(faces)} khuon mat trong khung hinh.")
-        
-        results = []
-        for face in faces:
-            bbox = face.bbox
-            x1, y1 = int(bbox[0]), int(bbox[1])
-            x2, y2 = int(bbox[2]), int(bbox[3])
-            
-            # Kiểm tra Liveness (chống giả mạo)
-            is_real, liveness_score = self.liveness_detector.is_real_face(img, bbox)
-            
-            if not is_real:
-                print(f"   + [Spoof Alert] Phat hien khuon mat gia mao voi score {liveness_score:.2f}!")
-                best_name = "Spoof/Fake"
-                best_score = liveness_score
-                is_known = False
-            else:
-                if self.index is not None and len(self.known_embeddings) > 0:
-                    import faiss
-                    query_vector = np.array([current_embedding]).astype('float32')
-                    faiss.normalize_L2(query_vector)
-                    scores, indices = self.index.search(query_vector, 1)
-                    best_idx = indices[0][0]
-                    best_score = float(scores[0][0])
-                    if best_idx != -1 and best_score > self.threshold:
-                        raw_name = self.known_names[best_idx]
-                        best_name = raw_name.split("_")[0] if "_" in raw_name else raw_name
-                        is_known = True
-            
-            print(f"   + Mat quet duoc: {best_name} (Score so khop: {best_score:.2f}, Nguong: {self.threshold})")
-            results.append({
-                "box": (x1, y1, x2, y2),
-                "name": best_name,
-                "score": float(best_score),
-                "is_known": is_known,
-                "is_real": is_real
-            })
-        return results

@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Zap, UploadCloud, CheckCircle, XCircle, UserCheck,
   ClipboardList, AlertTriangle, RefreshCw, FileText, Check, AlertOctagon,
-  Camera, StopCircle, Trash2, UserPlus, Users, BookOpen
+  Camera, StopCircle, Trash2, UserPlus, Users, BookOpen, X
 } from 'lucide-react';
+import { buildManualStudentPayload } from './studentFormUtils';
 
 const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMenu }) => {
   const rawRole = (user?.role || 'sinh_vien').toLowerCase();
@@ -33,11 +34,25 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [schRoom, setSchRoom] = useState('A2-301');
   const [schTime, setSchTime] = useState('07:30');
 
-  const [subCode, setSubCode] = useState('');
-  const [subName, setSubName] = useState('');
-  const [ccCode, setCcCode] = useState('');
+  const [subjectSearch, setSubjectSearch] = useState('');
+  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
+  const [editingSubjectId, setEditingSubjectId] = useState(null);
+  const [subjectForm, setSubjectForm] = useState({
+    subject_id: '',
+    subject_name: '',
+    theory_credits: 0,
+    practical_credits: 0,
+    department: '',
+    is_active: true
+  });
+  const [subjectsList, setSubjectsList] = useState([]);
+  const [showSubjectSuggestions, setShowSubjectSuggestions] = useState(false);
   const [ccSub, setCcSub] = useState('');
-
+  const [ccSemester, setCcSemester] = useState(1);
+  const [ccAcademicYear, setCcAcademicYear] = useState('2024-2025');
+  const [ccAdminClass, setCcAdminClass] = useState('');
+  const [ccGroup, setCcGroup] = useState('');
+  const [ccMaxStudents, setCcMaxStudents] = useState(50);
   // --- Teacher Tab States ---
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [manualMssv, setManualMssv] = useState('');
@@ -74,6 +89,76 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [enrollMssv, setEnrollMssv] = useState('');
   const [bulkClassCode, setBulkClassCode] = useState('');
   const [studentClasses, setStudentClasses] = useState([]);
+  const [classSearch, setClassSearch] = useState('');
+
+  // States for Edit Credit Class Modal
+  const [isEditClassModalOpen, setIsEditClassModalOpen] = useState(false);
+
+  // States cho Quản lý sinh viên
+  const [filterMajor, setFilterMajor] = useState("");
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
+  const [isCreateStudentModalOpen, setIsCreateStudentModalOpen] = useState(false);
+  const [isFaceRegistrationModalOpen, setIsFaceRegistrationModalOpen] = useState(false);
+  const [selectedStudentForModal, setSelectedStudentForModal] = useState(null);
+  const [selectedStudentForFaceModal, setSelectedStudentForFaceModal] = useState(null);
+  const [editStudentForm, setEditStudentForm] = useState({
+    phone_number: "",
+    email: "",
+    address: "",
+    academic_status: ""
+  });
+  const [createStudentForm, setCreateStudentForm] = useState({
+    student_id: "",
+    full_name: "",
+    email: "",
+    phone_number: "",
+    administrative_class: "",
+    major: "",
+    specialization: "",
+    department: "",
+    cohort: "",
+    training_program: "",
+    academic_status: "Đang học",
+    gender: "",
+    citizen_id: "",
+    ethnicity: "",
+    religion: "",
+    nationality: "Việt Nam",
+    place_of_birth: "",
+    address: ""
+  });
+  const [editClassForm, setEditClassForm] = useState({
+    class_id: '',
+    subject_id: '',
+    subject_name: '',
+    lecturer_id: '',
+    administrative_class_id: '',
+    semester: 1,
+    academic_year: '',
+    class_group: '',
+    max_students: 50,
+    status: 'Active'
+  });
+
+  const [isCreateClassModalOpen, setIsCreateClassModalOpen] = useState(false);
+  const [isEnrolledStudentsModalOpen, setIsEnrolledStudentsModalOpen] = useState(false);
+
+  // Lecturer management states
+  const [allLecturersList, setAllLecturersList] = useState([]);
+  const [lecturerSearch, setLecturerSearch] = useState('');
+  const [isLecturerModalOpen, setIsLecturerModalOpen] = useState(false);
+  const [isLecturerDetailModalOpen, setIsLecturerDetailModalOpen] = useState(false);
+  const [editingLecturerId, setEditingLecturerId] = useState(null);
+  const [selectedLecturerDetail, setSelectedLecturerDetail] = useState(null);
+  const [lecturerForm, setLecturerForm] = useState({ lecturer_id: '', full_name: '', email: '', phone_number: '', date_of_birth: '', gender: '', citizen_id: '', ethnicity: '', religion: '', nationality: 'Việt Nam', address: '', place_of_birth: '', department: '', academic_title: '', position: 'Giảng viên', employment_type: '', teaching_status: 'Active' });
+
+  // Classroom management states
+  const [classroomsList, setClassroomsList] = useState([]);
+  const [classroomSearch, setClassroomSearch] = useState('');
+  const [isClassroomModalOpen, setIsClassroomModalOpen] = useState(false);
+  const [editingRoomId, setEditingRoomId] = useState(null);
+  const [classroomForm, setClassroomForm] = useState({ room_id: '', room_name: '', building: '', capacity: 50, room_type: 'Theory', camera_rtsp_url: '', camera_status: 'Online', notes: '', status: 'Active' });
+
   const [adminCameras, setAdminCameras] = useState([
     { id: 1, name: "Camera Cửa Lớp A2-301", status: "Online", room: "A2-301", isSimulating: false },
     { id: 2, name: "Camera Bàn Giảng Viên A2-301", status: "Online", room: "A2-301", isSimulating: false },
@@ -82,14 +167,26 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [simulatedLogs, setSimulatedLogs] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [availableClasses, setAvailableClasses] = useState([]);
+  // Filters for course registration table
+  const [regFilterMaLop, setRegFilterMaLop] = useState('');
+  const [regFilterTenMon, setRegFilterTenMon] = useState('');
+  const [regFilterNhom, setRegFilterNhom] = useState('');
+  const [regFilterTo, setRegFilterTo] = useState('');
+  const [regFilterSoTC, setRegFilterSoTC] = useState('');
+  const [regFilterLop, setRegFilterLop] = useState('');
+  const [regFilterSoLuong, setRegFilterSoLuong] = useState('');
+  const [regFilterConLai, setRegFilterConLai] = useState('');
+  // Schedule modal for course registration
+  const [scheduleModal, setScheduleModal] = useState({ open: false, classId: null, className: '' });
   const [editingScheduleId, setEditingScheduleId] = useState(null);
   const [lecturersList, setLecturersList] = useState([]);
   const [ccLecturer, setCcLecturer] = useState('');
   const [regModeTab, setRegModeTab] = useState('single');
-  const [classSearch, setClassSearch] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editRoom, setEditRoom] = useState('');
   const [editTime, setEditTime] = useState('');
+  const [editLecturerName, setEditLecturerName] = useState("");
+  const [editLecturerDept, setEditLecturerDept] = useState("");
   const [editingStudentId, setEditingStudentId] = useState(null);
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentClass, setEditStudentClass] = useState('');
@@ -329,7 +426,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     } else if (activeTab === 'students_list') {
       fetchStudentsList();
     } else if (activeTab === 'class_management') {
+      fetchLecturersList();
       fetchCreditClasses();
+      fetchSubjects();
     } else if (activeTab === 'my_classes') {
       fetchStudentClasses();
       fetchSchedules();
@@ -339,28 +438,241 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     } else if (activeTab === 'course_registration') {
       fetchAvailableClasses();
       fetchStudentClasses();
-    } else if (activeTab === 'structure') {
-      fetchLecturersList();
-      fetchCreditClasses();
+    } else if (activeTab === 'subjects_management') {
+      fetchSubjects();
+    } else if (activeTab === 'lecturers_management') {
+      fetchAllLecturers();
+    } else if (activeTab === 'rooms_management') {
+      fetchClassrooms();
     }
   }, [activeTab]);
 
-  const fetchAvailableClasses = async () => {
-    if (!user?.mssv) return;
+  const fetchAllLecturers = async (query = '') => {
     try {
-      const resAll = await fetch(`${API_BASE}/api/lop_tin_chi`);
-      const resMy = await fetch(`${API_BASE}/api/students/${user.mssv}/classes`);
-      if (resAll.ok && resMy.ok) {
+      const url = query ? `${API_BASE}/api/admin/lecturers?search=${encodeURIComponent(query)}` : `${API_BASE}/api/admin/lecturers?limit=200`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setAllLecturersList(data || []);
+      }
+    } catch (err) {
+      console.error('Lỗi tải giảng viên:', err);
+    }
+  };
+
+  const fetchClassrooms = async (query = '') => {
+    try {
+      const url = query ? `${API_BASE}/api/admin/classrooms?search=${encodeURIComponent(query)}` : `${API_BASE}/api/admin/classrooms`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setClassroomsList(data || []);
+      }
+    } catch (err) {
+      console.error('Lỗi tải phòng học:', err);
+    }
+  };
+
+  const generateLecturerId = (list = allLecturersList) => {
+    const currentYear = new Date().getFullYear();
+    const prefix = `GV${currentYear}`;
+    const numbers = list
+      .map((item) => item?.lecturer_id || '')
+      .filter((value) => value.startsWith(prefix))
+      .map((value) => Number(value.replace(prefix, '')))
+      .filter((value) => !Number.isNaN(value));
+    const nextSequence = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+    return `${prefix}${String(nextSequence).padStart(3, '0')}`;
+  };
+
+  const openLecturerModal = (lecturer = null) => {
+    if (lecturer) {
+      setEditingLecturerId(lecturer.lecturer_id);
+      setLecturerForm({
+        lecturer_id: lecturer.lecturer_id,
+        full_name: lecturer.full_name || '',
+        email: lecturer.email || '',
+        phone_number: lecturer.phone_number || '',
+        date_of_birth: lecturer.date_of_birth || '',
+        gender: lecturer.gender || '',
+        citizen_id: lecturer.citizen_id || '',
+        ethnicity: lecturer.ethnicity || '',
+        religion: lecturer.religion || '',
+        nationality: lecturer.nationality || 'Việt Nam',
+        address: lecturer.address || '',
+        place_of_birth: lecturer.place_of_birth || '',
+        department: lecturer.department || '',
+        academic_title: lecturer.academic_title || '',
+        position: lecturer.position || '',
+        employment_type: lecturer.employment_type || '',
+        teaching_status: lecturer.teaching_status || 'Active',
+      });
+    } else {
+      setEditingLecturerId(null);
+      setLecturerForm({
+        lecturer_id: generateLecturerId(),
+        full_name: '',
+        email: '',
+        phone_number: '',
+        date_of_birth: '',
+        gender: '',
+        citizen_id: '',
+        ethnicity: '',
+        religion: '',
+        nationality: 'Việt Nam',
+        address: '',
+        place_of_birth: '',
+        department: '',
+        academic_title: '',
+        position: 'Giảng viên',
+        employment_type: '',
+        teaching_status: 'Active'
+      });
+    }
+    setIsLecturerModalOpen(true);
+  };
+
+  const openLecturerDetailModal = (lecturer) => {
+    setSelectedLecturerDetail(lecturer);
+    setIsLecturerDetailModalOpen(true);
+  };
+
+  const handleSaveLecturer = async (e) => {
+    e.preventDefault();
+    try {
+      const isEdit = !!editingLecturerId;
+      const lecturerId = (lecturerForm.lecturer_id || '').trim() || generateLecturerId();
+      const payload = {
+        lecturer_id: lecturerId,
+        full_name: lecturerForm.full_name,
+        email: lecturerForm.email,
+        phone_number: lecturerForm.phone_number,
+        date_of_birth: lecturerForm.date_of_birth || null,
+        gender: lecturerForm.gender || null,
+        citizen_id: lecturerForm.citizen_id || null,
+        ethnicity: lecturerForm.ethnicity || null,
+        religion: lecturerForm.religion || null,
+        nationality: lecturerForm.nationality || 'Việt Nam',
+        address: lecturerForm.address || null,
+        place_of_birth: lecturerForm.place_of_birth || null,
+        department: lecturerForm.department,
+        academic_title: lecturerForm.academic_title,
+        position: lecturerForm.position,
+        employment_type: lecturerForm.employment_type,
+        teaching_status: lecturerForm.teaching_status,
+      };
+      const url = isEdit ? `${API_BASE}/api/admin/lecturers/${editingLecturerId}` : `${API_BASE}/api/admin/lecturers/`;
+      const method = isEdit ? 'PUT' : 'POST';
+      const body = isEdit
+        ? { full_name: lecturerForm.full_name, phone_number: lecturerForm.phone_number, date_of_birth: lecturerForm.date_of_birth || null, gender: lecturerForm.gender || null, citizen_id: lecturerForm.citizen_id || null, ethnicity: lecturerForm.ethnicity || null, religion: lecturerForm.religion || null, nationality: lecturerForm.nationality || 'Việt Nam', address: lecturerForm.address || null, place_of_birth: lecturerForm.place_of_birth || null, department: lecturerForm.department, academic_title: lecturerForm.academic_title, position: lecturerForm.position, employment_type: lecturerForm.employment_type, teaching_status: lecturerForm.teaching_status }
+        : payload;
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (res.ok) {
+        showToast(isEdit ? 'Cập nhật giảng viên thành công!' : 'Thêm giảng viên thành công!');
+        setIsLecturerModalOpen(false);
+        fetchAllLecturers(lecturerSearch);
+      } else {
+        const err = await res.json();
+        showToast(err.detail || 'Lỗi lưu giảng viên', 'danger');
+      }
+    } catch (err) {
+      showToast('Lỗi kết nối API', 'danger');
+    }
+  };
+
+  const handleDeleteLecturer = async (id) => {
+    if (!window.confirm(`Xóa giảng viên ${id}?`)) return;
+    const res = await fetch(`${API_BASE}/api/admin/lecturers/${id}`, { method: 'DELETE' });
+    if (res.ok || res.status === 204) {
+      showToast('Xóa giảng viên thành công!');
+      fetchAllLecturers(lecturerSearch);
+    }
+  };
+
+  const openClassroomModal = (room = null) => {
+    if (room) {
+      setEditingRoomId(room.room_id);
+      setClassroomForm({
+        room_id: room.room_id,
+        room_name: room.room_name || '',
+        building: room.building || '',
+        capacity: room.capacity || 50,
+        room_type: room.room_type || 'Theory',
+        camera_rtsp_url: room.camera_rtsp_url || '',
+        camera_status: room.camera_status || 'Online',
+        notes: room.notes || '',
+        status: room.status || 'Active',
+      });
+    } else {
+      setEditingRoomId(null);
+      setClassroomForm({ room_id: '', room_name: '', building: '', capacity: 50, room_type: 'Theory', camera_rtsp_url: '', camera_status: 'Online', notes: '', status: 'Active' });
+    }
+    setIsClassroomModalOpen(true);
+  };
+
+  const handleSaveClassroom = async (e) => {
+    e.preventDefault();
+    try {
+      const isEdit = !!editingRoomId;
+      const url = isEdit ? `${API_BASE}/api/admin/classrooms/${editingRoomId}` : `${API_BASE}/api/admin/classrooms/`;
+      const method = isEdit ? 'PUT' : 'POST';
+      let body = isEdit
+        ? { room_name: classroomForm.room_name, building: classroomForm.building, capacity: classroomForm.capacity, room_type: classroomForm.room_type, camera_rtsp_url: classroomForm.camera_rtsp_url, camera_status: classroomForm.camera_status, notes: classroomForm.notes, status: classroomForm.status }
+        : { ...classroomForm };
+      
+      if (!isEdit && !body.room_id) {
+        delete body.room_id;
+      }
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (res.ok) {
+        showToast(isEdit ? 'Cập nhật phòng học thành công!' : 'Thêm phòng học thành công!');
+        setIsClassroomModalOpen(false);
+        fetchClassrooms(classroomSearch);
+      } else {
+        const err = await res.json();
+        showToast(err.detail || 'Lỗi lưu phòng học', 'danger');
+      }
+    } catch (err) {
+      showToast('Lỗi kết nối API', 'danger');
+    }
+  };
+
+  const handleDeleteClassroom = async (id) => {
+    if (!window.confirm(`Xóa phòng học ${id}?`)) return;
+    const res = await fetch(`${API_BASE}/api/admin/classrooms/${id}`, { method: 'DELETE' });
+    if (res.ok || res.status === 204) {
+      showToast('Xóa phòng học thành công!');
+      fetchClassrooms(classroomSearch);
+    }
+  };
+
+
+  const fetchAvailableClasses = async () => {
+    try {
+      // Lấy TẤT CẢ lớp tín chỉ đang Active để sinh viên xem và chọn
+      const resAll = await fetch(`${API_BASE}/api/lop_tin_chi?status=Active`);
+      if (resAll.ok) {
         const dataAll = await resAll.json();
-        const dataMy = await resMy.json();
-        const myIds = (dataMy.classes || []).map(c => c.class_id);
-        const available = (dataAll.classes || []).filter(c => !myIds.includes(c.class_id));
-        setAvailableClasses(available);
+        setAvailableClasses(dataAll.data || dataAll.classes || []);
       }
     } catch (err) {
       console.error("Lỗi khi tải môn học đăng ký:", err);
     }
   };
+
+  const fetchStudentClasses = async () => {
+    if (!user?.mssv) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/students/${user.mssv}/classes`);
+      if (res.ok) {
+        const data = await res.json();
+        setStudentClasses(data.classes || []);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải lớp sinh viên:", err);
+    }
+  };
+
 
   const handleRegisterCourse = async (classId) => {
     if (!user?.mssv) return;
@@ -375,8 +687,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       const data = await res.json();
       if (res.ok) {
         showToast(`Đăng ký học phần ${classId} thành công!`);
-        fetchAvailableClasses();
-        fetchStudentClasses();
+        // Chỉ cập nhật danh sách đã đăng ký, KHÔNG ẩn danh sách mở
+        await fetchStudentClasses();
+        await fetchAvailableClasses(); // cập nhật số còn lại
       } else {
         showToast(data.detail || "Đăng ký học phần thất bại.", "danger");
       }
@@ -395,8 +708,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       const data = await res.json();
       if (res.ok) {
         showToast(`Đã hủy đăng ký lớp học phần ${classId} thành công.`);
-        fetchAvailableClasses();
-        fetchStudentClasses();
+        await fetchStudentClasses();
+        await fetchAvailableClasses();
       } else {
         showToast(data.detail || "Hủy đăng ký thất bại.", "danger");
       }
@@ -404,6 +717,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       showToast("Lỗi kết nối.", "danger");
     }
   };
+
 
   const fetchSchedules = async () => {
     try {
@@ -514,6 +828,19 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     }
   };
 
+  const fetchSubjects = async (query = '') => {
+    try {
+      const url = query ? `${API_BASE}/api/subjects/?query=${encodeURIComponent(query)}` : `${API_BASE}/api/subjects/`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setSubjectsList(data || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchCreditClasses = async () => {
     try {
       let url = `${API_BASE}/api/lop_tin_chi`;
@@ -523,7 +850,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setCreditClasses(data.classes || []);
+        setCreditClasses(data.data || data.classes || []);
       }
     } catch (err) {
       console.error(err);
@@ -533,15 +860,23 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const fetchEnrolledStudents = async (classId) => {
     setSelectedClass(classId);
     try {
-      const res = await fetch(`${API_BASE}/api/reports/attendance?ma_lop_tc=${classId}`);
+      const res = await fetch(`${API_BASE}/api/lop_tin_chi/${classId}/sinh_vien`);
       if (res.ok) {
         const data = await res.json();
-        setEnrolledStudents(data.report || []);
+        // Map fields to match existing template (mssv, ho_ten, lop_base, enrollment_date)
+        const mapped = (data.data || []).map(s => ({
+          mssv: s.student_id,
+          ho_ten: s.full_name,
+          lop_base: s.administrative_class,
+          enrollment_date: s.enrollment_date
+        }));
+        setEnrolledStudents(mapped);
       }
     } catch (err) {
       console.error(err);
     }
   };
+
 
   const handleEnrollStudent = async (e) => {
     e.preventDefault();
@@ -563,6 +898,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         showToast(`Đã thêm SV ${enrollMssv} vào lớp ${selectedClass}`);
         setEnrollMssv('');
         fetchEnrolledStudents(selectedClass);
+        fetchCreditClasses();
       } else {
         showToast(data.detail || "Thêm sinh viên thất bại.", "danger");
       }
@@ -581,6 +917,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       if (res.ok) {
         showToast(`Đã xóa sinh viên ${mssv} khỏi lớp.`);
         fetchEnrolledStudents(selectedClass);
+        fetchCreditClasses();
       } else {
         showToast("Xóa thất bại.", "danger");
       }
@@ -609,6 +946,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         showToast(data.message || `Đã thêm thành công sinh viên vào lớp.`);
         setBulkClassCode('');
         fetchEnrolledStudents(selectedClass);
+        fetchCreditClasses();
       } else {
         showToast(data.detail || "Đăng ký cả lớp thất bại.", "danger");
       }
@@ -617,18 +955,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     }
   };
 
-  const fetchStudentClasses = async () => {
-    if (!user?.mssv) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/students/${user.mssv}/classes`);
-      if (res.ok) {
-        const data = await res.json();
-        setStudentClasses(data.classes || []);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+
+
 
   const toggleCameraSimulation = (cameraId) => {
     setAdminCameras(prev => prev.map(cam => {
@@ -929,13 +1257,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     }
 
     const formData = new FormData();
-    formData.append("mssv", user.mssv || "");
-    formData.append("ho_ten", user.ho_ten || user.username);
-    formData.append("lop_base", user.lop_base || "");
     formData.append("file", regPhoto);
 
     try {
-      const res = await fetch(`${API_BASE}/api/register`, {
+      const res = await fetch(`${API_BASE}/api/${encodeURIComponent(user.mssv || "")}/faces`, {
         method: "POST",
         body: formData
       });
@@ -1091,17 +1416,14 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     }
 
     const formData = new FormData();
-    formData.append("mssv", regMssv);
-    formData.append("ho_ten", regName);
-    formData.append("lop_base", regLop);
     formData.append("file", regPhoto);
 
     try {
-      const res = await fetch(`${API_BASE}/api/register`, {
+      const res = await fetch(`${API_BASE}/api/${encodeURIComponent(regMssv)}/faces`, {
         method: "POST",
         body: formData
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         showToast("Đăng ký hồ sơ sinh viên và khuôn mặt thành công!");
         setRegPhoto(null);
@@ -1142,51 +1464,383 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     }
   };
 
-  const handleCreateSubject = async (e) => {
+  const handleSaveSubject = async (e) => {
     e.preventDefault();
-    const formData = new FormData();
-    formData.append("ma_mon", subCode);
-    formData.append("ten_mon", subName);
-
     try {
-      const res = await fetch(`${API_BASE}/api/mon_hoc`, {
-        method: "POST",
-        body: formData
+      const isEdit = !!editingSubjectId;
+      const url = isEdit ? `${API_BASE}/api/subjects/${editingSubjectId}` : `${API_BASE}/api/subjects/`;
+      const method = isEdit ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subjectForm)
       });
+      
       if (res.ok) {
-        showToast("Đã lưu môn học mới.");
-        setSubCode('');
-        setSubName('');
+        showToast(isEdit ? "Cập nhật môn học thành công." : "Tạo môn học mới thành công.");
+        setIsSubjectModalOpen(false);
+        fetchSubjects(subjectSearch);
+      } else {
+        const errorData = await res.json();
+        showToast(errorData.detail || "Lưu thất bại", "danger");
       }
     } catch (err) {
       showToast("Lỗi kết nối.", "danger");
     }
   };
 
+  const openSubjectModal = (subject = null) => {
+    if (subject) {
+      setEditingSubjectId(subject.subject_id);
+      setSubjectForm({
+        subject_id: subject.subject_id,
+        subject_name: subject.subject_name,
+        theory_credits: subject.theory_credits,
+        practical_credits: subject.practical_credits,
+        department: subject.department || '',
+        is_active: subject.is_active
+      });
+    } else {
+      setEditingSubjectId(null);
+      setSubjectForm({
+        subject_id: '',
+        subject_name: '',
+        theory_credits: 0,
+        practical_credits: 0,
+        department: '',
+        is_active: true
+      });
+    }
+    setIsSubjectModalOpen(true);
+  };
+
   const handleCreateCreditClass = async (e) => {
     e.preventDefault();
-    const formData = new FormData();
-    formData.append("ma_lop_tc", ccCode);
-    formData.append("ma_mon", ccSub);
-    if (ccLecturer) {
-      formData.append("ma_gv", ccLecturer);
-    }
+    const payload = {
+      subject_id: ccSub,
+      lecturer_id: ccLecturer,
+      semester: parseInt(ccSemester) || 1,
+      academic_year: ccAcademicYear,
+      administrative_class_id: ccAdminClass,
+      class_group: ccGroup,
+      max_students: parseInt(ccMaxStudents) || 50
+    };
 
     try {
       const res = await fetch(`${API_BASE}/api/lop_tin_chi`, {
         method: "POST",
-        body: formData
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         showToast("Đã lưu lớp tín chỉ.");
-        setCcCode('');
         setCcSub('');
         setCcLecturer('');
+        setCcSemester(1);
+        setCcAcademicYear('2024-2025');
+        setCcAdminClass('');
+        setCcGroup('');
+        setCcMaxStudents(50);
         fetchCreditClasses();
+      } else {
+        const err = await res.json();
+        showToast("Lỗi: " + JSON.stringify(err.detail));
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Lỗi kết nối API.");
+    }
+  };
+
+  const handleOpenEditClassModal = (cls) => {
+    setEditClassForm({
+      class_id: cls.class_id,
+      subject_id: cls.subject_id || '',
+      subject_name: cls.subject_name || '',
+      lecturer_id: cls.lecturer_id || '',
+      administrative_class_id: cls.administrative_class_id || '',
+      semester: cls.semester || 1,
+      academic_year: cls.academic_year || '',
+      class_group: cls.class_group || '',
+      max_students: cls.max_students || 50,
+      status: cls.status || 'Active'
+    });
+    setIsEditClassModalOpen(true);
+  };
+
+  const handleUpdateCreditClass = async (e) => {
+    e.preventDefault();
+    const payload = {
+      lecturer_id: editClassForm.lecturer_id || null,
+      administrative_class_id: editClassForm.administrative_class_id || null,
+      class_group: editClassForm.class_group || null,
+      max_students: parseInt(editClassForm.max_students) || 50,
+      semester: parseInt(editClassForm.semester) || 1,
+      academic_year: editClassForm.academic_year || null,
+      status: editClassForm.status
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/lop_tin_chi/${editClassForm.class_id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showToast("Cập nhật lớp thành công!");
+        setIsEditClassModalOpen(false);
+        fetchCreditClasses();
+      } else {
+        const err = await res.json();
+        showToast("Lỗi cập nhật: " + JSON.stringify(err.detail));
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Lỗi kết nối API.");
+    }
+  };
+
+  const handleImportSubjectCSV = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      showToast("Đang xử lý import môn học...");
+      const res = await fetch(`${API_BASE}/api/subjects/import/csv`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Import môn học thành công!");
+        fetchSubjects(subjectSearch);
+      } else {
+        showToast(data.detail || "Lỗi import", "danger");
       }
     } catch (err) {
-      showToast("Lỗi kết nối.", "danger");
+      console.error(err);
+      showToast("Lỗi kết nối API khi import.", "danger");
+    } finally {
+      e.target.value = null; // reset file input
     }
+  };
+
+  const renderSubjectsManagementTab = () => {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        {/* Header & Controls */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <BookOpen size={24} color="#0f766e" />
+            <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Môn học</h2>
+          </div>
+          <button 
+            style={{ ...styles.btn, background: "#0f766e", display: "flex", alignItems: "center", gap: "5px" }}
+            onClick={() => openSubjectModal()}
+          >
+            <UserPlus size={16} /> Thêm môn học
+          </button>
+        </div>
+
+        {/* Bảng danh sách môn học */}
+        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ padding: "15px", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "10px" }}>
+            <input 
+              type="text" 
+              placeholder="Tìm kiếm theo mã môn hoặc tên môn..." 
+              style={{ ...styles.input, flex: 1 }} 
+              value={subjectSearch}
+              onChange={(e) => {
+                setSubjectSearch(e.target.value);
+                fetchSubjects(e.target.value);
+              }}
+            />
+            <button style={{ ...styles.btn, background: "#334155" }} onClick={() => fetchSubjects(subjectSearch)}>
+              Tìm kiếm
+            </button>
+            <button style={{ ...styles.btn, background: "#94a3b8" }} onClick={() => { setSubjectSearch(''); fetchSubjects(''); }}>
+              Làm mới
+            </button>
+            
+            <label style={{ ...styles.btn, background: "#f59e0b", display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", margin: 0 }}>
+              <input 
+                type="file" 
+                accept=".csv"
+                style={{ display: "none" }}
+                onChange={handleImportSubjectCSV}
+              />
+              Import CSV
+            </label>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+              <thead>
+                <tr style={{ background: "#f8fafc" }}>
+                  <th style={styles.th}>Mã môn</th>
+                  <th style={styles.th}>Tên môn học</th>
+                  <th style={styles.th}>Số TC</th>
+                  <th style={styles.th}>Khoa / Bộ môn</th>
+                  <th style={styles.th}>Trạng thái</th>
+                  <th style={styles.th}>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subjectsList.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ padding: "30px", textAlign: "center", color: "#64748b" }}>
+                      Không tìm thấy môn học nào.
+                    </td>
+                  </tr>
+                ) : (
+                  subjectsList.map((sub) => (
+                    <tr key={sub.subject_id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <td style={{ ...styles.td, fontWeight: "600", color: "#0f766e" }}>{sub.subject_id}</td>
+                      <td style={{ ...styles.td, color: "#1e293b", fontWeight: "500" }}>{sub.subject_name}</td>
+                      <td style={{ ...styles.td, color: "#64748b" }}>{sub.credits}</td>
+                      <td style={{ ...styles.td, color: "#64748b" }}>{sub.department || 'N/A'}</td>
+                      <td style={styles.td}>
+                        <span style={{
+                          padding: "4px 8px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "600",
+                          backgroundColor: sub.is_active ? "#dcfce7" : "#fee2e2",
+                          color: sub.is_active ? "#166534" : "#991b1b"
+                        }}>
+                          {sub.is_active ? "Hoạt động" : "Tạm ngưng"}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <button 
+                          style={{ background: "#e0f2fe", color: "#0369a1", border: "none", padding: "5px 10px", borderRadius: "4px", cursor: "pointer", fontSize: "0.8rem", fontWeight: "600" }}
+                          onClick={() => openSubjectModal(sub)}
+                        >
+                          Sửa
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Modal Thêm/Sửa Môn Học */}
+        {isSubjectModalOpen && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.4)", zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#fff", padding: "30px", borderRadius: "16px", width: "500px", maxWidth: "90vw",
+              display: "flex", flexDirection: "column", maxHeight: "90vh",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.1rem" }}>
+                  {editingSubjectId ? "Cập nhật Môn học" : "Thêm Môn học mới"}
+                </h3>
+                <button 
+                  onClick={() => setIsSubjectModalOpen(false)}
+                  style={{
+                    background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer",
+                    color: "#64748b", padding: 0, lineHeight: 1
+                  }}
+                >×</button>
+              </div>
+              
+              <div style={{ overflowY: "auto", paddingRight: "10px" }}>
+                <form onSubmit={handleSaveSubject} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Mã môn học <span style={{ color: "red" }}>*</span></label>
+                    <input 
+                      type="text" 
+                      required 
+                      disabled={!!editingSubjectId}
+                      style={{ ...styles.input, backgroundColor: editingSubjectId ? "#f1f5f9" : "#fff" }}
+                      value={subjectForm.subject_id}
+                      onChange={e => setSubjectForm({...subjectForm, subject_id: e.target.value.toUpperCase()})}
+                      placeholder="VD: INT1152"
+                    />
+                  </div>
+                  
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Tên môn học <span style={{ color: "red" }}>*</span></label>
+                    <input 
+                      type="text" 
+                      required 
+                      style={styles.input}
+                      value={subjectForm.subject_name}
+                      onChange={e => setSubjectForm({...subjectForm, subject_name: e.target.value})}
+                      placeholder="Nhập tên môn học"
+                    />
+                  </div>
+                  
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Tín chỉ Lý thuyết</label>
+                      <input 
+                        type="number" 
+                        min="0"
+                        style={styles.input}
+                        value={subjectForm.theory_credits}
+                        onChange={e => setSubjectForm({...subjectForm, theory_credits: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Tín chỉ Thực hành</label>
+                      <input 
+                        type="number" 
+                        min="0"
+                        style={styles.input}
+                        value={subjectForm.practical_credits}
+                        onChange={e => setSubjectForm({...subjectForm, practical_credits: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Khoa / Bộ môn quản lý</label>
+                    <input 
+                      type="text" 
+                      style={styles.input}
+                      value={subjectForm.department}
+                      onChange={e => setSubjectForm({...subjectForm, department: e.target.value})}
+                      placeholder="VD: Khoa CNTT"
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Trạng thái</label>
+                    <select 
+                      style={styles.input}
+                      value={subjectForm.is_active ? "true" : "false"}
+                      onChange={e => setSubjectForm({...subjectForm, is_active: e.target.value === "true"})}
+                    >
+                      <option value="true">Đang mở</option>
+                      <option value="false">Tạm ngưng</option>
+                    </select>
+                  </div>
+                  
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px", borderTop: "1px solid #e2e8f0", paddingTop: "15px" }}>
+                    <button type="button" style={{ ...styles.btn, background: "#94a3b8" }} onClick={() => setIsSubjectModalOpen(false)}>Hủy bỏ</button>
+                    <button type="submit" style={{ ...styles.btn, background: "#0f766e" }}>Lưu môn học</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderClassManagementTab = () => {
@@ -1196,230 +1850,1177 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     });
 
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: "20px", alignItems: "start" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        {/* Header & Controls */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <BookOpen size={24} color="#0f766e" />
+            <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Lớp Tín Chỉ</h2>
+          </div>
+          <button 
+            style={{ ...styles.btn, background: "#0f766e", display: "flex", alignItems: "center", gap: "5px" }}
+            onClick={() => setIsCreateClassModalOpen(true)}
+          >
+            <BookOpen size={16} /> Thêm lớp tín chỉ
+          </button>
+        </div>
 
-        {/* Cột trái: Danh sách lớp học phần */}
-        <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", borderBottom: "1px solid #f1f5f9", paddingBottom: "8px" }}>
-            <BookOpen size={16} color="#106fa6" />
-            <span style={{ fontSize: "0.85rem", fontWeight: "700", color: "#106fa6" }}>Lớp Học Phần Đang Mở</span>
+        {/* Bảng danh sách lớp học phần */}
+        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ padding: "15px", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "10px" }}>
+            <input 
+              type="text" 
+              placeholder="Tìm kiếm theo mã lớp hoặc tên môn học..." 
+              style={{ ...styles.input, flex: 1 }} 
+              value={classSearch}
+              onChange={(e) => setClassSearch(e.target.value)}
+            />
           </div>
 
-          <input
-            style={{ ...styles.input, width: "100%", padding: "6px 10px", fontSize: "0.78rem", marginBottom: "12px" }}
-            placeholder="🔍 Tìm mã lớp, môn học..."
-            value={classSearch}
-            onChange={(e) => setClassSearch(e.target.value)}
-          />
-
-          <div style={{ maxHeight: "400px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
-            {filteredCreditClasses.length === 0 ? (
-              <p style={{ fontSize: "0.75rem", color: "#94a3b8", textAlign: "center", padding: "10px" }}>Không tìm thấy lớp nào.</p>
-            ) : (
-              filteredCreditClasses.map(c => {
-                const isSelected = selectedClass === c.class_id;
-                return (
-                  <div
-                    key={c.class_id}
-                    onClick={() => fetchEnrolledStudents(c.class_id)}
-                    style={{
-                      padding: "10px 12px",
-                      cursor: "pointer",
-                      borderRadius: "8px",
-                      border: isSelected ? "1px solid #0284c7" : "1px solid #e2edf5",
-                      background: isSelected ? "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)" : "#ffffff",
-                      transition: "all 0.15s ease",
-                      boxShadow: isSelected ? "0 2px 4px rgba(2, 132, 199, 0.08)" : "none"
-                    }}
-                    className="ptit-class-card"
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "0.8rem", fontWeight: "700", color: isSelected ? "#0284c7" : "#1e293b" }}>{c.class_id}</span>
-                      <span style={{ fontSize: "0.65rem", padding: "1px 5px", borderRadius: "4px", background: "#f1f5f9", color: "#64748b", fontWeight: "600" }}>{c.subject_id}</span>
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "#475569", fontWeight: "500", marginBottom: "6px" }}>
-                      {c.subject_name}
-                    </div>
-                    <div style={{ fontSize: "0.68rem", color: "#64748b", display: "flex", alignItems: "center", gap: "4px" }}>
-                      👤 <span style={{ fontStyle: "italic" }}>GV: {c.lecturer_name || "Chưa phân công"}</span>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+              <thead style={{ background: "#f8fafc" }}>
+                <tr>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Mã lớp</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Môn học</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Giảng viên</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Học kỳ / Năm</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Sĩ số</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Trạng thái</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCreditClasses.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>Không tìm thấy lớp học phần nào.</td>
+                  </tr>
+                ) : (
+                  filteredCreditClasses.map((c, idx) => (
+                    <tr key={c.class_id} style={{ borderBottom: "1px solid #f1f5f9", backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
+                      <td style={{ padding: "12px 15px", fontWeight: "600", color: "#0f172a" }}>
+                        {c.class_id}
+                        {c.administrative_class_id && <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: "normal" }}>Lớp: {c.administrative_class_id}</div>}
+                        {c.class_group && <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: "normal" }}>Tổ: {c.class_group}</div>}
+                      </td>
+                      <td style={{ padding: "12px 15px" }}>
+                        <div style={{ fontWeight: "600", color: "#0f766e" }}>{c.subject_name || c.subject_id}</div>
+                        <div style={{ fontSize: "0.7rem", color: "#64748b" }}>{c.subject_id}</div>
+                      </td>
+                      <td style={{ padding: "12px 15px" }}>
+                        {c.lecturer_id ? (
+                          <>
+                            <div style={{ fontWeight: "600", color: "#1e293b" }}>{c.lecturer_name || "Chưa có tên"}</div>
+                            <div style={{ fontSize: "0.75rem", color: "#64748b" }}>{c.lecturer_id}</div>
+                          </>
+                        ) : (
+                          <span style={{ fontStyle: "italic", color: "#94a3b8" }}>Chưa phân công</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 15px" }}>
+                        <span style={{ background: "#e0f2fe", color: "#0284c7", padding: "2px 8px", borderRadius: "12px", fontWeight: "600", fontSize: "0.75rem" }}>
+                          Kỳ {c.semester} - {c.academic_year}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center", fontWeight: "600" }}>
+                        <span style={{ color: c.current_students >= c.max_students ? "#ef4444" : "#10b981" }}>{c.current_students || 0}</span> / {c.max_students}
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <span style={{ 
+                          padding: "4px 10px", borderRadius: "12px", fontWeight: "600", fontSize: "0.75rem", display: "inline-block",
+                          backgroundColor: c.status === 'Active' ? '#dcfce7' : c.status === 'Planning' ? '#e0f2fe' : c.status === 'Completed' ? '#f1f5f9' : '#fee2e2',
+                          color: c.status === 'Active' ? '#166534' : c.status === 'Planning' ? '#075985' : c.status === 'Completed' ? '#475569' : '#991b1b',
+                          border: `1px solid ${c.status === 'Active' ? '#bbf7d0' : c.status === 'Planning' ? '#bae6fd' : c.status === 'Completed' ? '#e2e8f0' : '#fecaca'}`
+                        }}>
+                          {c.status === 'Active' ? 'Đang mở' : c.status === 'Planning' ? 'Dự kiến' : c.status === 'Completed' ? 'Đã kết thúc' : 'Đã hủy'}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <div style={{ display: "flex", justifyContent: "center", gap: "8px" }}>
+                          <button 
+                            onClick={() => handleOpenEditClassModal(c)}
+                            style={{ padding: "4px 8px", background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", color: "#0f172a", fontSize: "0.75rem" }}
+                            title="Sửa lớp"
+                          >
+                            ✏️ Sửa
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setSelectedClass(c.class_id);
+                              fetchEnrolledStudents(c.class_id);
+                              setIsEnrolledStudentsModalOpen(true);
+                            }}
+                            style={{ padding: "4px 8px", background: "#e0f2fe", border: "1px solid #bae6fd", borderRadius: "6px", cursor: "pointer", color: "#0284c7", fontSize: "0.75rem", fontWeight: "600" }}
+                            title="Quản lý sinh viên"
+                          >
+                            👥 DS SV
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Cột phải: Chi tiết và Quản lý Đăng ký */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {!selectedClass ? (
-            <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "40px 20px", textAlign: "center", color: "#64748b" }}>
-              <BookOpen size={48} style={{ margin: "0 auto 12px auto", opacity: 0.5, color: "#106fa6" }} />
-              <h5 style={{ fontWeight: "700", color: "#1e293b", margin: "0 0 4px 0", fontSize: "0.95rem" }}>Chưa chọn lớp học phần</h5>
-              <p style={{ fontSize: "0.78rem", color: "#94a3b8", margin: 0 }}>Vui lòng nhấp chọn một lớp học phần ở cột bên trái để quản lý sinh viên đăng ký học.</p>
+        {/* Modal Tạo Lớp Tín Chỉ */}
+        {isCreateClassModalOpen && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.5)", zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#fff", borderRadius: "12px", width: "600px", maxWidth: "95%",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)",
+              overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "90vh"
+            }}>
+              <div style={{ padding: "20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.25rem" }}>Thêm lớp học phần (Tín chỉ)</h3>
+                <button onClick={() => setIsCreateClassModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div style={{ padding: "20px", overflowY: "auto" }}>
+                <form onSubmit={(e) => {
+                  handleCreateCreditClass(e);
+                  setIsCreateClassModalOpen(false);
+                }} style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "15px" }}>
+                  <div style={{ ...styles.formGroup, gridColumn: "span 2", margin: 0, position: "relative" }}>
+                    <label style={styles.label}>Môn học liên kết (Nhập mã hoặc tên)</label>
+                    <input
+                      type="text"
+                      placeholder="Mã môn học hoặc tên (VD: INT1306)"
+                      required
+                      style={styles.input}
+                      value={ccSub}
+                      onChange={(e) => {
+                        setCcSub(e.target.value);
+                        setShowSubjectSuggestions(true);
+                      }}
+                      onFocus={() => setShowSubjectSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowSubjectSuggestions(false), 200)}
+                    />
+                    {showSubjectSuggestions && ccSub && (
+                      <div style={{
+                        position: "absolute", top: "100%", left: 0, right: 0, background: "#fff",
+                        border: "1px solid #e2e8f0", borderRadius: "8px", maxHeight: "250px", overflowY: "auto",
+                        zIndex: 100, boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)"
+                      }}>
+                        {subjectsList
+                          .filter(s => s.subject_id.toLowerCase().includes(ccSub.toLowerCase()) || s.subject_name.toLowerCase().includes(ccSub.toLowerCase()))
+                          .slice(0, 5)
+                          .map(s => (
+                            <div 
+                              key={s.subject_id}
+                              style={{ padding: "10px", cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}
+                              onMouseDown={() => {
+                                setCcSub(s.subject_id);
+                                setShowSubjectSuggestions(false);
+                              }}
+                            >
+                              <div style={{ fontWeight: "600", color: "#0f172a", fontSize: "0.9rem" }}>{s.subject_id} - {s.subject_name}</div>
+                              <div style={{ fontSize: "0.8rem", color: "#64748b" }}>{s.theory_credits + s.practical_credits} TC | Khoa/BM: {s.department || "Khác"}</div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {subjectsList.find(s => s.subject_id === ccSub) && (
+                    <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "15px", marginTop: "-5px", marginBottom: "5px" }}>
+                      <div style={{...styles.formGroup, margin: 0}}>
+                        <label style={styles.label}>Tên môn học</label>
+                        <input type="text" style={{...styles.input, backgroundColor: "#f1f5f9", color: "#64748b", cursor: "not-allowed"}} value={subjectsList.find(s => s.subject_id === ccSub).subject_name} readOnly disabled />
+                      </div>
+                      <div style={{...styles.formGroup, margin: 0}}>
+                        <label style={styles.label}>Số tín chỉ</label>
+                        <input type="text" style={{...styles.input, backgroundColor: "#f1f5f9", color: "#64748b", cursor: "not-allowed"}} value={subjectsList.find(s => s.subject_id === ccSub).theory_credits + subjectsList.find(s => s.subject_id === ccSub).practical_credits} readOnly disabled />
+                      </div>
+                      <div style={{...styles.formGroup, margin: 0}}>
+                        <label style={styles.label}>Khoa/Bộ môn</label>
+                        <input type="text" style={{...styles.input, backgroundColor: "#f1f5f9", color: "#64748b", cursor: "not-allowed"}} value={subjectsList.find(s => s.subject_id === ccSub).department || "Khác"} readOnly disabled />
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ gridColumn: "span 2", display: "flex", flexDirection: "column", gap: "15px" }}>
+                    <div style={{...styles.formGroup, margin: 0}}>
+                      <label style={styles.label}>Học kỳ</label>
+                      <select style={styles.input} value={ccSemester} onChange={(e) => setCcSemester(e.target.value)}>
+                        <option value="1">Học kỳ 1</option>
+                        <option value="2">Học kỳ 2</option>
+                        <option value="3">Học kỳ 3</option>
+                        <option value="4">Học kỳ Hè</option>
+                      </select>
+                    </div>
+                    <div style={{...styles.formGroup, margin: 0}}>
+                      <label style={styles.label}>Niên khóa</label>
+                      <select style={styles.input} value={ccAcademicYear} onChange={(e) => setCcAcademicYear(e.target.value)}>
+                        <option value="2023-2024">2023-2024</option>
+                        <option value="2024-2025">2024-2025</option>
+                        <option value="2025-2026">2025-2026</option>
+                        <option value="2026-2027">2026-2027</option>
+                        <option value="2027-2028">2027-2028</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{...styles.formGroup, margin: 0}}>
+                    <label style={styles.label}>Sĩ số tối đa</label>
+                    <input type="number" min="1" required style={styles.input} value={ccMaxStudents} onChange={(e) => setCcMaxStudents(e.target.value)} />
+                  </div>
+                  <div style={{...styles.formGroup, margin: 0}}>
+                    <label style={styles.label}>Phân công Giảng viên</label>
+                    <select style={styles.input} value={ccLecturer} onChange={(e) => setCcLecturer(e.target.value)} required>
+                      <option value="">-- Chọn giảng viên --</option>
+                      {lecturersList.filter(l => l.teaching_status === 'Active').map(l => (
+                        <option key={l.lecturer_id} value={l.lecturer_id}>
+                          {l.lecturer_id} - {l.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{...styles.formGroup, margin: 0}}>
+                    <label style={styles.label}>Lớp hành chính (Tùy chọn)</label>
+                    <input type="text" placeholder="VD: D20CQCN01" style={styles.input} value={ccAdminClass} onChange={(e) => setCcAdminClass(e.target.value.toUpperCase())} />
+                  </div>
+                  <div style={{...styles.formGroup, margin: 0}}>
+                    <label style={styles.label}>Tổ thực hành (Tùy chọn)</label>
+                    <input type="text" placeholder="VD: TH1" style={styles.input} value={ccGroup} onChange={(e) => setCcGroup(e.target.value.toUpperCase())} />
+                  </div>
+                  
+                  <div style={{ gridColumn: "span 2", display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px", borderTop: "1px solid #e2e8f0", paddingTop: "15px" }}>
+                    <button type="button" style={{ ...styles.btn, background: "#94a3b8" }} onClick={() => setIsCreateClassModalOpen(false)}>Hủy bỏ</button>
+                    <button type="submit" style={{ ...styles.btn, background: "#0f766e" }}>Tạo lớp</button>
+                  </div>
+                </form>
+              </div>
             </div>
-          ) : (
-            <>
-              {/* Card thông tin lớp & form đăng ký */}
-              <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
-                  <div>
-                    <h4 style={{ color: "#1e293b", fontSize: "0.9rem", fontWeight: "700", margin: 0 }}>
-                      Quản lý Đăng ký Học: <span style={{ color: "#0284c7" }}>{selectedClass}</span>
-                    </h4>
-                  </div>
+          </div>
+        )}
 
-                  {/* Segmented control tabs */}
-                  <div style={{ display: "flex", background: "#f1f5f9", padding: "3px", borderRadius: "6px" }}>
-                    <button
-                      onClick={() => setRegModeTab('single')}
-                      style={{
-                        border: "none",
-                        background: regModeTab === 'single' ? "#ffffff" : "transparent",
-                        color: regModeTab === 'single' ? "#0f172a" : "#64748b",
-                        padding: "4px 10px",
-                        fontSize: "0.72rem",
-                        fontWeight: "600",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        boxShadow: regModeTab === 'single' ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
-                      }}
-                    >
-                      <UserPlus size={12} style={{ display: "inline", marginRight: "4px", verticalAlign: "middle" }} />
-                      Đăng ký đơn lẻ
-                    </button>
-                    <button
-                      onClick={() => setRegModeTab('bulk')}
-                      style={{
-                        border: "none",
-                        background: regModeTab === 'bulk' ? "#ffffff" : "transparent",
-                        color: regModeTab === 'bulk' ? "#0f172a" : "#64748b",
-                        padding: "4px 10px",
-                        fontSize: "0.72rem",
-                        fontWeight: "600",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        boxShadow: regModeTab === 'bulk' ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
-                      }}
-                    >
-                      <Users size={12} style={{ display: "inline", marginRight: "4px", verticalAlign: "middle" }} />
-                      Đăng ký cả lớp HC
-                    </button>
-                  </div>
-                </div>
-
-                {regModeTab === 'single' ? (
-                  <form onSubmit={handleEnrollStudent} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
-                    <div style={{ ...styles.formGroup, margin: 0, flex: 1 }}>
-                      <label style={styles.label}>MSSV Sinh viên</label>
-                      <input
-                        style={{ ...styles.input, padding: "8px 12px", fontSize: "0.82rem" }}
-                        placeholder="Nhập MSSV sinh viên cần đăng ký (VD: N22DCCN134)"
-                        value={enrollMssv}
-                        onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
-                        required
-                      />
-                    </div>
-                    <button type="submit" style={{ ...styles.btn, height: "38px", padding: "0 15px", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
-                      Thêm vào lớp
-                    </button>
-                  </form>
-                ) : (
-                  <form onSubmit={handleBulkEnroll} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
-                    <div style={{ ...styles.formGroup, margin: 0, flex: 1 }}>
-                      <label style={styles.label}>Tên Lớp Hành Chính</label>
-                      <input
-                        style={{ ...styles.input, padding: "8px 12px", fontSize: "0.82rem" }}
-                        placeholder="Nhập lớp hành chính để thêm cả lớp (VD: D22CQCNPM02-N)"
-                        value={bulkClassCode}
-                        onChange={(e) => setBulkClassCode(e.target.value.toUpperCase())}
-                        required
-                      />
-                    </div>
-                    <button type="submit" style={{ ...styles.btn, height: "38px", padding: "0 15px", fontSize: "0.8rem", backgroundColor: "#0284c7", whiteSpace: "nowrap" }}>
-                      Đăng ký cả lớp
-                    </button>
-                  </form>
-                )}
+        {/* Modal Quản lý Đăng ký Sinh viên */}
+        {isEnrolledStudentsModalOpen && selectedClass && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.5)", zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#fff", borderRadius: "12px", width: "800px", maxWidth: "95%",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)",
+              overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "90vh"
+            }}>
+              <div style={{ padding: "20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.25rem" }}>Danh sách Sinh viên: <span style={{ color: "#0284c7" }}>{selectedClass}</span></h3>
+                <button onClick={() => setIsEnrolledStudentsModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}>
+                  <X size={20} />
+                </button>
               </div>
+              <div style={{ padding: "20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "20px" }}>
+                
+                {/* Header của lớp được chọn */}
+                {(() => {
+                  const cls = creditClasses.find(c => c.class_id === selectedClass) || {};
+                  return (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8fbfd", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px 20px" }}>
+                      <div>
+                        <h4 style={{ margin: "0 0 4px 0", color: "#106fa6", fontSize: "1.1rem", fontWeight: "700" }}>{cls.subject_name || cls.subject_id}</h4>
+                        <div style={{ display: "flex", gap: "15px", fontSize: "0.75rem", color: "#64748b", alignItems: "center" }}>
+                          <span><strong style={{ color: "#475569" }}>Mã lớp:</strong> {cls.class_id}</span>
+                          <span><strong style={{ color: "#475569" }}>Giảng viên:</strong> {cls.lecturer_id ? `${cls.lecturer_name || "Chưa có tên"} (${cls.lecturer_id})` : "Chưa phân công"}</span>
+                          <span><strong style={{ color: "#475569" }}>Sĩ số:</strong> {cls.current_students}/{cls.max_students}</span>
+                          <span style={{ 
+                            padding: "3px 10px", borderRadius: "12px", fontWeight: "600", fontSize: "0.7rem",
+                            backgroundColor: cls.status === 'Active' ? '#dcfce7' : cls.status === 'Planning' ? '#e0f2fe' : cls.status === 'Completed' ? '#f1f5f9' : '#fee2e2',
+                            color: cls.status === 'Active' ? '#166534' : cls.status === 'Planning' ? '#075985' : cls.status === 'Completed' ? '#475569' : '#991b1b',
+                            border: `1px solid ${cls.status === 'Active' ? '#bbf7d0' : cls.status === 'Planning' ? '#bae6fd' : cls.status === 'Completed' ? '#e2e8f0' : '#fecaca'}`
+                          }}>
+                            {cls.status === 'Active' ? 'Đang mở' : cls.status === 'Planning' ? 'Dự kiến' : cls.status === 'Completed' ? 'Đã kết thúc' : 'Đã hủy'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
-              {/* Bảng danh sách thành viên */}
-              <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid #f1f5f9", paddingBottom: "8px" }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: "700", color: "#1e293b" }}>
-                    Danh sách sinh viên trong lớp học phần
-                  </span>
-                  <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "20px", background: "#e0f2fe", color: "#0369a1", fontWeight: "700" }}>
-                    Sĩ số: {enrolledStudents.length} SV
-                  </span>
+                {/* Form đăng ký */}
+                <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
+                    <div style={{ display: "flex", background: "#f1f5f9", padding: "3px", borderRadius: "6px" }}>
+                      <button
+                        onClick={() => setRegModeTab('single')}
+                        style={{
+                          border: "none",
+                          background: regModeTab === 'single' ? "#ffffff" : "transparent",
+                          color: regModeTab === 'single' ? "#0f172a" : "#64748b",
+                          padding: "4px 10px",
+                          fontSize: "0.75rem",
+                          fontWeight: "600",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          boxShadow: regModeTab === 'single' ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+                          transition: "all 0.15s"
+                        }}
+                      >
+                        <UserPlus size={12} style={{ display: "inline", marginRight: "4px", verticalAlign: "middle" }} />
+                        Đăng ký lẻ
+                      </button>
+                      <button
+                        onClick={() => setRegModeTab('bulk')}
+                        style={{
+                          border: "none",
+                          background: regModeTab === 'bulk' ? "#ffffff" : "transparent",
+                          color: regModeTab === 'bulk' ? "#0f172a" : "#64748b",
+                          padding: "4px 10px",
+                          fontSize: "0.75rem",
+                          fontWeight: "600",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          boxShadow: regModeTab === 'bulk' ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+                          transition: "all 0.15s"
+                        }}
+                      >
+                        <Users size={12} style={{ display: "inline", marginRight: "4px", verticalAlign: "middle" }} />
+                        Đăng ký cả lớp HC
+                      </button>
+                    </div>
+                  </div>
+
+                  {regModeTab === 'single' ? (
+                    <form onSubmit={handleEnrollStudent} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
+                      <div style={{ ...styles.formGroup, margin: 0, flex: 1 }}>
+                        <label style={styles.label}>MSSV Sinh viên</label>
+                        <input
+                          style={{ ...styles.input, padding: "8px 12px", fontSize: "0.85rem" }}
+                          placeholder="Nhập MSSV sinh viên cần đăng ký (VD: N22DCCN134)"
+                          value={enrollMssv}
+                          onChange={(e) => setEnrollMssv(e.target.value.toUpperCase())}
+                          required
+                        />
+                      </div>
+                      <button type="submit" style={{ ...styles.btn, height: "38px", padding: "0 15px", fontSize: "0.85rem", whiteSpace: "nowrap" }}>
+                        Thêm vào lớp
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleBulkEnroll} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
+                      <div style={{ ...styles.formGroup, margin: 0, flex: 1 }}>
+                        <label style={styles.label}>Tên Lớp Hành Chính</label>
+                        <input
+                          style={{ ...styles.input, padding: "8px 12px", fontSize: "0.85rem" }}
+                          placeholder="Nhập lớp hành chính để thêm cả lớp (VD: D22CQCNPM02-N)"
+                          value={bulkClassCode}
+                          onChange={(e) => setBulkClassCode(e.target.value.toUpperCase())}
+                          required
+                        />
+                      </div>
+                      <button type="submit" style={{ ...styles.btn, height: "38px", padding: "0 15px", fontSize: "0.85rem", backgroundColor: "#0284c7", whiteSpace: "nowrap" }}>
+                        Đăng ký cả lớp
+                      </button>
+                    </form>
+                  )}
                 </div>
 
-                {enrolledStudents.length === 0 ? (
-                  <p style={{ fontSize: "0.75rem", color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>Chưa có sinh viên nào đăng ký vào lớp này.</p>
-                ) : (
-                  <div style={{ overflowY: "auto", maxHeight: "250px" }}>
-                    <table style={styles.table}>
-                      <thead>
-                        <tr>
-                          <th style={styles.th}>MSSV</th>
-                          <th style={styles.th}>Họ Tên</th>
-                          <th style={styles.th}>Lớp Chuyên Ngành</th>
-                          <th style={{ ...styles.th, textAlign: "center" }}>Hành động</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {enrolledStudents.map((st) => (
-                          <tr key={st.mssv}>
-                            <td style={styles.td}>{st.mssv}</td>
-                            <td style={styles.td}><strong>{st.ho_ten}</strong></td>
-                            <td style={styles.td}>{st.lop_base}</td>
-                            <td style={{ ...styles.td, textAlign: "center" }}>
-                              <button
-                                onClick={() => handleUnenrollStudent(st.mssv)}
-                                style={{
-                                  border: "none",
-                                  background: "transparent",
-                                  color: "#ef4444",
-                                  cursor: "pointer",
-                                  padding: "4px",
-                                  borderRadius: "4px",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  transition: "background 0.15s"
-                                }}
-                                title="Xóa khỏi lớp"
-                                onMouseEnter={(e) => e.target.style.background = "#fee2e2"}
-                                onMouseLeave={(e) => e.target.style.background = "transparent"}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </td>
+                {/* Bảng danh sách thành viên */}
+                <div style={{ background: "#ffffff", border: "1px solid #d0e0eb", borderRadius: "10px", padding: "15px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid #f1f5f9", paddingBottom: "8px" }}>
+                    <span style={{ fontSize: "0.85rem", fontWeight: "700", color: "#1e293b" }}>
+                      Danh sách sinh viên trong lớp học phần
+                    </span>
+                    <span style={{ fontSize: "0.75rem", padding: "3px 10px", borderRadius: "20px", background: "#e0f2fe", color: "#0369a1", fontWeight: "700" }}>
+                      Sĩ số: {enrolledStudents.length} SV
+                    </span>
+                  </div>
+
+                  {enrolledStudents.length === 0 ? (
+                    <p style={{ fontSize: "0.8rem", color: "#94a3b8", textAlign: "center", padding: "30px 0" }}>Chưa có sinh viên nào đăng ký vào lớp này.</p>
+                  ) : (
+                    <div style={{ overflowY: "auto", maxHeight: "300px" }}>
+                      <table style={styles.table}>
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>MSSV</th>
+                            <th style={styles.th}>Họ Tên</th>
+                            <th style={styles.th}>Lớp Chuyên Ngành</th>
+                            <th style={styles.th}>Thời điểm đăng ký</th>
+                            <th style={{ ...styles.th, textAlign: "center" }}>Hành động</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                        </thead>
+                        <tbody>
+                          {enrolledStudents.map((st) => (
+                            <tr key={st.mssv}>
+                              <td style={styles.td}>{st.mssv}</td>
+                              <td style={styles.td}><strong>{st.ho_ten}</strong></td>
+                              <td style={styles.td}>{st.lop_base}</td>
+                              <td style={styles.td}>
+                                <span style={{ fontSize: "0.78rem", color: "#0369a1", whiteSpace: "nowrap" }}>
+                                  {st.enrollment_date
+                                    ? new Date(st.enrollment_date).toLocaleString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })
+                                    : <em style={{ color: '#94a3b8' }}>Chưa ghi nhận</em>}
+                                </span>
+                              </td>
+                              <td style={{ ...styles.td, textAlign: "center" }}>
+                                <button
+                                  onClick={() => handleUnenrollStudent(st.mssv)}
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    color: "#ef4444",
+                                    cursor: "pointer",
+                                    padding: "6px",
+                                    borderRadius: "4px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    transition: "background 0.15s"
+                                  }}
+                                  title="Xóa khỏi lớp"
+                                  onMouseEnter={(e) => e.target.style.background = "#fee2e2"}
+                                  onMouseLeave={(e) => e.target.style.background = "transparent"}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
               </div>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Overlay Sửa lớp */}
+        {isEditClassModalOpen && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.5)", zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#fff", padding: "25px", borderRadius: "12px", width: "500px", maxWidth: "95%",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.25rem" }}>Sửa thông tin Lớp tín chỉ</h3>
+                <button onClick={() => setIsEditClassModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}>
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <form onSubmit={handleUpdateCreditClass} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <label style={{ fontSize: "0.85rem", fontWeight: "600", color: "#475569" }}>Môn học (Chỉ đọc)</label>
+                  <input type="text" value={`${editClassForm.subject_id} - ${editClassForm.subject_name || 'Không rõ'}`} disabled style={{ ...styles.input, background: "#f8fafc", color: "#94a3b8" }} />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <label style={{ fontSize: "0.85rem", fontWeight: "600", color: "#475569" }}>Giảng viên</label>
+                  <select 
+                    style={styles.input} 
+                    value={editClassForm.lecturer_id} 
+                    onChange={(e) => setEditClassForm({...editClassForm, lecturer_id: e.target.value})}
+                  >
+                    <option value="">-- Trống --</option>
+                    {lecturersList.filter(l => l.teaching_status === 'Active').map(l => (
+                      <option key={l.lecturer_id} value={l.lecturer_id}>
+                        {l.lecturer_id} - {l.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <label style={{ fontSize: "0.85rem", fontWeight: "600", color: "#475569" }}>Lớp biên chế (Nếu có)</label>
+                  <input 
+                    type="text" 
+                    style={styles.input} 
+                    value={editClassForm.administrative_class_id} 
+                    onChange={(e) => setEditClassForm({...editClassForm, administrative_class_id: e.target.value})}
+                    placeholder="VD: D20CQCN01-N" 
+                  />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                    <label style={{ fontSize: "0.85rem", fontWeight: "600", color: "#475569" }}>Học kỳ</label>
+                    <select 
+                      style={styles.input} 
+                      value={editClassForm.semester} 
+                      onChange={(e) => setEditClassForm({...editClassForm, semester: parseInt(e.target.value) || 1})}
+                    >
+                      <option value={1}>Học kỳ 1</option>
+                      <option value={2}>Học kỳ 2</option>
+                      <option value={3}>Học kỳ 3</option>
+                      <option value={4}>Học kỳ Hè</option>
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                    <label style={{ fontSize: "0.85rem", fontWeight: "600", color: "#475569" }}>Niên khóa</label>
+                    <select 
+                      style={styles.input} 
+                      value={editClassForm.academic_year} 
+                      onChange={(e) => setEditClassForm({...editClassForm, academic_year: e.target.value})}
+                    >
+                      <option value="2023-2024">2023-2024</option>
+                      <option value="2024-2025">2024-2025</option>
+                      <option value="2025-2026">2025-2026</option>
+                      <option value="2026-2027">2026-2027</option>
+                      <option value="2027-2028">2027-2028</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: "15px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px", flex: 1 }}>
+                    <label style={{ fontSize: "0.85rem", fontWeight: "600", color: "#475569" }}>Nhóm/Tổ</label>
+                    <input 
+                      type="text" 
+                      style={styles.input} 
+                      value={editClassForm.class_group} 
+                      onChange={(e) => setEditClassForm({...editClassForm, class_group: e.target.value})}
+                      placeholder="VD: TH1" 
+                    />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px", flex: 1 }}>
+                    <label style={{ fontSize: "0.85rem", fontWeight: "600", color: "#475569" }}>Sĩ số tối đa</label>
+                    <input 
+                      type="number" 
+                      style={styles.input} 
+                      value={editClassForm.max_students} 
+                      onChange={(e) => setEditClassForm({...editClassForm, max_students: e.target.value})}
+                      min={1} 
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <label style={{ fontSize: "0.85rem", fontWeight: "600", color: "#475569" }}>Trạng thái</label>
+                  <select 
+                    style={styles.input} 
+                    value={editClassForm.status} 
+                    onChange={(e) => setEditClassForm({...editClassForm, status: e.target.value})}
+                  >
+                    <option value="Planning">Planning (Dự kiến)</option>
+                    <option value="Active">Active (Đang mở)</option>
+                    <option value="Completed">Completed (Đã kết thúc)</option>
+                    <option value="Cancelled">Cancelled (Đã hủy)</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", margin: "15px 0 0 0" }}>
+                  <button 
+                    type="button"
+                    onClick={() => setIsEditClassModalOpen(false)}
+                    style={{ ...styles.btn, background: "#f1f5f9", color: "#64748b" }}
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button type="submit" style={{ ...styles.btn, background: "#0f766e" }}>
+                    Lưu thay đổi
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
 
+  
+  const renderLecturersManagementTab = () => {
+    const filtered = allLecturersList.filter(l =>
+      (l.lecturer_id || '').toLowerCase().includes(lecturerSearch.toLowerCase()) ||
+      (l.full_name || '').toLowerCase().includes(lecturerSearch.toLowerCase()) ||
+      (l.department || '').toLowerCase().includes(lecturerSearch.toLowerCase())
+    );
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Users size={24} color="#0f766e" />
+            <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Giảng viên</h2>
+          </div>
+          <button style={{ ...styles.btn, background: "#0f766e", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => openLecturerModal()}>
+            <UserPlus size={16} /> Thêm giảng viên
+          </button>
+        </div>
+
+        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ padding: "15px", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "10px" }}>
+            <input type="text" placeholder="Tìm kiếm theo mã GV, họ tên, khoa..." style={{ ...styles.input, flex: 1 }}
+              value={lecturerSearch} onChange={(e) => { setLecturerSearch(e.target.value); fetchAllLecturers(e.target.value); }} />
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+              <thead style={{ background: "#f8fafc" }}>
+                <tr>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Mã GV</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Họ tên</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Khoa/Bộ môn</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Học hàm/vị</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Chức vụ</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Trạng thái</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan="7" style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>Không tìm thấy giảng viên.</td></tr>
+                ) : (
+                  filtered.map((l, idx) => (
+                    <tr key={l.lecturer_id} style={{ borderBottom: "1px solid #f1f5f9", backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
+                      <td style={{ padding: "12px 15px", fontWeight: "600", color: "#0f172a" }}>{l.lecturer_id}</td>
+                      <td style={{ padding: "12px 15px" }}>
+                        <div style={{ fontWeight: "600" }}>{l.full_name}</div>
+                        {l.email && <div style={{ fontSize: "0.7rem", color: "#64748b" }}>{l.email}</div>}
+                      </td>
+                      <td style={{ padding: "12px 15px" }}>{l.department || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Chưa cập nhật</span>}</td>
+                      <td style={{ padding: "12px 15px" }}>{l.academic_title || '—'}</td>
+                      <td style={{ padding: "12px 15px" }}>{l.position || '—'}</td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <span style={{
+                          padding: "4px 10px", borderRadius: "12px", fontWeight: "600", fontSize: "0.75rem", display: "inline-block",
+                          backgroundColor: l.teaching_status === 'Active' ? '#dcfce7' : '#fee2e2',
+                          color: l.teaching_status === 'Active' ? '#166534' : '#991b1b',
+                          border: `1px solid ${l.teaching_status === 'Active' ? '#bbf7d0' : '#fecaca'}`
+                        }}>
+                          {l.teaching_status === 'Active' ? 'Đang dạy' : 'Ngừng dạy'}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <div style={{ display: "flex", justifyContent: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <button onClick={() => openLecturerDetailModal(l)} style={{ padding: "4px 8px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", cursor: "pointer", color: "#1d4ed8", fontSize: "0.75rem" }}>ℹ️ Chi tiết</button>
+                          <button onClick={() => openLecturerModal(l)} style={{ padding: "4px 8px", background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", fontSize: "0.75rem" }}>✏️ Sửa</button>
+                          <button onClick={() => handleDeleteLecturer(l.lecturer_id)} style={{ padding: "4px 8px", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: "6px", cursor: "pointer", color: "#991b1b", fontSize: "0.75rem" }}>🗑️ Xóa</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {isLecturerDetailModalOpen && selectedLecturerDetail && (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: "12px", width: "620px", maxWidth: "95%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)", overflow: "hidden" }}>
+              <div style={{ padding: "20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.1rem" }}>Chi tiết giảng viên</h3>
+                <button onClick={() => setIsLecturerDetailModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
+              </div>
+              <div style={{ padding: "20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div style={{ gridColumn: "span 2", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                  <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Thông tin tài khoản</div>
+                  <div><strong>Tên đăng nhập:</strong> {(selectedLecturerDetail.lecturer_id || '').toLowerCase()}</div>
+                  <div><strong>Vai trò:</strong> giang_vien</div>
+                  <div><strong>Mật khẩu mặc định:</strong> 123456</div>
+                </div>
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                  <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Hồ sơ nhân thân</div>
+                  <div><strong>Mã GV:</strong> {selectedLecturerDetail.lecturer_id}</div>
+                  <div><strong>Họ tên:</strong> {selectedLecturerDetail.full_name || '—'}</div>
+                  <div><strong>Ngày sinh:</strong> {selectedLecturerDetail.date_of_birth || '—'}</div>
+                  <div><strong>Giới tính:</strong> {selectedLecturerDetail.gender || '—'}</div>
+                  <div><strong>CCCD:</strong> {selectedLecturerDetail.citizen_id || '—'}</div>
+                  <div><strong>Dân tộc:</strong> {selectedLecturerDetail.ethnicity || '—'}</div>
+                  <div><strong>Tôn giáo:</strong> {selectedLecturerDetail.religion || '—'}</div>
+                  <div><strong>Quốc tịch:</strong> {selectedLecturerDetail.nationality || '—'}</div>
+                  <div><strong>Nơi sinh:</strong> {selectedLecturerDetail.place_of_birth || '—'}</div>
+                  <div><strong>Địa chỉ:</strong> {selectedLecturerDetail.address || '—'}</div>
+                  <div><strong>Email:</strong> {selectedLecturerDetail.email || '—'}</div>
+                  <div><strong>Số điện thoại:</strong> {selectedLecturerDetail.phone_number || '—'}</div>
+                </div>
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                  <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Thông tin công tác</div>
+                  <div><strong>Khoa/Bộ môn:</strong> {selectedLecturerDetail.department || '—'}</div>
+                  <div><strong>Học hàm/Học vị:</strong> {selectedLecturerDetail.academic_title || '—'}</div>
+                  <div><strong>Chức vụ:</strong> {selectedLecturerDetail.position || '—'}</div>
+                  <div><strong>Loại hợp đồng:</strong> {selectedLecturerDetail.employment_type || '—'}</div>
+                  <div><strong>Trạng thái:</strong> {selectedLecturerDetail.teaching_status || '—'}</div>
+                  <div><strong>Ngày tuyển dụng:</strong> {selectedLecturerDetail.hire_date || '—'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isLecturerModalOpen && (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: "12px", width: "600px", maxWidth: "95%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+              <div style={{ padding: "20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.25rem" }}>{editingLecturerId ? 'Sửa thông tin' : 'Thêm'} Giảng viên</h3>
+                <button onClick={() => setIsLecturerModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
+              </div>
+              <div style={{ padding: "20px", overflowY: "auto" }}>
+                <form onSubmit={handleSaveLecturer} style={{ display: "grid", gap: "15px" }}>
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                    <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Thông tin tài khoản</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div>
+                        <label style={styles.label}>Mã giảng viên</label>
+                        <input readOnly style={styles.input} placeholder="VD: GV2026001" value={lecturerForm.lecturer_id} onChange={e => setLecturerForm({...lecturerForm, lecturer_id: e.target.value.toUpperCase()})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Vai trò</label>
+                        <input readOnly style={styles.input} value="Giảng viên" />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "8px", color: "#475569", fontSize: "0.85rem" }}>
+                      Hệ thống sẽ tự tạo tài khoản đăng nhập với tên đăng nhập là mã giảng viên và mật khẩu mặc định là <strong>123456</strong>.
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                    <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Hồ sơ nhân thân</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div style={{ gridColumn: "span 2" }}>
+                        <label style={styles.label}>Họ và Tên *</label>
+                        <input required style={styles.input} placeholder="Nguyễn Văn A" value={lecturerForm.full_name} onChange={e => setLecturerForm({...lecturerForm, full_name: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Ngày sinh</label>
+                        <input type="date" style={styles.input} value={lecturerForm.date_of_birth} onChange={e => setLecturerForm({...lecturerForm, date_of_birth: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Giới tính</label>
+                        <select style={styles.input} value={lecturerForm.gender} onChange={e => setLecturerForm({...lecturerForm, gender: e.target.value})}>
+                          <option value="">-- Chọn --</option>
+                          <option value="Nam">Nam</option>
+                          <option value="Nữ">Nữ</option>
+                          <option value="Khác">Khác</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={styles.label}>CCCD</label>
+                        <input style={styles.input} placeholder="012345678901" value={lecturerForm.citizen_id} onChange={e => setLecturerForm({...lecturerForm, citizen_id: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Dân tộc</label>
+                        <input style={styles.input} placeholder="Kinh" value={lecturerForm.ethnicity} onChange={e => setLecturerForm({...lecturerForm, ethnicity: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Tôn giáo</label>
+                        <input style={styles.input} placeholder="Không" value={lecturerForm.religion} onChange={e => setLecturerForm({...lecturerForm, religion: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Quốc tịch</label>
+                        <input style={styles.input} placeholder="Việt Nam" value={lecturerForm.nationality} onChange={e => setLecturerForm({...lecturerForm, nationality: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Nơi sinh</label>
+                        <input style={styles.input} placeholder="Hà Nội" value={lecturerForm.place_of_birth} onChange={e => setLecturerForm({...lecturerForm, place_of_birth: e.target.value})} />
+                      </div>
+                      <div style={{ gridColumn: "span 2" }}>
+                        <label style={styles.label}>Địa chỉ</label>
+                        <input style={styles.input} placeholder="Số nhà, đường, phường/xã, quận/huyện" value={lecturerForm.address} onChange={e => setLecturerForm({...lecturerForm, address: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Email</label>
+                        <input style={styles.input} type="email" placeholder="gv@ptit.edu.vn" value={lecturerForm.email} onChange={e => setLecturerForm({...lecturerForm, email: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Số điện thoại</label>
+                        <input style={styles.input} placeholder="0901234567" value={lecturerForm.phone_number} onChange={e => setLecturerForm({...lecturerForm, phone_number: e.target.value})} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                    <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Thông tin công tác</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div>
+                        <label style={styles.label}>Khoa/Bộ môn</label>
+                        <input style={styles.input} placeholder="Khoa CNTT" value={lecturerForm.department} onChange={e => setLecturerForm({...lecturerForm, department: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Học hàm/Học vị</label>
+                        <input style={styles.input} placeholder="ThS, TS, PGS..." value={lecturerForm.academic_title} onChange={e => setLecturerForm({...lecturerForm, academic_title: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Chức vụ</label>
+                        <input style={styles.input} placeholder="Trưởng bộ môn..." value={lecturerForm.position} onChange={e => setLecturerForm({...lecturerForm, position: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Loại hợp đồng</label>
+                        <input style={styles.input} placeholder="Cơ hữu / Thỉnh giảng" value={lecturerForm.employment_type} onChange={e => setLecturerForm({...lecturerForm, employment_type: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Trạng thái</label>
+                        <select style={styles.input} value={lecturerForm.teaching_status} onChange={e => setLecturerForm({...lecturerForm, teaching_status: e.target.value})}>
+                          <option value="Active">Đang dạy</option>
+                          <option value="Inactive">Ngừng dạy</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #e2e8f0", paddingTop: "15px", marginTop: "5px" }}>
+                    <button type="button" style={{ ...styles.btn, background: "#94a3b8" }} onClick={() => setIsLecturerModalOpen(false)}>Hủy bỏ</button>
+                    <button type="submit" style={{ ...styles.btn, background: "#0f766e" }}>Lưu giảng viên</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
+  const renderRoomsManagementTab = () => {
+    const filtered = classroomsList.filter(r =>
+      (r.room_id || '').toLowerCase().includes(classroomSearch.toLowerCase()) ||
+      (r.room_name || '').toLowerCase().includes(classroomSearch.toLowerCase()) ||
+      (r.building || '').toLowerCase().includes(classroomSearch.toLowerCase())
+    );
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <BookOpen size={24} color="#7c3aed" />
+            <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Phòng học</h2>
+          </div>
+          <button style={{ ...styles.btn, background: "#7c3aed", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => openClassroomModal()}>
+            <BookOpen size={16} /> Thêm phòng học
+          </button>
+        </div>
+
+        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ padding: "15px", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "10px" }}>
+            <input type="text" placeholder="Tìm theo mã phòng, tên phòng, tòa nhà..." style={{ ...styles.input, flex: 1 }}
+              value={classroomSearch} onChange={(e) => { setClassroomSearch(e.target.value); fetchClassrooms(e.target.value); }} />
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+              <thead style={{ background: "#f8fafc" }}>
+                <tr>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Mã phòng</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Tên phòng</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Tòa nhà</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Sức chứa</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Loại phòng</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Camera</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Trạng thái</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Lớp đăng ký</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Có lớp học?</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan="10" style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>Không tìm thấy phòng học.</td></tr>
+                ) : (
+                  filtered.map((r, idx) => (
+                    <tr key={r.room_id} style={{ borderBottom: "1px solid #f1f5f9", backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
+                      <td style={{ padding: "12px 15px", fontWeight: "600", color: "#0f172a" }}>{r.room_id}</td>
+                      <td style={{ padding: "12px 15px", fontWeight: "600" }}>{r.room_name}</td>
+                      <td style={{ padding: "12px 15px" }}>{r.building || '—'}</td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>{r.capacity}</td>
+                      <td style={{ padding: "12px 15px" }}>
+                        <span style={{ background: r.room_type === 'Lab' ? '#ede9fe' : '#e0f2fe', color: r.room_type === 'Lab' ? '#5b21b6' : '#0369a1', padding: "2px 8px", borderRadius: "10px", fontSize: "0.75rem", fontWeight: "600" }}>
+                          {r.room_type === 'Theory' ? 'Lý thuyết' : r.room_type === 'Lab' ? 'Thực hành' : r.room_type}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: "10px", fontSize: "0.75rem", fontWeight: "600", backgroundColor: r.camera_status === 'Online' ? '#dcfce7' : '#fee2e2', color: r.camera_status === 'Online' ? '#166534' : '#991b1b' }}>
+                          {r.camera_status || 'N/A'}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <span style={{ padding: "4px 10px", borderRadius: "12px", fontWeight: "600", fontSize: "0.75rem", display: "inline-block", backgroundColor: r.status === 'Active' ? '#dcfce7' : '#fee2e2', color: r.status === 'Active' ? '#166534' : '#991b1b' }}>
+                          {r.status === 'Active' ? 'Đang dùng' : 'Tạm đóng'}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 15px", fontSize: "0.8rem", color: "#475569" }}>
+                        {r.scheduled_classes && r.scheduled_classes.length > 0 ? r.scheduled_classes.join(', ') : '—'}
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <span style={{ padding: "4px 10px", borderRadius: "12px", fontWeight: "600", fontSize: "0.75rem", display: "inline-block", backgroundColor: r.is_occupied ? '#fee2e2' : '#dcfce7', color: r.is_occupied ? '#991b1b' : '#166534' }}>
+                          {r.is_occupied ? 'Đang có lớp' : 'Trống'}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <div style={{ display: "flex", justifyContent: "center", gap: "8px" }}>
+                          <button onClick={() => openClassroomModal(r)} style={{ padding: "4px 8px", background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", fontSize: "0.75rem" }}>✏️ Sửa</button>
+                          <button onClick={() => handleDeleteClassroom(r.room_id)} style={{ padding: "4px 8px", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: "6px", cursor: "pointer", color: "#991b1b", fontSize: "0.75rem" }}>🗑️ Xóa</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {isClassroomModalOpen && (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: "12px", width: "600px", maxWidth: "95%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+              <div style={{ padding: "20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.25rem" }}>{editingRoomId ? 'Sửa thông tin' : 'Thêm'} Phòng học</h3>
+                <button onClick={() => setIsClassroomModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
+              </div>
+              <div style={{ padding: "20px", overflowY: "auto" }}>
+                <form onSubmit={handleSaveClassroom} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label style={styles.label}>Tên phòng *</label>
+                    <input required style={styles.input} placeholder="Phòng học A2-301" value={classroomForm.room_name} onChange={e => setClassroomForm({...classroomForm, room_name: e.target.value})} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Tòa nhà</label>
+                    <input style={styles.input} placeholder="Tòa A2" value={classroomForm.building} onChange={e => setClassroomForm({...classroomForm, building: e.target.value})} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Sức chứa (chỗ ngồi)</label>
+                    <input type="number" min="1" style={styles.input} value={classroomForm.capacity} onChange={e => setClassroomForm({...classroomForm, capacity: parseInt(e.target.value) || 50})} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Loại phòng</label>
+                    <select style={styles.input} value={classroomForm.room_type} onChange={e => setClassroomForm({...classroomForm, room_type: e.target.value})}>
+                      <option value="Theory">Lý thuyết</option>
+                      <option value="Lab">Thực hành (Lab)</option>
+                      <option value="Seminar">Hội thảo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={styles.label}>Trạng thái Camera</label>
+                    <select style={styles.input} value={classroomForm.camera_status} onChange={e => setClassroomForm({...classroomForm, camera_status: e.target.value})}>
+                      <option value="Online">Online</option>
+                      <option value="Offline">Offline</option>
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label style={styles.label}>URL RTSP Camera</label>
+                    <input style={styles.input} placeholder="rtsp://..." value={classroomForm.camera_rtsp_url} onChange={e => setClassroomForm({...classroomForm, camera_rtsp_url: e.target.value})} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Trạng thái phòng</label>
+                    <select style={styles.input} value={classroomForm.status} onChange={e => setClassroomForm({...classroomForm, status: e.target.value})}>
+                      <option value="Active">Đang sử dụng</option>
+                      <option value="Inactive">Tạm đóng</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={styles.label}>Ghi chú</label>
+                    <input style={styles.input} placeholder="Ghi chú..." value={classroomForm.notes} onChange={e => setClassroomForm({...classroomForm, notes: e.target.value})} />
+                  </div>
+                  <div style={{ gridColumn: "span 2", display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #e2e8f0", paddingTop: "15px", marginTop: "5px" }}>
+                    <button type="button" style={{ ...styles.btn, background: "#94a3b8" }} onClick={() => setIsClassroomModalOpen(false)}>Hủy bỏ</button>
+                    <button type="submit" style={{ ...styles.btn, background: "#7c3aed" }}>Lưu phòng học</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const handleOpenStudentModal = (st) => {
+    setSelectedStudentForModal(st);
+    setEditStudentForm({
+      phone_number: st.phone_number || "",
+      email: st.email || "",
+      address: st.address || "",
+      academic_status: st.academic_status || "Đang học"
+    });
+    setIsStudentModalOpen(true);
+  };
+
+  const handleUpdateStudentProfile = async (e) => {
+    e.preventDefault();
+    if (!selectedStudentForModal) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/students/${selectedStudentForModal.student_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editStudentForm)
+      });
+      if (res.ok) {
+        showToast("Cập nhật hồ sơ sinh viên thành công!");
+        setIsStudentModalOpen(false);
+        fetchStudentsList();
+      } else {
+        const err = await res.json();
+        showToast("Lỗi: " + JSON.stringify(err.detail));
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Lỗi kết nối API.");
+    }
+  };
+
+  const openFaceRegistrationModal = (st) => {
+    const mssv = st.student_id || st.mssv || "";
+    const ho_ten = st.full_name || st.ho_ten || "";
+    const lop_base = st.administrative_class || st.lop_base || "";
+
+    setSelectedStudentForFaceModal(st);
+    setRegMssv(mssv);
+    setRegName(ho_ten);
+    setRegLop(lop_base);
+    setRegPhoto(null);
+    setRegPhotoName('');
+    setRegPreviewSrc('');
+    stopRegWebcam();
+    setIsFaceRegistrationModalOpen(true);
+  };
+
+  const handleFaceRegistrationSubmit = async (e) => {
+    e.preventDefault();
+    if (!regPhoto) {
+      showToast("Vui lòng chọn ảnh chân dung sinh viên.", "danger");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", regPhoto);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/${encodeURIComponent(regMssv)}/faces`, {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast("Đăng ký khuôn mặt thành công!");
+        setIsFaceRegistrationModalOpen(false);
+        setSelectedStudentForFaceModal(null);
+        setRegPhoto(null);
+        setRegPhotoName('');
+        setRegPreviewSrc('');
+        setRegMssv('');
+        setRegName('');
+        setRegLop('');
+        stopRegWebcam();
+      } else {
+        showToast(data.detail || "Đăng ký khuôn mặt thất bại.", "danger");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Lỗi kết nối API khi cập nhật khuôn mặt.", "danger");
+    }
+  };
+
+  const handleCreateStudent = async (e) => {
+    e.preventDefault();
+    const payload = buildManualStudentPayload(createStudentForm);
+    const cleanedPayload = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== "" && value !== null && value !== undefined)
+    );
+
+    if (!cleanedPayload.student_id || !cleanedPayload.full_name) {
+      showToast("Vui lòng nhập MSSV và họ tên sinh viên.", "danger");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/students/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cleanedPayload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast(`Đã thêm sinh viên ${cleanedPayload.student_id} thành công!`);
+        setIsCreateStudentModalOpen(false);
+        setCreateStudentForm({
+          student_id: "",
+          full_name: "",
+          email: "",
+          phone_number: "",
+          administrative_class: "",
+          major: "",
+          specialization: "",
+          department: "",
+          cohort: "",
+          training_program: "",
+          academic_status: "Đang học",
+          gender: "",
+          citizen_id: "",
+          ethnicity: "",
+          religion: "",
+          nationality: "Việt Nam",
+          place_of_birth: "",
+          address: ""
+        });
+        fetchStudentsList();
+      } else {
+        showToast(data.detail || "Thêm sinh viên thủ công thất bại.", "danger");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Lỗi kết nối API khi thêm sinh viên.", "danger");
+    }
+  };
+
+  const handleImportExcel = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      showToast("Đang xử lý import...");
+      const res = await fetch(`${API_BASE}/api/admin/students/import/excel`, {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Import thành công!");
+        fetchStudentsList();
+      } else {
+        showToast("Lỗi: " + JSON.stringify(data.detail));
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Lỗi kết nối API khi import.");
+    }
+    
+    // Reset input
+    e.target.value = null;
+  };
+
   const renderStudentsListTab = () => {
     const filteredStudents = studentsList.filter(st => {
-      const mssv = st.mssv || st.student_id || "";
-      const ho_ten = st.ho_ten || st.full_name || "";
-      const lop_base = st.lop_base || st.administrative_class || "";
+      const mssv = st.student_id || st.mssv || "";
+      const ho_ten = st.full_name || st.ho_ten || "";
+      const lop_base = st.administrative_class || st.lop_base || "";
+      const nganh = st.major || "";
 
       const matchSearch = mssv.toLowerCase().includes(searchKeyword.toLowerCase()) ||
         ho_ten.toLowerCase().includes(searchKeyword.toLowerCase());
       const matchClass = filterClass ? lop_base.toLowerCase().includes(filterClass.toLowerCase()) : true;
-      return matchSearch && matchClass;
+      const matchMajor = filterMajor ? nganh.toLowerCase().includes(filterMajor.toLowerCase()) : true;
+      
+      return matchSearch && matchClass && matchMajor;
     });
+
+    const getStatusBadge = (status) => {
+      const statusText = status || "Đang học";
+      if (statusText === "Đang học") return { bg: "#dcfce7", color: "#166534", border: "#bbf7d0" };
+      if (statusText === "Đình chỉ") return { bg: "#ffedd5", color: "#9a3412", border: "#fed7aa" };
+      if (statusText === "Thôi học") return { bg: "#fee2e2", color: "#991b1b", border: "#fecaca" };
+      if (statusText === "Đã tốt nghiệp") return { bg: "#e0f2fe", color: "#075985", border: "#bae6fd" };
+      return { bg: "#f1f5f9", color: "#475569", border: "#e2e8f0" };
+    };
 
     return (
       <div>
@@ -1427,9 +3028,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
           {role === 'giang_vien' ? "Danh sách Sinh viên các lớp phụ trách" : "Danh sách Sinh viên hệ thống"}
         </h4>
 
-        <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
+        <div style={{ display: "flex", gap: "10px", marginBottom: "15px", flexWrap: "wrap" }}>
           <input
-            style={styles.input}
+            style={{ ...styles.input, width: "250px" }}
             placeholder="Tìm theo MSSV, Họ tên..."
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
@@ -1440,100 +3041,91 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
             value={filterClass}
             onChange={(e) => setFilterClass(e.target.value)}
           />
+          <input
+            style={{ ...styles.input, width: "150px" }}
+            placeholder="Lọc theo Ngành"
+            value={filterMajor}
+            onChange={(e) => setFilterMajor(e.target.value)}
+          />
           <button onClick={fetchStudentsList} style={{ ...styles.btn, padding: "8px 12px" }}>
             Làm mới
           </button>
+          {role === 'admin' && (
+            <>
+              <button
+                onClick={() => setIsCreateStudentModalOpen(true)}
+                style={{ ...styles.btn, padding: "8px 12px", backgroundColor: "#2563eb" }}
+              >
+                Thêm Sinh
+              </button>
+              <label style={{ ...styles.btn, padding: "8px 12px", backgroundColor: "#10b981", cursor: "pointer", margin: 0, display: "inline-block" }}>
+                Nhập từ Excel/CSV
+                <input 
+                  type="file" 
+                  accept=".xlsx, .xls, .csv" 
+                  hidden 
+                  onChange={handleImportExcel}
+                />
+              </label>
+            </>
+          )}
         </div>
 
         {filteredStudents.length === 0 ? (
           <p style={{ fontSize: "0.8rem", color: "#6c8da3" }}>Không tìm thấy sinh viên nào.</p>
         ) : (
-          <div style={{ overflowY: "auto", maxHeight: "400px" }}>
-            <table style={styles.table}>
-              <thead>
+          <div style={{ overflowY: "auto", maxHeight: "500px", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+            <table style={{ ...styles.table, border: "none" }}>
+              <thead style={{ position: "sticky", top: 0, zIndex: 1, backgroundColor: "#f8fafc" }}>
                 <tr>
                   <th style={styles.th}>MSSV / Họ Tên</th>
-                  <th style={styles.th}>Lớp Chuyên Ngành</th>
-                  <th style={styles.th}>Ngày sinh / Giới tính</th>
-                  <th style={styles.th}>Trạng thái Face</th>
+                  <th style={styles.th}>Lớp / Ngành</th>
+                  <th style={styles.th}>Trạng thái</th>
                   {role === 'admin' && <th style={styles.th}>Hành động</th>}
                 </tr>
               </thead>
               <tbody>
                 {filteredStudents.map((st) => {
-                  const mssv = st.mssv || st.student_id || "";
-                  const ho_ten = st.ho_ten || st.full_name || "";
-                  const lop_base = st.lop_base || st.administrative_class || "";
+                  const mssv = st.student_id || st.mssv || "";
+                  const ho_ten = st.full_name || st.ho_ten || "";
+                  const lop_base = st.administrative_class || st.lop_base || "N/A";
+                  const nganh = st.major || "N/A";
+                  const badge = getStatusBadge(st.academic_status);
+
                   return (
-                    <tr key={mssv}>
+                    <tr key={mssv} style={{ borderBottom: "1px solid #f1f5f9" }}>
                       <td style={styles.td}>
-                        {editingStudentId === mssv ? (
-                          <input
-                            type="text"
-                            style={{ ...styles.input, padding: "2px 6px", fontSize: "0.8rem" }}
-                            value={editStudentName}
-                            onChange={(e) => setEditStudentName(e.target.value)}
-                          />
-                        ) : (
-                          <strong>{ho_ten}</strong>
-                        )}
-                        <br />
-                        <small style={{ color: "#777" }}>{mssv}</small>
+                        <div style={{ fontWeight: "600", color: "#1e293b" }}>{ho_ten}</div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>{mssv}</div>
                       </td>
                       <td style={styles.td}>
-                        {editingStudentId === mssv ? (
-                          <input
-                            type="text"
-                            style={{ ...styles.input, padding: "2px 6px", fontSize: "0.8rem" }}
-                            value={editStudentClass}
-                            onChange={(e) => setEditStudentClass(e.target.value)}
-                          />
-                        ) : (
-                          lop_base
-                        )}
-                      </td>
-                      <td style={styles.td}>
-                        <small>{st.ngay_sinh || 'N/A'}</small><br />
-                        <small>{st.gioi_tinh || 'N/A'}</small>
+                        <div style={{ color: "#334155", fontSize: "0.85rem" }}>{lop_base}</div>
+                        <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{nganh}</div>
                       </td>
                       <td style={styles.td}>
                         <span style={{
-                          padding: "3px 6px",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          backgroundColor: st.trang_thai_ho_so === 'Approved' || st.academic_status === 'studying' ? "#e6f8f0" : "#fff7e6",
-                          color: st.trang_thai_ho_so === 'Approved' || st.academic_status === 'studying' ? "#10b981" : "#d48806"
+                          padding: "4px 10px", borderRadius: "12px", fontSize: "0.7rem", fontWeight: "600",
+                          backgroundColor: badge.bg, color: badge.color, border: `1px solid ${badge.border}`
                         }}>
-                          {st.trang_thai_ho_so || st.academic_status || 'Pending'}
+                          {st.academic_status || "Đang học"}
                         </span>
                       </td>
                       {role === 'admin' && (
                         <td style={styles.td}>
-                          {editingStudentId === mssv ? (
-                            <div style={{ display: "flex", gap: "4px" }}>
-                              <button onClick={(e) => handleUpdateStudent(e, mssv)} style={{ ...styles.btn, padding: "3px 6px", fontSize: "0.75rem", backgroundColor: "#10b981" }}>Lưu</button>
-                              <button onClick={() => setEditingStudentId(null)} style={{ ...styles.btn, padding: "3px 6px", fontSize: "0.75rem", backgroundColor: "#6b7280" }}>Hủy</button>
-                            </div>
-                          ) : (
-                            <div style={{ display: "flex", gap: "4px" }}>
-                              <button
-                                onClick={() => {
-                                  setEditingStudentId(mssv);
-                                  setEditStudentName(ho_ten);
-                                  setEditStudentClass(lop_base);
-                                }}
-                                style={{ ...styles.btn, padding: "3px 6px", fontSize: "0.75rem", backgroundColor: "#f59e0b" }}
-                              >
-                                Sửa
-                              </button>
-                              <button
-                                onClick={() => handleDeleteStudent(mssv)}
-                                style={{ ...styles.btn, padding: "3px 6px", fontSize: "0.75rem", backgroundColor: "#ef4444" }}
-                              >
-                                Xóa
-                              </button>
-                            </div>
-                          )}
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                            <button
+                              onClick={() => handleOpenStudentModal(st)}
+                              style={{ ...styles.btn, padding: "5px 12px", fontSize: "0.75rem", backgroundColor: "#0ea5e9", borderRadius: "6px" }}
+                            >
+                              Chi tiết
+                            </button>
+                            <button
+                              onClick={() => openFaceRegistrationModal(st)}
+                              style={{ ...styles.btn, padding: "5px 12px", fontSize: "0.75rem", backgroundColor: "#10b981", borderRadius: "6px" }}
+                            >
+                              Cập nhật khuôn mặt
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -1541,6 +3133,301 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Modal Thêm sinh viên thủ công */}
+        {isCreateStudentModalOpen && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.4)", zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#fff", padding: "24px", borderRadius: "16px", width: "760px", maxWidth: "95vw",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)"
+            }}>
+              <h3 style={{ marginTop: 0, color: "#0f172a", fontSize: "1.15rem", marginBottom: "16px" }}>
+                Thêm sinh viên thủ công
+              </h3>
+              <form onSubmit={handleCreateStudent} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <label style={styles.label}>MSSV *</label>
+                    <input required style={styles.input} value={createStudentForm.student_id} onChange={(e) => setCreateStudentForm({ ...createStudentForm, student_id: e.target.value })} placeholder="VD: N22DCCN134" />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Họ tên *</label>
+                    <input required style={styles.input} value={createStudentForm.full_name} onChange={(e) => setCreateStudentForm({ ...createStudentForm, full_name: e.target.value })} placeholder="VD: Nguyễn Văn A" />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Email</label>
+                    <input type="email" style={styles.input} value={createStudentForm.email} onChange={(e) => setCreateStudentForm({ ...createStudentForm, email: e.target.value })} placeholder="student@example.com" />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Số điện thoại</label>
+                    <input style={styles.input} value={createStudentForm.phone_number} onChange={(e) => setCreateStudentForm({ ...createStudentForm, phone_number: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Lớp hành chính</label>
+                    <input style={styles.input} value={createStudentForm.administrative_class} onChange={(e) => setCreateStudentForm({ ...createStudentForm, administrative_class: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Ngành học</label>
+                    <input style={styles.input} value={createStudentForm.major} onChange={(e) => setCreateStudentForm({ ...createStudentForm, major: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Chuyên ngành</label>
+                    <input style={styles.input} value={createStudentForm.specialization} onChange={(e) => setCreateStudentForm({ ...createStudentForm, specialization: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Khoa</label>
+                    <input style={styles.input} value={createStudentForm.department} onChange={(e) => setCreateStudentForm({ ...createStudentForm, department: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Niên khóa</label>
+                    <input style={styles.input} value={createStudentForm.cohort} onChange={(e) => setCreateStudentForm({ ...createStudentForm, cohort: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Bậc hệ đào tạo</label>
+                    <input style={styles.input} value={createStudentForm.training_program} onChange={(e) => setCreateStudentForm({ ...createStudentForm, training_program: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Trạng thái học tập</label>
+                    <select style={styles.input} value={createStudentForm.academic_status} onChange={(e) => setCreateStudentForm({ ...createStudentForm, academic_status: e.target.value })}>
+                      <option value="Đang học">Đang học</option>
+                      <option value="Đình chỉ">Đình chỉ</option>
+                      <option value="Thôi học">Thôi học</option>
+                      <option value="Đã tốt nghiệp">Đã tốt nghiệp</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={styles.label}>Giới tính</label>
+                    <input style={styles.input} value={createStudentForm.gender} onChange={(e) => setCreateStudentForm({ ...createStudentForm, gender: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>CCCD</label>
+                    <input style={styles.input} value={createStudentForm.citizen_id} onChange={(e) => setCreateStudentForm({ ...createStudentForm, citizen_id: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Dân tộc</label>
+                    <input style={styles.input} value={createStudentForm.ethnicity} onChange={(e) => setCreateStudentForm({ ...createStudentForm, ethnicity: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Tôn giáo</label>
+                    <input style={styles.input} value={createStudentForm.religion} onChange={(e) => setCreateStudentForm({ ...createStudentForm, religion: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Quốc tịch</label>
+                    <input style={styles.input} value={createStudentForm.nationality} onChange={(e) => setCreateStudentForm({ ...createStudentForm, nationality: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Nơi sinh</label>
+                    <input style={styles.input} value={createStudentForm.place_of_birth} onChange={(e) => setCreateStudentForm({ ...createStudentForm, place_of_birth: e.target.value })} />
+                  </div>
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label style={styles.label}>Địa chỉ</label>
+                    <input style={styles.input} value={createStudentForm.address} onChange={(e) => setCreateStudentForm({ ...createStudentForm, address: e.target.value })} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+                  <button type="button" onClick={() => setIsCreateStudentModalOpen(false)} style={{ ...styles.button, background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1" }}>
+                    Hủy
+                  </button>
+                  <button type="submit" style={styles.primaryButton}>
+                    Lưu sinh viên
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Cập nhật khuôn mặt sinh viên */}
+        {isFaceRegistrationModalOpen && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.4)", zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#fff", padding: "24px", borderRadius: "16px", width: "620px", maxWidth: "95vw",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)"
+            }}>
+              <h3 style={{ marginTop: 0, color: "#0f172a", fontSize: "1.15rem", marginBottom: "16px" }}>
+                Cập nhật khuôn mặt: {selectedStudentForFaceModal?.full_name || selectedStudentForFaceModal?.ho_ten || regName}
+              </h3>
+              <form onSubmit={handleFaceRegistrationSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <label style={styles.label}>MSSV</label>
+                    <input required style={styles.input} value={regMssv} onChange={(e) => setRegMssv(e.target.value.toUpperCase())} />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Họ tên</label>
+                    <input required style={styles.input} value={regName} onChange={(e) => setRegName(e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label style={styles.label}>Lớp</label>
+                  <input required style={styles.input} value={regLop} onChange={(e) => setRegLop(e.target.value)} />
+                </div>
+                <div>
+                  <label style={styles.label}>Ảnh chân dung mới</label>
+                  <div style={{ display: "flex", gap: "10px", marginBottom: "10px", flexWrap: "wrap" }}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id="student-face-upload-modal"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        if (e.target.files.length > 0) {
+                          setRegPhoto(e.target.files[0]);
+                          setRegPhotoName(e.target.files[0].name);
+                          setRegPreviewSrc(URL.createObjectURL(e.target.files[0]));
+                          stopRegWebcam();
+                        }
+                      }}
+                    />
+                    <button type="button" onClick={() => document.getElementById("student-face-upload-modal").click()} style={{ ...styles.btn, backgroundColor: "#2563eb" }}>
+                      Chọn ảnh
+                    </button>
+                    <button type="button" onClick={() => { if (regUseWebcam) { stopRegWebcam(); } else { startRegWebcam(); } }} style={{ ...styles.btn, backgroundColor: regUseWebcam ? "#ef4444" : "#64748b" }}>
+                      {regUseWebcam ? "Tắt camera" : "Chụp từ camera"}
+                    </button>
+                  </div>
+                  {regUseWebcam && (
+                    <div style={{ position: "relative", width: "320px", height: "240px", borderRadius: "8px", overflow: "hidden", border: "2px solid #1d92d1", marginBottom: "10px" }}>
+                      <video ref={regVideoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <button type="button" onClick={captureRegPhoto} style={{ position: "absolute", bottom: "10px", left: "50%", transform: "translateX(-50%)", backgroundColor: "#10b981", color: "#fff", border: "none", borderRadius: "20px", padding: "6px 16px", fontSize: "0.8rem", fontWeight: "bold", cursor: "pointer" }}>
+                        📸 Chụp hình
+                      </button>
+                    </div>
+                  )}
+                  {regPreviewSrc && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <img src={regPreviewSrc} alt="Preview" style={{ width: "140px", height: "140px", borderRadius: "8px", objectFit: "cover", border: "1px solid #d0e0eb" }} />
+                    </div>
+                  )}
+                  {regPhotoName && (
+                    <div style={{ fontSize: "0.75rem", color: "#10b981" }}>✓ {regPhotoName}</div>
+                  )}
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+                  <button type="button" onClick={() => { setIsFaceRegistrationModalOpen(false); setSelectedStudentForFaceModal(null); stopRegWebcam(); }} style={{ ...styles.button, background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1" }}>
+                    Đóng
+                  </button>
+                  <button type="submit" style={styles.primaryButton}>
+                    Gửi cập nhật khuôn mặt
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Cập nhật Sinh viên */}
+        {isStudentModalOpen && selectedStudentForModal && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.4)", zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#fff", padding: "30px", borderRadius: "16px", width: "700px", maxWidth: "90vw",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)"
+            }}>
+              <h3 style={{ marginTop: 0, color: "#0f172a", fontSize: "1.25rem", marginBottom: "20px", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px" }}>
+                Hồ sơ Sinh viên: <span style={{ color: "#0284c7" }}>{selectedStudentForModal.full_name || selectedStudentForModal.ho_ten}</span> ({selectedStudentForModal.student_id || selectedStudentForModal.mssv})
+              </h3>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px", marginBottom: "20px" }}>
+                {/* Cột trái: Thông tin cá nhân (Read-only) */}
+                <div style={{ background: "#f8fafc", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", maxHeight: "400px", overflowY: "auto" }}>
+                  <h4 style={{ margin: "0 0 15px 0", fontSize: "0.95rem", color: "#334155" }}>Thông tin cá nhân</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "0.85rem", color: "#475569" }}>
+                    <div><strong>CMND/CCCD:</strong> {selectedStudentForModal.citizen_id || "Trống"}</div>
+                    <div><strong>Ngày sinh:</strong> {selectedStudentForModal.date_of_birth || "Trống"}</div>
+                    <div><strong>Giới tính:</strong> {selectedStudentForModal.gender || "Trống"}</div>
+                    <div><strong>Nơi sinh:</strong> {selectedStudentForModal.place_of_birth || "Trống"}</div>
+                    <div><strong>Dân tộc:</strong> {selectedStudentForModal.ethnicity || "Trống"}</div>
+                    <div><strong>Tôn giáo:</strong> {selectedStudentForModal.religion || "Trống"}</div>
+                    <div><strong>Quốc tịch:</strong> {selectedStudentForModal.nationality || "Trống"}</div>
+                    <div><strong>Lớp hành chính:</strong> {selectedStudentForModal.administrative_class || "Trống"}</div>
+                    <div><strong>Ngành học:</strong> {selectedStudentForModal.major || "Trống"}</div>
+                    <div><strong>Chuyên ngành:</strong> {selectedStudentForModal.specialization || "Trống"}</div>
+                    <div><strong>Khoa:</strong> {selectedStudentForModal.department || "Trống"}</div>
+                    <div><strong>Bậc hệ đào tạo:</strong> {selectedStudentForModal.training_program || "Trống"}</div>
+                    <div><strong>Niên khóa:</strong> {selectedStudentForModal.cohort || "Trống"}</div>
+                  </div>
+                </div>
+
+                {/* Cột phải: Form cập nhật */}
+                <div>
+                  <h4 style={{ margin: "0 0 15px 0", fontSize: "0.95rem", color: "#334155" }}>Thông tin có thể sửa đổi</h4>
+                  <form onSubmit={handleUpdateStudentProfile} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "#475569" }}>Email cá nhân</label>
+                      <input 
+                        type="email" 
+                        style={styles.input} 
+                        value={editStudentForm.email} 
+                        onChange={(e) => setEditStudentForm({...editStudentForm, email: e.target.value})}
+                        placeholder="VD: nguyenvan.a@gmail.com" 
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "#475569" }}>Số điện thoại</label>
+                      <input 
+                        type="text" 
+                        style={styles.input} 
+                        value={editStudentForm.phone_number} 
+                        onChange={(e) => setEditStudentForm({...editStudentForm, phone_number: e.target.value})}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "#475569" }}>Địa chỉ</label>
+                      <input 
+                        type="text" 
+                        style={styles.input} 
+                        value={editStudentForm.address} 
+                        onChange={(e) => setEditStudentForm({...editStudentForm, address: e.target.value})}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "#475569" }}>Trạng thái học tập</label>
+                      <select 
+                        style={styles.input} 
+                        value={editStudentForm.academic_status} 
+                        onChange={(e) => setEditStudentForm({...editStudentForm, academic_status: e.target.value})}
+                      >
+                        <option value="Đang học">Đang học</option>
+                        <option value="Đình chỉ">Đình chỉ</option>
+                        <option value="Thôi học">Thôi học</option>
+                        <option value="Đã tốt nghiệp">Đã tốt nghiệp</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "15px" }}>
+                      <button 
+                        type="button"
+                        onClick={() => setIsStudentModalOpen(false)}
+                        style={{ ...styles.button, padding: "8px 16px", background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", borderRadius: "6px" }}
+                      >
+                        Đóng
+                      </button>
+                      <button type="submit" style={styles.primaryButton}>
+                        Lưu hồ sơ
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1692,6 +3579,24 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       padding: "8px 10px",
       borderBottom: "1px solid #eef3f7",
       color: "#2a3d4a"
+    },
+    button: {
+      padding: "8px 16px",
+      borderRadius: "6px",
+      border: "none",
+      fontSize: "0.85rem",
+      fontWeight: "600",
+      cursor: "pointer"
+    },
+    primaryButton: {
+      padding: "8px 16px",
+      borderRadius: "6px",
+      border: "none",
+      fontSize: "0.85rem",
+      fontWeight: "600",
+      cursor: "pointer",
+      background: "#0284c7",
+      color: "#fff"
     }
   };
 
@@ -1702,6 +3607,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         <Zap size={16} /> Bảng điều khiển phân hệ chuyên cần (Quyền: {role.toUpperCase()})
       </div>
       <div style={styles.cardBody}>
+
         <div style={styles.aiContainer}>
           {/* Trái: Camera mô phỏng quét khuôn mặt (Chỉ dành cho Admin và khi ở tab camera_dashboard) */}
           {role === 'admin' && activeTab === 'camera_dashboard' && (
@@ -2160,87 +4066,12 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   </div>
                 )}
 
-                {activeTab === 'structure' && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                    {/* Form tạo môn học */}
-                    <div style={{ background: "#f8fbfd", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "15px" }}>
-                      <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "12px" }}>Tạo môn học gốc</span>
-                      <form onSubmit={handleCreateSubject}>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Mã môn học</label>
-                          <input
-                            type="text"
-                            placeholder="Mã môn (VD: INT1306)"
-                            required
-                            style={styles.input}
-                            value={subCode}
-                            onChange={(e) => setSubCode(e.target.value.toUpperCase())}
-                          />
-                        </div>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Tên môn học</label>
-                          <input
-                            type="text"
-                            placeholder="Tên môn học"
-                            required
-                            style={styles.input}
-                            value={subName}
-                            onChange={(e) => setSubName(e.target.value)}
-                          />
-                        </div>
-                        <button type="submit" style={{ ...styles.btn, width: "100%", marginTop: "10px" }}>Tạo môn học</button>
-                      </form>
-                    </div>
-
-                    {/* Form tạo lớp tín chỉ */}
-                    <div style={{ background: "#f8fbfd", border: "1px solid #d0e0eb", borderRadius: "8px", padding: "15px" }}>
-                      <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "#106fa6", display: "block", marginBottom: "12px" }}>Tạo lớp học phần (Tín chỉ)</span>
-                      <form onSubmit={handleCreateCreditClass}>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Mã lớp tín chỉ</label>
-                          <input
-                            type="text"
-                            placeholder="Mã lớp (VD: D22CQCNPM02-N)"
-                            required
-                            style={styles.input}
-                            value={ccCode}
-                            onChange={(e) => setCcCode(e.target.value.toUpperCase())}
-                          />
-                        </div>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Môn học liên kết</label>
-                          <input
-                            type="text"
-                            placeholder="Mã môn học liên kết (VD: INT1306)"
-                            required
-                            style={styles.input}
-                            value={ccSub}
-                            onChange={(e) => setCcSub(e.target.value.toUpperCase())}
-                          />
-                        </div>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Phân công Giảng viên dạy</label>
-                          <select
-                            style={styles.input}
-                            value={ccLecturer}
-                            onChange={(e) => setCcLecturer(e.target.value)}
-                          >
-                            <option value="">-- Không phân công / Tự do --</option>
-                            {lecturersList.map(l => (
-                              <option key={l.lecturer_id} value={l.lecturer_id}>
-                                {l.lecturer_id} - {l.full_name} ({l.department || "Khoa CNTT"})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <button type="submit" style={{ ...styles.btn, width: "100%", marginTop: "10px", backgroundColor: "#0284c7" }}>Tạo lớp tín chỉ</button>
-                      </form>
-                    </div>
-                  </div>
-                )}
+                {activeTab === 'subjects_management' && renderSubjectsManagementTab()}
                 {activeTab === 'students_list' && renderStudentsListTab()}
 
                 {activeTab === 'class_management' && renderClassManagementTab()}
+                {activeTab === 'lecturers_management' && renderLecturersManagementTab()}
+                {activeTab === 'rooms_management' && renderRoomsManagementTab()}
               </>
             )}
 
@@ -2924,94 +4755,257 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   </div>
                 )}
 
-                {activeTab === 'course_registration' && (
-                  <div>
-                    {/* Section 1: Enrolled classes & progress */}
-                    <div style={{ marginBottom: "25px" }}>
-                      <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Lớp Học Phần Đang Theo Học & Tiến Độ</h4>
-                      {studentClasses.length === 0 ? (
-                        <p style={{ fontSize: "0.8rem", color: "#6c8da3", padding: "10px", background: "#f8fbfd", borderRadius: "6px", border: "1px solid #eef2f6" }}>
-                          Bạn chưa đăng ký lớp tín chỉ nào. Vui lòng xem danh sách các lớp học phần bên dưới để đăng ký học.
-                        </p>
-                      ) : (
-                        <table style={styles.table}>
-                          <thead>
-                            <tr>
-                              <th style={styles.th}>Lớp tín chỉ</th>
-                              <th style={styles.th}>Môn học</th>
-                              <th style={styles.th}>Số buổi đi học</th>
-                              <th style={styles.th}>Trạng thái</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {studentClasses.map((c, i) => (
-                              <tr key={i}>
-                                <td style={styles.td}><strong>{c.class_id}</strong></td>
-                                <td style={styles.td}>
-                                  <strong>{c.subject_name}</strong><br />
-                                  <small style={{ color: "#777" }}>{c.subject_id}</small>
-                                </td>
-                                <td style={styles.td}>
-                                  <strong>{c.attended_sessions}</strong> / {c.total_sessions} buổi
-                                </td>
-                                <td style={styles.td}>
-                                  <span style={{
-                                    padding: "3px 6px",
-                                    borderRadius: "4px",
-                                    fontSize: "0.75rem",
-                                    backgroundColor: c.status === 'Active' ? "#e6f8f0" : "#fdf0f0",
-                                    color: c.status === 'Active' ? "#10b981" : "#ef4444",
-                                    fontWeight: "600"
-                                  }}>
-                                    {c.status === 'Active' ? 'Học tập' : 'Cấm thi'}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
+                {activeTab === 'course_registration' && (() => {
+                  const totalCredits = studentClasses.reduce((sum, c) => sum + (Number(c.credits) || 0), 0);
+                  const enrolledIds = new Set(studentClasses.map(c => c.class_id));
+                  const filteredAvailable = availableClasses.filter(c => {
+                    const remaining = (c.max_students || 0) - (c.current_students || 0);
+                    return (
+                      (!regFilterMaLop  || c.class_id?.toLowerCase().includes(regFilterMaLop.toLowerCase())) &&
+                      (!regFilterTenMon || c.subject_name?.toLowerCase().includes(regFilterTenMon.toLowerCase())) &&
+                      (!regFilterNhom   || (c.class_group || '').toLowerCase().includes(regFilterNhom.toLowerCase())) &&
+                      (!regFilterSoTC   || String(c.credits || c.so_tc || '').includes(regFilterSoTC)) &&
+                      (!regFilterLop    || (c.administrative_class_id || '').toLowerCase().includes(regFilterLop.toLowerCase())) &&
+                      (!regFilterSoLuong|| String(c.max_students || '').includes(regFilterSoLuong)) &&
+                      (!regFilterConLai || String(remaining).includes(regFilterConLai))
+                    );
+                  });
+
+                  // Sessions for the schedule modal
+                  const modalSessions = scheduleModal.open
+                    ? schedules.filter(s => s.class_id === scheduleModal.classId)
+                    : [];
+
+                  return (
+                  <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
+                    {/* ===== SCHEDULE MODAL ===== */}
+                    {scheduleModal.open && (
+                      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}
+                        onClick={() => setScheduleModal({ open: false, classId: null, className: '' })}
+                      >
+                        <div style={{ background: "#fff", borderRadius: 12, width: 560, maxWidth: "95vw", maxHeight: "80vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div style={{ background: "linear-gradient(135deg,#0ea5e9,#0284c7)", borderRadius: "12px 12px 0 0", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem" }}>📅 Thời khóa biểu — {scheduleModal.className}</span>
+                            <button onClick={() => setScheduleModal({ open: false, classId: null, className: '' })} style={{ background: "none", border: "none", color: "#fff", fontSize: "1.2rem", cursor: "pointer" }}>✕</button>
+                          </div>
+                          <div style={{ padding: "14px" }}>
+                            {modalSessions.length === 0 ? (
+                              <p style={{ color: "#94a3b8", fontSize: "0.85rem", textAlign: "center", padding: "20px" }}>Chưa có lịch học nào được phân công cho môn này.</p>
+                            ) : (
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
+                                <thead>
+                                  <tr style={{ background: "#f0f9ff" }}>
+                                    {["Buổi","Ngày","Giờ","Phòng","Tiết"].map((h,i) => (
+                                      <th key={i} style={{ padding: "7px 10px", textAlign: "left", fontWeight: 600, color: "#0369a1", borderBottom: "1px solid #bae6fd" }}>{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {modalSessions.map((s, i) => (
+                                    <tr key={i} style={{ borderBottom: "1px solid #f0f9ff" }}>
+                                      <td style={{ padding: "7px 10px", color: "#475569" }}>Buổi {i + 1}</td>
+                                      <td style={{ padding: "7px 10px", color: "#1e293b", whiteSpace: "nowrap" }}>{s.session_date || (s.start_time ? s.start_time.substring(0,10) : '-')}</td>
+                                      <td style={{ padding: "7px 10px", color: "#475569", whiteSpace: "nowrap" }}>{s.start_time ? s.start_time.substring(11,16) : '-'} – {s.end_time ? s.end_time.substring(11,16) : '-'}</td>
+                                      <td style={{ padding: "7px 10px", color: "#0369a1", fontWeight: 600 }}>{s.room_id || s.room || '-'}</td>
+                                      <td style={{ padding: "7px 10px", color: "#475569" }}>{s.shift || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ===== HEADER ===== */}
+                    <div style={{
+                      background: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)",
+                      borderRadius: "10px 10px 0 0",
+                      padding: "12px 18px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      marginBottom: 0
+                    }}>
+                      <span style={{ fontSize: "1.1rem" }}>🎓</span>
+                      <span style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem", letterSpacing: "0.02em" }}>
+                        ĐĂNG KÝ MÔN HỌC HỌC KỲ 1 - NĂM HỌC 2026 - 2027
+                      </span>
                     </div>
 
-                    {/* Section 2: Available classes to register */}
-                    <div>
-                      <h4 style={{ color: "#106fa6", fontSize: "0.9rem", margin: "0 0 10px 0" }}>Danh Sách Lớp Học Phần Đang Mở</h4>
-                      {availableClasses.length === 0 ? (
-                        <p style={{ fontSize: "0.8rem", color: "#6c8da3", padding: "10px", background: "#f8fbfd", borderRadius: "6px", border: "1px solid #eef2f6" }}>
-                          Hiện tại không có lớp học phần nào khả dụng để đăng ký (Bạn đã đăng ký học tất cả các lớp đang mở).
-                        </p>
-                      ) : (
-                        <table style={styles.table}>
+                    {/* ===== AVAILABLE CLASSES PANEL ===== */}
+                    <div style={{
+                      border: "2px solid #0ea5e9",
+                      borderTop: "none",
+                      borderRadius: "0 0 10px 10px",
+                      marginBottom: "18px",
+                      background: "#fff",
+                      overflow: "hidden"
+                    }}>
+                      <div style={{ padding: "10px 14px", borderBottom: "1px solid #e0f0fa" }}>
+                        <select style={{ border: "1px solid #b0d8f5", borderRadius: "5px", padding: "5px 10px", fontSize: "0.82rem", color: "#0369a1", background: "#f0f9ff", outline: "none", minWidth: 220 }} defaultValue="all">
+                          <option value="all">Tất cả môn học đang mở</option>
+                        </select>
+                      </div>
+                      <div style={{ padding: "8px 14px 4px", fontSize: "0.8rem", color: "#0369a1", fontWeight: 600 }}>
+                        Danh sách môn học mở cho đăng ký
+                      </div>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
                           <thead>
-                            <tr>
-                              <th style={styles.th}>Mã lớp tín chỉ</th>
-                              <th style={styles.th}>Môn học</th>
-                              <th style={styles.th}>Mã môn</th>
-                              <th style={styles.th}>Hành động</th>
+                            <tr style={{ background: "#f0f9ff" }}>
+                              {["Mã MH ▲","Tên môn học","Nhóm","Tổ","Số TC","Lớp","Số lượng","Còn lại","Thời khóa biểu"].map((h,i) => (
+                                <th key={i} style={{ padding: "6px 10px", textAlign: "left", fontWeight: 600, color: "#0369a1", borderBottom: "1px solid #bae6fd", whiteSpace: "nowrap" }}>{h}</th>
+                              ))}
+                            </tr>
+                            <tr style={{ background: "#fafeff" }}>
+                              <td style={{ padding: "3px 6px" }}>
+                                <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                                  <span style={{ color: "#0ea5e9" }}>🔍</span>
+                                  <input value={regFilterMaLop} onChange={e => setRegFilterMaLop(e.target.value)} placeholder="..." style={{ width: 70, border: "none", borderBottom: "1px solid #bae6fd", fontSize: "0.75rem", outline: "none", background: "transparent", padding: "2px" }} />
+                                </span>
+                              </td>
+                              <td style={{ padding: "3px 6px" }}><input value={regFilterTenMon} onChange={e => setRegFilterTenMon(e.target.value)} placeholder="..." style={{ width: "100%", border: "none", borderBottom: "1px solid #bae6fd", fontSize: "0.75rem", outline: "none", background: "transparent", padding: "2px" }} /></td>
+                              <td style={{ padding: "3px 6px" }}><input value={regFilterNhom} onChange={e => setRegFilterNhom(e.target.value)} placeholder="..." style={{ width: 50, border: "none", borderBottom: "1px solid #bae6fd", fontSize: "0.75rem", outline: "none", background: "transparent", padding: "2px" }} /></td>
+                              <td style={{ padding: "3px 6px" }}><input placeholder="..." style={{ width: 40, border: "none", borderBottom: "1px solid #bae6fd", fontSize: "0.75rem", outline: "none", background: "transparent", padding: "2px" }} /></td>
+                              <td style={{ padding: "3px 6px" }}><input value={regFilterSoTC} onChange={e => setRegFilterSoTC(e.target.value)} placeholder="..." style={{ width: 40, border: "none", borderBottom: "1px solid #bae6fd", fontSize: "0.75rem", outline: "none", background: "transparent", padding: "2px" }} /></td>
+                              <td style={{ padding: "3px 6px" }}><input value={regFilterLop} onChange={e => setRegFilterLop(e.target.value)} placeholder="..." style={{ width: 70, border: "none", borderBottom: "1px solid #bae6fd", fontSize: "0.75rem", outline: "none", background: "transparent", padding: "2px" }} /></td>
+                              <td style={{ padding: "3px 6px" }}><input value={regFilterSoLuong} onChange={e => setRegFilterSoLuong(e.target.value)} placeholder="..." style={{ width: 55, border: "none", borderBottom: "1px solid #bae6fd", fontSize: "0.75rem", outline: "none", background: "transparent", padding: "2px" }} /></td>
+                              <td style={{ padding: "3px 6px" }}><input value={regFilterConLai} onChange={e => setRegFilterConLai(e.target.value)} placeholder="..." style={{ width: 50, border: "none", borderBottom: "1px solid #bae6fd", fontSize: "0.75rem", outline: "none", background: "transparent", padding: "2px" }} /></td>
+                              <td></td>
                             </tr>
                           </thead>
                           <tbody>
-                            {availableClasses.map((c, i) => (
-                              <tr key={i}>
-                                <td style={styles.td}><strong>{c.class_id}</strong></td>
-                                <td style={styles.td}>{c.subject_name}</td>
-                                <td style={styles.td}>{c.subject_id}</td>
-                                <td style={styles.td}>
+                            {filteredAvailable.length === 0 ? (
+                              <tr><td colSpan={9} style={{ textAlign: "center", padding: "18px", color: "#94a3b8", fontStyle: "italic", fontSize: "0.8rem" }}>Không tìm thấy dữ liệu</td></tr>
+                            ) : filteredAvailable.map((c, i) => {
+                              const remaining = (c.max_students || 0) - (c.current_students || 0);
+                              const alreadyEnrolled = enrolledIds.has(c.class_id);
+                              return (
+                                <tr key={i} style={{ borderBottom: "1px solid #f0f9ff", background: alreadyEnrolled ? "#f0fdf4" : "", transition: "background 0.15s" }}
+                                  onMouseEnter={e => { if (!alreadyEnrolled) e.currentTarget.style.background = "#f0f9ff"; }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = alreadyEnrolled ? "#f0fdf4" : ""; }}
+                                >
+                                  <td style={{ padding: "7px 10px", color: "#0369a1", fontWeight: 600, whiteSpace: "nowrap" }}>{c.subject_id || c.class_id}</td>
+                                  <td style={{ padding: "7px 10px", color: "#1e293b" }}>{c.subject_name || 'N/A'}</td>
+                                  <td style={{ padding: "7px 10px", textAlign: "center", color: "#475569" }}>{c.class_group || '-'}</td>
+                                  <td style={{ padding: "7px 10px", textAlign: "center", color: "#475569" }}>{c.semester || '-'}</td>
+                                  <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 600, color: "#0369a1" }}>{c.credits != null ? c.credits : '-'}</td>
+                                  <td style={{ padding: "7px 10px", color: "#475569" }}>{c.administrative_class_id || '*'}</td>
+                                  <td style={{ padding: "7px 10px", textAlign: "center", color: "#475569" }}>{c.max_students != null ? c.max_students : '-'}</td>
+                                  <td style={{ padding: "7px 10px", textAlign: "center", color: remaining <= 5 ? "#dc2626" : "#16a34a", fontWeight: 600 }}>{remaining >= 0 ? remaining : '-'}</td>
+                                  <td style={{ padding: "7px 10px", textAlign: "center" }}>
+                                    {alreadyEnrolled ? (
+                                      <span style={{ fontSize: "0.72rem", color: "#16a34a", fontWeight: 600 }}>✓ Đã đăng ký</span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleRegisterCourse(c.class_id)}
+                                        style={{ background: "linear-gradient(135deg,#0ea5e9,#0284c7)", color: "#fff", border: "none", borderRadius: "5px", padding: "4px 12px", fontSize: "0.74rem", cursor: "pointer", fontWeight: 600, transition: "opacity 0.15s" }}
+                                        onMouseEnter={e => e.currentTarget.style.opacity="0.85"}
+                                        onMouseLeave={e => e.currentTarget.style.opacity="1"}
+                                        disabled={remaining <= 0}
+                                      >Đăng ký</button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* ===== ENROLLED CLASSES PANEL ===== */}
+                    <div style={{ border: "2px solid #0ea5e9", borderRadius: "10px", background: "#fff", overflow: "hidden" }}>
+                      <div style={{ padding: "10px 14px", borderBottom: "1px solid #e0f0fa", fontSize: "0.82rem", color: "#0369a1", fontWeight: 600 }}>
+                        Danh sách môn học đã đăng ký:&nbsp;
+                        <span style={{ color: "#0284c7", fontWeight: 700 }}>{studentClasses.length} môn, {totalCredits} tín chỉ</span>
+                      </div>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                          <thead>
+                            <tr style={{ background: "#f0f9ff" }}>
+                              {["Xóa","Mã MH","Tên môn học","Nhóm tổ","Số TC","Lớp","Ngày đăng ký","Trạng thái","Thời khóa biểu"].map((h,i) => (
+                                <th key={i} style={{ padding: "6px 10px", textAlign: "left", fontWeight: 600, color: "#0369a1", borderBottom: "1px solid #bae6fd", whiteSpace: "nowrap" }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {studentClasses.length === 0 ? (
+                              <tr><td colSpan={9} style={{ textAlign: "center", padding: "18px", color: "#94a3b8", fontStyle: "italic", fontSize: "0.8rem" }}>Bạn chưa đăng ký môn học nào.</td></tr>
+                            ) : studentClasses.map((c, i) => (
+                              <tr key={i} style={{ borderBottom: "1px solid #f0f9ff", transition: "background 0.15s" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "#f0f9ff"}
+                                onMouseLeave={e => e.currentTarget.style.background = ""}
+                              >
+                                <td style={{ padding: "7px 10px", textAlign: "center" }}>
+                                  {c.class_status?.toLowerCase() === 'active' && (
+                                    <button
+                                      onClick={() => handleUnregisterCourse(c.class_id)}
+                                      title="Hủy đăng ký"
+                                      style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "1rem", lineHeight: 1, padding: "2px 4px", borderRadius: 3, transition: "color 0.15s" }}
+                                      onMouseEnter={e => e.currentTarget.style.color="#dc2626"}
+                                      onMouseLeave={e => e.currentTarget.style.color="#94a3b8"}
+                                    >✕</button>
+                                  )}
+                                </td>
+                                <td style={{ padding: "7px 10px", color: "#0369a1", fontWeight: 600 }}>{c.subject_id || c.class_id}</td>
+                                <td style={{ padding: "7px 10px", color: "#1e293b" }}>{c.subject_name || 'N/A'}</td>
+                                <td style={{ padding: "7px 10px", textAlign: "center", color: "#475569" }}>{c.class_group ? `${c.class_group}` : '-'}</td>
+                                <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 600, color: "#0369a1" }}>{c.credits != null ? c.credits : '-'}</td>
+                                <td style={{ padding: "7px 10px", color: "#475569" }}>{c.administrative_class_id || '*'}</td>
+                                <td style={{ padding: "7px 10px", color: "#64748b", whiteSpace: "nowrap" }}>{c.enrollment_date ? new Date(c.enrollment_date).toLocaleString('vi-VN') : '-'}</td>
+                                <td style={{ padding: "7px 10px" }}>
+                                  <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "10px", fontSize: "0.72rem", fontWeight: 600,
+                                    background: c.class_status?.toLowerCase() === 'active' ? "#dcfce7" : "#fee2e2",
+                                    color: c.class_status?.toLowerCase() === 'active' ? "#16a34a" : "#dc2626"
+                                  }}>{c.class_status || c.status || 'Enrolled'}</span>
+                                </td>
+                                <td style={{ padding: "7px 10px", textAlign: "center" }}>
                                   <button
-                                    onClick={() => handleRegisterCourse(c.class_id)}
-                                    style={{ ...styles.btn, padding: "4px 10px", fontSize: "0.75rem" }}
-                                  >
-                                    Đăng ký học
-                                  </button>
+                                    title="Xem thời khóa biểu"
+                                    onClick={() => {
+                                      fetchSchedules();
+                                      setScheduleModal({ open: true, classId: c.class_id, className: c.subject_name || c.class_id });
+                                    }}
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: "#0ea5e9", fontSize: "1rem" }}
+                                  >☰</button>
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
-                      )}
+                      </div>
+                      <div style={{ padding: "10px 14px", borderTop: "1px solid #e0f0fa", display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          style={{ background: "linear-gradient(135deg,#0ea5e9,#0284c7)", color: "#fff", border: "none", borderRadius: "6px", padding: "6px 14px", fontSize: "0.8rem", cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}
+                          onMouseEnter={e => e.currentTarget.style.opacity="0.85"}
+                          onMouseLeave={e => e.currentTarget.style.opacity="1"}
+                          onClick={() => {
+                            const rows = [['Mã MH','Tên môn học','Nhóm','Số TC','Lớp','Ngày đăng ký','Trạng thái']];
+                            studentClasses.forEach(c => rows.push([
+                              c.subject_id||c.class_id, c.subject_name||'N/A',
+                              c.class_group||'-', c.credits != null ? c.credits : '-',
+                              c.administrative_class_id||'*',
+                              c.enrollment_date ? new Date(c.enrollment_date).toLocaleString('vi-VN') : '-',
+                              c.class_status||c.status||'Enrolled'
+                            ]));
+                            const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+                            const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a'); a.href=url; a.download='phieu_dang_ky.csv'; a.click();
+                          }}
+                        >
+                          📄 Xuất phiếu đăng ký
+                        </button>
+                      </div>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </>
             )}
 

@@ -13,7 +13,7 @@ def print_json(data):
 
 def wait_for_user(step):
     print(f"\n[!] TẠM DỪNG TẠI BƯỚC: {step}")
-    input(">>> Nhấn ENTER để tiếp tục...")
+    pass
 
 def run_student_tests():
     print("====================================================")
@@ -106,7 +106,7 @@ def run_student_tests():
 
     # [CASE 10] GET - Export
     print("\n[CASE 10] Test Xuất file Excel (Export)...")
-    res = requests.get(f"{BASE_URL}/export")
+    res = requests.get(f"{BASE_URL}/export/excel")
     if res.status_code == 200:
         with open("test_export.xlsx", "wb") as f:
             f.write(res.content)
@@ -131,14 +131,14 @@ def run_student_tests():
     stream.seek(0)
 
     files = {"file": ("test_import.xlsx", stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
-    res = requests.post(f"{BASE_URL}/import", files=files)
+    res = requests.post(f"{BASE_URL}/import/excel", files=files)
     status_msg = record_test("Case 11: Import file Excel hợp lệ (201)", res.status_code in [200, 201])
     print(" ->", res.status_code, status_msg)
 
     # [CASE 12] POST - Import sai định dạng
     print("\n[CASE 12] Test Nhập file sai định dạng (VD: file .txt)...")
     files_invalid = {"file": ("dummy.txt", b"Khong phai excel", "text/plain")}
-    res = requests.post(f"{BASE_URL}/import", files=files_invalid)
+    res = requests.post(f"{BASE_URL}/import/excel", files=files_invalid)
     status_msg = record_test("Case 12: Bắt lỗi Import file sai định dạng (400)", res.status_code == 400)
     print(" ->", res.status_code, status_msg)
 

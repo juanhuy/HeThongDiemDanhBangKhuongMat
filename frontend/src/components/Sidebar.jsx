@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Home, User, BookOpen, Calendar, Clock, 
+  Home, User, Users, BookOpen, Calendar, Clock, 
   Clipboard, FileText, Camera, ShieldAlert
 } from 'lucide-react';
 
@@ -61,11 +61,17 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'schedule' ? 'active' : ''}`} onClick={() => setActiveMenu('schedule')}>
             <Calendar size={16} /> Thêm Lịch học
           </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'structure' ? 'active' : ''}`} onClick={() => setActiveMenu('structure')}>
-            <BookOpen size={16} /> Cấu trúc Lớp
+          <div className={`ptit-sidebar-item ${activeMenu === 'subjects_management' ? 'active' : ''}`} onClick={() => setActiveMenu('subjects_management')}>
+            <BookOpen size={16} /> Quản lý Môn học
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('class_management')}>
-            <BookOpen size={16} /> Quản lý Đăng ký Lớp
+            <BookOpen size={16} /> Quản lý Lớp tín chỉ
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'lecturers_management' ? 'active' : ''}`} onClick={() => setActiveMenu('lecturers_management')}>
+            <Users size={16} /> Quản lý Giảng viên
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'rooms_management' ? 'active' : ''}`} onClick={() => setActiveMenu('rooms_management')}>
+            <BookOpen size={16} /> Quản lý Phòng học
           </div>
         </>
       );

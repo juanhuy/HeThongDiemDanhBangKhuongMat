@@ -13,37 +13,16 @@ if project_root not in sys.path:
 from config.settings import settings
 from app.db.session import engine, Base
 
-# Import các model để SQLAlchemy nhận diện được cấu trúc bảng (trigger reload 1)
-from app.models.account import Account
-from app.models.student import Student
-from app.models.subject import Subject 
-from app.models.lecturer import Lecturer
-from app.models.face_feature import FaceFeature
-from app.models.credit_class import CreditClass
-from app.models.student_class import StudentClassEnrollment
-from app.models.class_schedule import ClassSchedule
-from app.models.attendance_history import AttendanceHistory
-from app.models.leave_request import LeaveRequest
+# Import GỌN NHẸ: Chỉ cần import app.models là SQLAlchemy tự nhận diện đủ 11 bảng
+import app.models 
 
-# Tạo bảng (Nếu dùng Alembic thì bỏ dòng này, nhưng để test nhanh thì dùng)
+# Tạo bảng (Nếu Database trống thì sẽ tự động tạo bảng)
 Base.metadata.create_all(bind=engine)
-
-# Tự động cập nhật cấu trúc cơ sở dữ liệu nếu cột lecturer_id chưa tồn tại
-from sqlalchemy import text
-try:
-    with engine.begin() as conn:
-        res = conn.execute(text("SHOW COLUMNS FROM credit_classes LIKE 'lecturer_id'"))
-        if not res.fetchone():
-            print(">>> DATABASE UPDATE: Adding lecturer_id column to credit_classes table...")
-            conn.execute(text("ALTER TABLE credit_classes ADD COLUMN lecturer_id VARCHAR(20) NULL"))
-            conn.execute(text("ALTER TABLE credit_classes ADD CONSTRAINT fk_credit_classes_lecturers FOREIGN KEY (lecturer_id) REFERENCES lecturers(lecturer_id) ON DELETE SET NULL"))
-except Exception as e:
-    print(f">>> DATABASE UPDATE ERROR: {e}")
 
 app = FastAPI(
     title="AI Attendance API",
-    description="API cho hệ thống điểm danh bằng khuôn mặt",
-    version="1.0.0"
+    description="API cho hệ thống điểm danh bằng khuôn mặt gjghjgjg",
+    version="2.0.0"
 )
 
 # Cấu hình CORS
@@ -70,22 +49,28 @@ from app.api.endpoints import (
     api_subject,
     api_admin_students,
     api_admin_lecturers,
-    api_admin_faces,
+    api_admin_classrooms,
     api_auth,
     api_credit_classes,
     api_ai
 )
 
-# Đăng ký các Router từ các file api_
-app.include_router(api_auth.router, prefix="/api/auth", tags=["Xác thực"])
-app.include_router(api_credit_classes.router, prefix="/api", tags=["Lớp học & Điểm danh"])
-app.include_router(api_ai.router, prefix="/api", tags=["AI & Nhận diện"])
+def include_optional_router(module, prefix: str, tags: list[str]):
+    router = getattr(module, "router", None)
+    if router is not None:
+        app.include_router(router, prefix=prefix, tags=tags)
 
-# Các Router cũ cho admin
-app.include_router(api_subject.router, prefix="/api/subjects", tags=["Quản lý Môn học"])
-app.include_router(api_admin_students.router, prefix="/api/admin/students", tags=["Admin - Quản lý Sinh viên"])
-app.include_router(api_admin_lecturers.router, prefix="/api/admin/lecturers", tags=["Admin - Quản lý Giảng viên"])
-app.include_router(api_admin_faces.router, prefix="/api/admin/faces", tags=["Admin - Quản lý Dữ liệu khuôn mặt"])
+# Đăng ký các Router từ các file API
+include_optional_router(api_auth, prefix="/api/auth", tags=["Xác thực"])
+include_optional_router(api_credit_classes, prefix="/api", tags=["Lớp học & Điểm danh"])
+include_optional_router(api_ai, prefix="/api", tags=["AI & Nhận diện"])
+
+# Các Router quản lý (Admin)
+include_optional_router(api_subject, prefix="/api/subjects", tags=["Quản lý Môn học"])
+include_optional_router(api_admin_students, prefix="/api/admin/students", tags=["Admin - Quản lý Sinh viên"])
+include_optional_router(api_admin_students, prefix="/api/students", tags=["Sinh viên (Alias)"])
+include_optional_router(api_admin_lecturers, prefix="/api/admin/lecturers", tags=["Admin - Quản lý Giảng viên"])
+include_optional_router(api_admin_classrooms, prefix="/api/admin/classrooms", tags=["Admin - Quản lý Phòng học"])
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():

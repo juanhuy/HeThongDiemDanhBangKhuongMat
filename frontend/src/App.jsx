@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Calendar } from 'lucide-react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import StudentInfoCard from './components/StudentInfoCard';
 import CourseInfoCard from './components/CourseInfoCard';
+import LecturerInfoCard from './components/LecturerInfoCard';
 import AIAttendance from './components/AIAttendance';
 import AttendanceLogs from './components/AttendanceLogs';
 import Toast from './components/Toast';
@@ -59,6 +59,7 @@ function App() {
   const [activeMenu, setActiveMenu] = useState('home');
 
   const [studentProfile, setStudentProfile] = useState(null);
+  const [lecturerProfile, setLecturerProfile] = useState(null);
 
   const userRole = user?.role ? user.role.toLowerCase() : '';
   const isStudent = userRole === 'sinh_vien' || userRole === 'student';
@@ -82,7 +83,11 @@ function App() {
       if (savedUser) {
         const parsed = JSON.parse(savedUser);
         setUser(parsed);
-        fetchStudentProfile(parsed.mssv);
+        if (parsed.role === 'sinh_vien' || parsed.role === 'student') {
+          fetchStudentProfile(parsed.mssv);
+        } else if (parsed.role === 'giang_vien' || parsed.role === 'lecturer') {
+          fetchLecturerProfile(parsed.lecturer_id);
+        }
       }
     }
     fetchLogs();
@@ -101,12 +106,17 @@ function App() {
     setUser(userData);
     localStorage.setItem("ptit_user", JSON.stringify(userData));
     showToast("Đăng nhập thành công!");
-    fetchStudentProfile(userData.mssv);
+    if (userData.role === 'sinh_vien' || userData.role === 'student') {
+      fetchStudentProfile(userData.mssv);
+    } else if (userData.role === 'giang_vien' || userData.role === 'lecturer') {
+      fetchLecturerProfile(userData.lecturer_id);
+    }
   };
 
   const handleLogout = () => {
     setUser(null);
     setStudentProfile(null);
+    setLecturerProfile(null);
     localStorage.removeItem("ptit_user");
     showToast("Đã đăng xuất khỏi hệ thống.");
   };
@@ -121,17 +131,40 @@ function App() {
           mssv: data.student_id,
           ho_ten: data.full_name,
           lop_base: data.administrative_class || 'N/A',
-          email: data.email,
+          email: data.email || 'N/A',
           sdt: data.phone_number || 'N/A',
-          ngay_sinh: 'N/A',
-          gioi_tinh: 'N/A',
-          noi_sinh: 'N/A',
-          dia_chi: 'N/A'
+          ngay_sinh: data.date_of_birth || 'N/A',
+          gioi_tinh: data.gender || 'N/A',
+          cmnd: data.citizen_id || 'N/A',
+          dan_toc: data.ethnicity || 'N/A',
+          ton_giao: data.religion || 'N/A',
+          quoc_tich: data.nationality || 'N/A',
+          noi_sinh: data.place_of_birth || 'N/A',
+          dia_chi: data.address || 'N/A',
+          major: data.major || 'N/A',
+          specialization: data.specialization || 'N/A',
+          department: data.department || 'N/A',
+          cohort: data.cohort || 'N/A',
+          training_program: data.training_program || 'N/A',
+          academic_status: data.academic_status || 'Đang học'
         };
         setStudentProfile(mapped);
       }
     } catch (e) {
       console.error("Lỗi khi tải thông tin sinh viên:", e);
+    }
+  };
+
+  const fetchLecturerProfile = async (lecturer_id) => {
+    if (!lecturer_id) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/lecturers/${lecturer_id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLecturerProfile(data);
+      }
+    } catch (e) {
+      console.error("Lỗi khi tải thông tin giảng viên:", e);
     }
   };
 
@@ -181,6 +214,11 @@ function App() {
     lop_base: user.lop_base || 'N/A'
   };
 
+  const lecturerProfileToRender = lecturerProfile || {
+    lecturer_id: user.lecturer_id || 'N/A',
+    full_name: user.ho_ten || user.username,
+  };
+
   return (
     <div style={styles.appWrapper}>
       <Header studentProfile={profileToRender} onLogout={handleLogout} />
@@ -206,8 +244,12 @@ function App() {
             <>
               {isStudent && (
                 <>
-                  <StudentInfoCard studentProfile={profileToRender} />
                   <CourseInfoCard studentProfile={profileToRender} />
+                </>
+              )}
+              {isLecturer && (
+                <>
+                  <LecturerInfoCard lecturerProfile={lecturerProfileToRender} />
                 </>
               )}
               <AttendanceLogs 

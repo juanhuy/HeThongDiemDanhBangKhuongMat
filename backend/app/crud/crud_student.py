@@ -1,6 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.student import Student, UserProfile
-from app.models.account import Account
+from app.models import Student, UserProfile, Account, ClassEnrollment, CreditClass
 from app.schemas.student import StudentCreate, StudentUpdate
 from sqlalchemy import or_
 from app.core.security import get_password_hash
@@ -12,13 +11,10 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
     query = db.query(Student)
     
     if lecturer_id:
-        from app.models.student_class import StudentClassEnrollment
-        from app.models.credit_class import CreditClass
-        query = query.join(StudentClassEnrollment).join(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip())
+        query = query.join(ClassEnrollment).join(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip())
         
     if search:
         # Tìm kiếm theo tên (trong UserProfile) hoặc MSSV
-        from app.models.student import UserProfile
         query = query.join(UserProfile).filter(or_(
             UserProfile.full_name.ilike(f"%{search}%"),
             Student.student_id.ilike(f"%{search}%")
@@ -34,33 +30,50 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
     return query.offset(skip).limit(limit).all()
 
 def create_student(db: Session, student: StudentCreate):
-    import hashlib
-    default_password_hash = hashlib.sha256("123456".encode()).hexdigest() 
+    default_password_hash = get_password_hash("123456")
     
-    new_account = Account(
-        username=student.student_id.strip().lower(),
-        password_hash=default_password_hash,
-        role="sinh_vien",
-        is_active=True
-    )
-    db.add(new_account)
-    db.flush()
+    username_lower = student.student_id.strip().lower()
+    existing_account = db.query(Account).filter(Account.username == username_lower).first()
+    
+    if existing_account:
+        new_account = existing_account
+    else:
+        new_account = Account(
+            username=username_lower,
+            password_hash=default_password_hash,
+            role="sinh_vien",
+            is_active=True
+        )
+        db.add(new_account)
+        db.flush()
     
     # Tạo UserProfile liên kết
-    profile = UserProfile(
-        account_id=new_account.account_id,
-        full_name=student.full_name,
-        personal_email=student.email,
-        phone_number=student.phone_number
-    )
-    db.add(profile)
-    db.flush()
+    profile = db.query(UserProfile).filter(UserProfile.account_id == new_account.account_id).first()
+    if not profile:
+        profile = UserProfile(
+            account_id=new_account.account_id,
+            full_name=student.full_name,
+            personal_email=student.email,
+            phone_number=student.phone_number,
+            date_of_birth=getattr(student, 'date_of_birth', None),
+            gender=getattr(student, 'gender', None),
+            citizen_id=getattr(student, 'citizen_id', None),
+            ethnicity=getattr(student, 'ethnicity', None),
+            religion=getattr(student, 'religion', None),
+            nationality=getattr(student, 'nationality', 'Việt Nam'),
+            place_of_birth=getattr(student, 'place_of_birth', None),
+            address=getattr(student, 'address', None)
+        )
+        db.add(profile)
+        db.flush()
     
     db_student = Student(
         student_id=student.student_id.strip().upper(),
         profile_id=profile.profile_id,
         administrative_class=student.administrative_class,
         major=student.major,
+        specialization=student.specialization, # Mới thêm
+        department=student.department,         # Mới thêm
         cohort=student.cohort,
         training_program=student.training_program,
         academic_status=student.academic_status or "Đang học"
@@ -76,7 +89,7 @@ def update_student(db: Session, db_student: Student, student_update: StudentUpda
     
     # Cập nhật thông tin sinh viên và hồ sơ cá nhân
     for key, value in update_data.items():
-        if key in ["full_name", "email", "phone_number"]:
+        if key in ["full_name", "email", "phone_number", "address"]:
             if not db_student.profile:
                 profile = UserProfile(
                     account_id=None,
@@ -92,13 +105,15 @@ def update_student(db: Session, db_student: Student, student_update: StudentUpda
                 db_student.profile.personal_email = value
             elif key == "phone_number":
                 db_student.profile.phone_number = value
+            elif key == "address":
+                db_student.profile.address = value
         else:
             setattr(db_student, key, value)
         
-    # Logic nghiệp vụ: Khóa tài khoản nếu trạng thái là graduated hoặc dropped_out
+    # Logic nghiệp vụ: Khóa tài khoản nếu trạng thái là tốt nghiệp hoặc thôi học
     if "academic_status" in update_data:
         new_status = update_data["academic_status"]
-        if new_status in ["graduated", "dropped_out", "Thôi học", "Tốt nghiệp"]:
+        if new_status in ["Thôi học", "Đã tốt nghiệp", "Đình chỉ"]:
             if db_student.profile and db_student.profile.account:
                 db_student.profile.account.is_active = False
         elif new_status in ["studying", "Đang học"]:
