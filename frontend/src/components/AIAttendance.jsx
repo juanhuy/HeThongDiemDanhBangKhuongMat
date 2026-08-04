@@ -42,7 +42,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     subject_name: '',
     theory_credits: 0,
     practical_credits: 0,
-    department: '',
+    faculty_id: '', 
     is_active: true
   });
   const [subjectsList, setSubjectsList] = useState([]);
@@ -446,6 +446,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       fetchStudentClasses();
     } else if (activeTab === 'subjects_management') {
       fetchSubjects();
+      fetchFaculties(); // để tải danh sách khoa cho dropdown
     } else if (activeTab === 'lecturers_management') {
       fetchAllLecturers();
     } else if (activeTab === 'rooms_management') {
@@ -1528,7 +1529,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         subject_name: subject.subject_name,
         theory_credits: subject.theory_credits,
         practical_credits: subject.practical_credits,
-        department: subject.department || '',
+        faculty_id: subject.faculty_id || '',
         is_active: subject.is_active
       });
     } else {
@@ -1538,10 +1539,11 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
         subject_name: '',
         theory_credits: 0,
         practical_credits: 0,
-        department: '',
+        faculty_id: '',
         is_active: true
       });
     }
+    fetchFaculties(); // Gọi luôn hàm lấy danh sách Khoa để đổ vào dropdown
     setIsSubjectModalOpen(true);
   };
 
@@ -1736,7 +1738,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       <td style={{ ...styles.td, fontWeight: "600", color: "#0f766e" }}>{sub.subject_id}</td>
                       <td style={{ ...styles.td, color: "#1e293b", fontWeight: "500" }}>{sub.subject_name}</td>
                       <td style={{ ...styles.td, color: "#64748b" }}>{sub.credits}</td>
-                      <td style={{ ...styles.td, color: "#64748b" }}>{sub.department || 'N/A'}</td>
+                      {/* fix hiển thị tên khoa  */}
+                      <td style={{ ...styles.td, color: "#64748b" }}> 
+                        {sub.faculty ? sub.faculty.faculty_name : (sub.faculty_id || 'N/A')}
+                      </td>
                       <td style={styles.td}>
                         <span style={{
                           padding: "4px 8px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "600",
@@ -1838,14 +1843,20 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                   </div>
 
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>Khoa / Bộ môn quản lý</label>
-                    <input 
-                      type="text" 
+                    <label style={styles.label}>Khoa / Bộ môn quản lý <span style={{ color: "red" }}>*</span></label>
+                    <select 
+                      required
                       style={styles.input}
-                      value={subjectForm.department}
-                      onChange={e => setSubjectForm({...subjectForm, department: e.target.value})}
-                      placeholder="VD: Khoa CNTT"
-                    />
+                      value={subjectForm.faculty_id}
+                      onChange={e => setSubjectForm({...subjectForm, faculty_id: e.target.value})}
+                    >
+                      <option value="">-- Chọn Khoa quản lý --</option>
+                      {facultiesList.map(f => (
+                        <option key={f.faculty_id} value={f.faculty_id}>
+                          {f.faculty_id} - {f.faculty_name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div style={styles.formGroup}>

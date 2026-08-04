@@ -67,6 +67,7 @@ def update_subject(subject_id: str, subject: SubjectUpdate, db: Session = Depend
 # =========================================================================
 @router.post("/import/csv")
 async def import_subjects_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    from app.models.faculty import Faculty
     try:
         contents = await file.read()
         try:
@@ -78,6 +79,17 @@ async def import_subjects_csv(file: UploadFile = File(...), db: Session = Depend
                 raise HTTPException(status_code=400, detail="Không thể đọc file CSV. Vui lòng kiểm tra định dạng encoding (UTF-8).")
         
         imported = 0
+        
+        # Build map of faculty_name -> faculty_id (case-insensitive) to resolve department names
+        faculties = db.query(Faculty).all()
+        faculty_name_map = {f.faculty_name.strip().lower(): f.faculty_id for f in faculties if f.faculty_name}
+        
+        # Add some common aliases from the CSV that don't match the DB perfectly
+        alias_map = {
+            "khoa cntt 2": "FIT2",
+            "khoa điện tử 2": "FTE2", # Map Điện tử to Viễn thông 2
+        }
+        
         for _, row in df.iterrows():
             sub_id = str(row.get('subject_id', '')).strip()
             if not sub_id or sub_id.lower() == 'nan':
@@ -90,12 +102,27 @@ async def import_subjects_csv(file: UploadFile = File(...), db: Session = Depend
             theory = int(row.get('theory_credits', 0)) if pd.notna(row.get('theory_credits')) else 0
             practical = int(row.get('practical_credits', 0)) if pd.notna(row.get('practical_credits')) else 0
             
+            raw_faculty = str(row.get('faculty_id', row.get('department', 'N/A'))).strip()
+            
+            # Try to resolve raw_faculty as a name
+            resolved_faculty_id = faculty_name_map.get(raw_faculty.lower())
+            if not resolved_faculty_id:
+                resolved_faculty_id = alias_map.get(raw_faculty.lower())
+            
+            # If still not found, check if it's already a valid ID
+            if not resolved_faculty_id:
+                check_id = db.query(Faculty).filter(Faculty.faculty_id == raw_faculty).first()
+                if check_id:
+                    resolved_faculty_id = check_id.faculty_id
+                else:
+                    resolved_faculty_id = None # Set to None to avoid FK constraint error
+
             new_subject = Subject(
                 subject_id=sub_id,
                 subject_name=str(row.get('subject_name', '')).strip(),
                 theory_credits=theory,
                 practical_credits=practical,
-                faculty_id=str(row.get('faculty_id', row.get('department', 'N/A'))).strip(),
+                faculty_id=resolved_faculty_id,
                 is_active=str(row.get('is_active', 'True')).strip().lower() in ['true', '1', 't', 'yes']
             )
             db.add(new_subject)

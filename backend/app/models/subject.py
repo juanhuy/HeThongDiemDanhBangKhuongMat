@@ -19,3 +19,4 @@ class Subject(Base):
     is_active = Column(Boolean, default=True)
 
     classes = relationship("CreditClass", back_populates="subject")
+    faculty = relationship("Faculty", backref="subjects")

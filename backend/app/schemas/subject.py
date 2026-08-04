@@ -19,11 +19,27 @@ class SubjectUpdate(BaseModel):
     faculty_id: Optional[str] = None
     is_active: Optional[bool] = None
 
-class SubjectResponse(SubjectBase):
-    credits: int # Tổng tín chỉ (từ DB sinh ra)
+class FacultyInfo(BaseModel):
+    faculty_id: str
+    faculty_name: str
+    
+    class Config:
+        from_attributes = True
+
+class SubjectResponse(BaseModel):
+    subject_id: str
+    subject_name: str
+    theory_credits: int
+    practical_credits: int
+    credits: Optional[int] = 0
+    faculty_id: Optional[str] = None
+    is_active: bool
+    
+    # fix API trả về json có thêm tên Khoa
+    faculty: Optional[FacultyInfo] = None 
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
 
 class PaginatedSubjectResponse(BaseModel):
     total: int
