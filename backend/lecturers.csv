@@ -1,0 +1,3 @@
+lecturer_id,full_name,email,phone_number,date_of_birth,gender,citizen_id,ethnicity,religion,nationality,address,place_of_birth,faculty_id,academic_title,position,employment_type,teaching_status
+,Nguyễn Văn A,nva@ptit.edu.vn,0901234567,1980-05-15,Nam,079080123456,Kinh,Không,Việt Nam,TP.HCM,TP.HCM,FIT2,ThS,Giảng viên,Cơ hữu,Active
+,Trần Thị B,ttb@ptit.edu.vn,0912345678,1985-10-20,Nữ,079085123457,Kinh,Không,Việt Nam,Hà Nội,Hà Nội,FIT2,TS,Trưởng bộ môn,Cơ hữu,Active

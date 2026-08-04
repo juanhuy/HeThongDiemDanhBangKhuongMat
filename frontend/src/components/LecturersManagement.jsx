@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Trash2, Edit, X, Users, UserPlus } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, Plus, Trash2, Edit, X, Users, UserPlus, Upload } from 'lucide-react';
 
 const styles = {
   btn: { padding: "8px 16px", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600", fontSize: "0.9rem", color: "#fff", transition: "all 0.2s" },
@@ -35,9 +35,41 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
     faculty_id: '',
     academic_title: '',
     position: 'Giảng viên',
-    employment_type: '',
+    employment_type: 'Cơ hữu',
     teaching_status: 'Active'
   });
+
+  const fileInputRef = useRef(null);
+
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      showToast('Đang import dữ liệu...', 'info');
+      const res = await fetch('http://localhost:8000/api/admin/lecturers/import', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const result = await res.json();
+      if (res.ok) {
+        showToast(`Import thành công ${result.success_count} dòng. Lỗi ${result.error_count} dòng.`);
+        fetchAllLecturers();
+      } else {
+        showToast(result.detail || 'Lỗi khi import', 'danger');
+      }
+    } catch (err) {
+      showToast('Lỗi kết nối API', 'danger');
+    }
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     fetchAllLecturers();
@@ -178,12 +210,24 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <Users size={24} color="#0f766e" />
+          <Users size={24} color="#7c3aed" />
           <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Giảng viên</h2>
         </div>
-        <button style={{ ...styles.btn, background: "#0f766e", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => openLecturerModal()}>
-          <UserPlus size={16} /> Thêm giảng viên
-        </button>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <input 
+            type="file" 
+            accept=".csv" 
+            ref={fileInputRef} 
+            onChange={handleImport} 
+            style={{ display: 'none' }} 
+          />
+          <button style={{ ...styles.btn, background: "#10b981", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => fileInputRef.current?.click()}>
+            <Upload size={16} /> Import nhanh
+          </button>
+          <button style={{ ...styles.btn, background: "#7c3aed", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => openLecturerModal()}>
+            <UserPlus size={16} /> Thêm giảng viên
+          </button>
+        </div>
       </div>
 
       <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>

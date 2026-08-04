@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import csv
+import io
+from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.db.session import get_db
 from app.schemas import LecturerCreate, LecturerUpdate, LecturerResponse
 from app.crud import crud_lecturer as crud
+from app.schemas.lecturer import ImportResponse
 
 router = APIRouter()
 
@@ -81,3 +87,86 @@ def delete_existing_lecturer(lecturer_id: str, db: Session = Depends(get_db)):
     db.delete(db_lecturer)
     db.commit()
     return None
+
+# =========================================================================
+# 6. API Import danh sách giảng viên từ CSV
+# =========================================================================
+@router.post("/import", response_model=ImportResponse, status_code=status.HTTP_200_OK)
+async def import_lecturers_from_csv(
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+):
+    """
+    Import hàng loạt giảng viên từ file CSV.
+    - Hỗ trợ tự sinh mã GV nếu cột lecturer_id bỏ trống.
+    - Định dạng ngày sinh (date_of_birth) bắt buộc: YYYY-MM-DD
+    """
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Vui lòng upload file định dạng .csv")
+
+    try:
+        content = await file.read()
+        decoded_content = content.decode('utf-8-sig') # Chuẩn UTF-8 để không bị lỗi font Tiếng Việt
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Lỗi định dạng file. Vui lòng lưu file CSV ở chuẩn UTF-8.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Không thể đọc file: {str(e)}")
+
+    csv_reader = csv.DictReader(io.StringIO(decoded_content))
+    
+    if not csv_reader.fieldnames:
+        raise HTTPException(status_code=400, detail="File CSV rỗng hoặc không có Header")
+
+    success_count = 0
+    errors = []
+
+    for row_idx, row in enumerate(csv_reader, start=2):
+        try:
+            # 1. Làm sạch dữ liệu: Xoá khoảng trắng, đổi "" thành None
+            cleaned_row = {}
+            for k, v in row.items():
+                if k:
+                    val = v.strip() if v else None
+                    cleaned_row[k.strip()] = val if val != "" else None
+
+            # Bỏ qua nếu dòng rỗng
+            if not any(cleaned_row.values()):
+                continue
+
+            # 2. Check thủ công mã GV nếu có truyền (Tránh crash database)
+            lecturer_id = cleaned_row.get("lecturer_id")
+            if lecturer_id:
+                existing_gv = crud.get_lecturer(db, lecturer_id=lecturer_id)
+                if existing_gv:
+                    errors.append({"row": row_idx, "error": f"Mã giảng viên {lecturer_id} đã tồn tại."})
+                    continue
+
+            # 3. Validate dữ liệu qua Pydantic
+            lecturer_in = LecturerCreate(**cleaned_row)
+            
+            # 4. Lưu vào Database
+            crud.create_lecturer(db=db, lecturer=lecturer_in)
+            success_count += 1
+
+        except ValidationError as e:
+            # Lỗi Pydantic (Sai format email, ngày tháng...)
+            error_msg = "; ".join([f"{err['loc'][0]}: {err['msg']}" for err in e.errors()])
+            errors.append({"row": row_idx, "error": f"Lỗi nhập liệu: {error_msg}"})
+            
+        except IntegrityError as e:
+            # LỖI QUAN TRỌNG: Trùng lặp Unique Key (Email, CCCD) hoặc sai Khóa ngoại (faculty_id)
+            db.rollback() # Bắt buộc phải rollback transaction hiện tại để các dòng sau có thể chạy tiếp
+            error_detail = str(e.orig)
+            errors.append({"row": row_idx, "error": f"Lỗi CSDL (Có thể trùng Email/CCCD hoặc sai Mã Khoa): {error_detail}"})
+            
+        except Exception as e:
+            # Lỗi hệ thống khác
+            db.rollback()
+            errors.append({"row": row_idx, "error": f"Lỗi hệ thống: {str(e)}"})
+
+    return ImportResponse(
+        total_processed=success_count + len(errors),
+        success_count=success_count,
+        error_count=len(errors),
+        errors=errors
+    )

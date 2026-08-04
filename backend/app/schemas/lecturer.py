@@ -1,8 +1,14 @@
 from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 from typing import Optional
 from datetime import date
+from typing import List, Dict, Any
 
-# 1. Tạo schema chứa thông tin Khoa trả về
+class ImportResponse(BaseModel):
+    total_processed: int
+    success_count: int
+    error_count: int
+    errors: List[Dict[str, Any]] = []
+
 class FacultyInfo(BaseModel):
     faculty_id: str
     faculty_name: str
