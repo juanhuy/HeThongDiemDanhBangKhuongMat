@@ -5,7 +5,7 @@ from .user_profile import UserProfile
 from .student import Student
 from .lecturer import Lecturer
 from .subject import Subject
-from .credit_class import CreditClass
+from .credit_class import CreditClass, ClassTargetAudience
 from .class_enrollments import ClassEnrollment
 from .classroom import Classroom
 from .class_schedule import ClassSchedule
@@ -25,6 +25,7 @@ __all__ = [
     "Lecturer",
     "Subject",
     "CreditClass",
+    "ClassTargetAudience",
     "ClassEnrollment",
     "Classroom",
     "ClassSchedule",

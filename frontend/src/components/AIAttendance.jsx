@@ -7,6 +7,7 @@ import {
 import { buildManualStudentPayload } from './studentFormUtils';
 import LecturersManagement from './LecturersManagement';
 import RoomsManagement from './RoomsManagement';
+import CreditClassesManagement from './CreditClassesManagement';
 
 const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMenu }) => {
   const rawRole = (user?.role || 'sinh_vien').toLowerCase();
@@ -3561,9 +3562,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 {activeTab === 'subjects_management' && renderSubjectsManagementTab()}
                 {activeTab === 'students_list' && renderStudentsListTab()}
 
-                {activeTab === 'class_management' && renderClassManagementTab()}
                 {activeTab === 'lecturers_management' && <LecturersManagement facultiesList={facultiesList} showToast={showToast} />}
                 {activeTab === 'rooms_management' && <RoomsManagement showToast={showToast} />}
+                {activeTab === 'class_management' && <CreditClassesManagement showToast={showToast} />}
               </>
             )}
 

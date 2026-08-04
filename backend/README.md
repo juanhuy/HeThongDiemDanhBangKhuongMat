@@ -73,7 +73,7 @@ uv run uvicorn app.main:app --reload --port 8000
 ```
 
 *Cờ `--reload` giúp server tự động cập nhật lại mỗi khi bạn chỉnh sửa và lưu code.*
-
+g
 ---
 
 ## Bước 3: Xem tài liệu và test API (Swagger UI)

@@ -13,6 +13,7 @@ const styles = {
 
 const LecturersManagement = ({ facultiesList, showToast }) => {
   const [allLecturersList, setAllLecturersList] = useState([]);
+  const [fetchedFaculties, setFetchedFaculties] = useState([]);
   const [lecturerSearch, setLecturerSearch] = useState('');
   const [isLecturerModalOpen, setIsLecturerModalOpen] = useState(false);
   const [isLecturerDetailModalOpen, setIsLecturerDetailModalOpen] = useState(false);
@@ -73,7 +74,23 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
 
   useEffect(() => {
     fetchAllLecturers();
+    fetchFaculties();
   }, []);
+
+  const fetchFaculties = async () => {
+    if (facultiesList && facultiesList.length > 0) return;
+    try {
+      const res = await fetch('http://localhost:8000/api/faculties/');
+      if (res.ok) {
+        const data = await res.json();
+        setFetchedFaculties(Array.isArray(data) ? data : data.items || []);
+      }
+    } catch (err) {
+      console.error('Lỗi tải khoa:', err);
+    }
+  };
+
+  const activeFacultiesList = (facultiesList && facultiesList.length > 0) ? facultiesList : fetchedFaculties;
 
   const fetchAllLecturers = async () => {
     try {
@@ -412,7 +429,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
                       <label style={styles.label}>Khoa/Bộ môn quản lý *</label>
                       <select required style={styles.input} value={lecturerForm.faculty_id} onChange={e => setLecturerForm({...lecturerForm, faculty_id: e.target.value})}>
                         <option value="">-- Chọn Khoa --</option>
-                        {facultiesList.map(f => (
+                        {activeFacultiesList.map(f => (
                           <option key={f.faculty_id} value={f.faculty_id}>
                             {f.faculty_id} - {f.faculty_name}
                           </option>

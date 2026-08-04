@@ -10,6 +10,9 @@ import Toast from './components/Toast';
 import Login from './components/Login';
 import FacultiesManagement from './components/FacultiesManagement';
 import MajorsManagement from './components/MajorsManagement';
+import CreditClassesManagement from './components/CreditClassesManagement';
+import LecturersManagement from './components/LecturersManagement';
+import RoomsManagement from './components/RoomsManagement';
 
 const API_BASE = "http://127.0.0.1:8000";
 
@@ -262,6 +265,12 @@ function App() {
             <FacultiesManagement API_BASE={API_BASE} showToast={showToast} />
           ) : activeMenu === 'majors_management' ? (
             <MajorsManagement API_BASE={API_BASE} showToast={showToast} />
+          ) : activeMenu === 'class_management' ? (
+            <CreditClassesManagement showToast={showToast} />
+          ) : activeMenu === 'lecturers_management' ? (
+            <LecturersManagement API_BASE={API_BASE} showToast={showToast} />
+          ) : activeMenu === 'rooms_management' ? (
+            <RoomsManagement API_BASE={API_BASE} showToast={showToast} />
           ) : (
             <AIAttendance 
               key={activeMenu}

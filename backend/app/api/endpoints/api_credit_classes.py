@@ -10,6 +10,20 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from app.schemas.credit_class import CreditClassCreate, CreditClassUpdate, CreditClassResponse
 
+import math
+import uuid
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from app.schemas.credit_class import AutoGenerateRequest, SaveDraftRequest
+from app.models import CreditClass
+
+from app.models import ClassTargetAudience
+
+from fastapi import HTTPException, status, APIRouter, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+import uuid
+
 from app.db.session import get_db
 from app.models import (
     Subject, CreditClass, ClassEnrollment, ClassSession,
@@ -17,6 +31,103 @@ from app.models import (
 )
 
 router = APIRouter()
+
+# =========================================================================
+# BƯỚC 2 & 3: API TÍNH TOÁN VÀ TRẢ VỀ BẢN PREVIEW CHO ADMIN (Chưa lưu DB)
+# =========================================================================
+@router.post("/lop_tin_chi/preview-groups")
+def preview_auto_generate_classes(req: AutoGenerateRequest):
+    """
+    Máy tính toán số Nhóm và số Tổ dựa trên tổng sinh viên và sức chứa.
+    Trả về cấu trúc JSON cho Admin review trên UI.
+    """
+    # 1. Tính toán Nhóm Lý Thuyết
+    num_theory_groups = math.ceil(req.total_students / req.max_theory_capacity)
+    students_per_theory = req.total_students // num_theory_groups
+    remainder_theory = req.total_students % num_theory_groups
+
+    preview_result = []
+
+    for i in range(num_theory_groups):
+        # Chia đều sinh viên dư cho các nhóm đầu
+        t_students = students_per_theory + (1 if i < remainder_theory else 0)
+        
+        theory_draft = {
+            "class_group": f"{i+1:02d}", # Định dạng 01, 02
+            "max_students": t_students,
+            "class_type": "Theory",
+            "sub_groups": []
+        }
+
+        # 2. Tính toán Tổ Thực Hành cho Nhóm này
+        num_practice_groups = math.ceil(t_students / req.max_practice_capacity)
+        students_per_practice = t_students // num_practice_groups
+        remainder_practice = t_students % num_practice_groups
+
+        for j in range(num_practice_groups):
+            p_students = students_per_practice + (1 if j < remainder_practice else 0)
+            theory_draft["sub_groups"].append({
+                "class_group": f"Tổ {j+1}",
+                "max_students": p_students,
+                "class_type": "Practice"
+            })
+            
+        preview_result.append(theory_draft)
+
+    return {
+        "status": "success",
+        "message": f"Dự kiến tạo {num_theory_groups} Nhóm LT và tổng cộng {sum(len(g['sub_groups']) for g in preview_result)} Tổ TH.",
+        "data": preview_result
+    }
+
+# =========================================================================
+# BƯỚC 5: API NHẬN BẢN PREVIEW ĐÃ CHỈNH SỬA TỪ ADMIN VÀ LƯU VÀO DB
+# =========================================================================
+@router.post("/lop_tin_chi/save-draft")
+def save_generated_classes(req: SaveDraftRequest, db: Session = Depends(get_db)):
+    saved_classes = []
+
+    for t_group in req.groups:
+        t_id = f"{req.subject_id}_{req.semester_id}_{str(uuid.uuid4()).split('-')[0][:6].upper()}"
+        
+        new_theory = CreditClass(
+            class_id=t_id,
+            subject_id=req.subject_id,
+            lecturer_id=req.lecturer_id,
+            semester_id=req.semester_id, # ĐÃ SỬA THÀNH semester_id
+            class_type="Theory",
+            class_group=t_group.class_group,
+            max_students=t_group.max_students,
+            status="Planning"
+        )
+        db.add(new_theory)
+        db.flush() 
+        saved_classes.append(t_id)
+
+        # ĐÃ THÊM: Lưu Lớp hành chính vào bảng trung gian
+        if hasattr(t_group, 'target_classes') and t_group.target_classes:
+            for admin_class_id in t_group.target_classes:
+                db.add(ClassTargetAudience(class_id=t_id, administrative_class_id=admin_class_id))
+
+        for p_group in t_group.sub_groups:
+            p_id = f"{req.subject_id}_{req.semester_id}_{str(uuid.uuid4()).split('-')[0][:6].upper()}"
+            new_practice = CreditClass(
+                class_id=p_id,
+                parent_class_id=t_id,
+                subject_id=req.subject_id,
+                lecturer_id=req.lecturer_id,
+                semester_id=req.semester_id, # ĐÃ SỬA THÀNH semester_id
+                class_type="Practice",
+                class_group=p_group.class_group,
+                max_students=p_group.max_students,
+                status="Planning"
+            )
+            db.add(new_practice)
+            saved_classes.append(p_id)
+
+    db.commit()
+    return {"status": "success", "message": "Thành công", "saved_ids": saved_classes}
+
 
 # =========================================================================
 # 1. QUẢN LÝ LỚP TÍN CHỈ
@@ -27,43 +138,71 @@ def add_credit_class(data: CreditClassCreate, db: Session = Depends(get_db)):
     if not db.query(Subject).filter(Subject.subject_id == data.subject_id.strip()).first():
         raise HTTPException(status_code=404, detail=f"Không tìm thấy môn học: {data.subject_id}")
         
-    # 2. Kiểm tra Giảng viên
-    if not db.query(Lecturer).filter(Lecturer.lecturer_id == data.lecturer_id.strip()).first():
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy giảng viên: {data.lecturer_id}")
+    # 2. Kiểm tra Giảng viên (nếu có)
+    if data.lecturer_id:
+        if not db.query(Lecturer).filter(Lecturer.lecturer_id == data.lecturer_id.strip()).first():
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy giảng viên: {data.lecturer_id}")
 
-    # 3. TỰ ĐỘNG SINH class_id (VARCHAR(50))
-    # Sinh 6 ký tự ngẫu nhiên (viết hoa) từ UUID để đảm bảo không trùng
-    random_suffix = str(uuid.uuid4()).split("-")[0][:6].upper()
-    
-    # Format: VD: INT1339_1_A83B9C
-    generated_class_id = f"{data.subject_id.strip()}_{data.semester}_{random_suffix}"
-    
-    # Đề phòng trường hợp cực kỳ hiếm hoi bị trùng ngẫu nhiên, ta check lại db 1 lần
-    while db.query(CreditClass).filter(CreditClass.class_id == generated_class_id).first():
+    # 3. XỬ LÝ MÃ LỚP (CLASS ID) VÀ KIỂM TRA TRÙNG LẶP
+    if data.class_id:
+        generated_class_id = data.class_id.strip()
+        # [Đã fix]: Bắt lỗi 400 nếu người dùng tự truyền mã nhưng mã này đã tồn tại
+        if db.query(CreditClass).filter(CreditClass.class_id == generated_class_id).first():
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Mã lớp tín chỉ '{generated_class_id}' đã tồn tại trên hệ thống."
+            )
+    else:
+        # Tự động sinh ID và đảm bảo không trùng lặp (dùng vòng lặp while)
         random_suffix = str(uuid.uuid4()).split("-")[0][:6].upper()
-        generated_class_id = f"{data.subject_id.strip()}_{data.semester}_{random_suffix}"
+        generated_class_id = f"{data.subject_id.strip()}_{data.semester_id}_{random_suffix}"
+        
+        while db.query(CreditClass).filter(CreditClass.class_id == generated_class_id).first():
+            random_suffix = str(uuid.uuid4()).split("-")[0][:6].upper()
+            generated_class_id = f"{data.subject_id.strip()}_{data.semester_id}_{random_suffix}"
 
-    # 4. Lưu vào Database
+    # 4. TẠO ĐỐI TƯỢNG LỚP TÍN CHỈ
     new_cc = CreditClass(
-        class_id=generated_class_id,  # Gán ID vừa tự động sinh vào đây
+        class_id=generated_class_id,
+        parent_class_id=data.parent_class_id,
         subject_id=data.subject_id.strip(),
-        lecturer_id=data.lecturer_id.strip(),
-        administrative_class_id=data.administrative_class_id.strip() if data.administrative_class_id else None,
-        semester=data.semester,
-        academic_year=data.academic_year.strip(),
+        lecturer_id=data.lecturer_id.strip() if data.lecturer_id else None,
+        semester_id=data.semester_id,
         class_group=data.class_group.strip() if data.class_group else None,
+        class_type=data.class_type,
+        start_week=data.start_week,
+        end_week=data.end_week,
         max_students=data.max_students,
         status=data.status
     )
-    
     db.add(new_cc)
-    db.commit()
+    
+    # 5. XỬ LÝ LỚP GHÉP (BẢNG TRUNG GIAN)
+    if data.target_classes:
+        for admin_class_id in data.target_classes:
+            db.add(ClassTargetAudience(
+                class_id=generated_class_id, 
+                administrative_class_id=admin_class_id.strip()
+            ))
+
+    # 6. COMMIT VÀ XỬ LÝ NGOẠI LỆ (Bảo vệ Database)
+    try:
+        db.commit()
+        db.refresh(new_cc)
+    except IntegrityError:
+        # [Đã fix]: Bắt lỗi nếu frontend gửi sai semester_id hoặc target_classes không có trong DB
+        # Rollback giao dịch để tránh treo database
+        db.rollback()
+        raise HTTPException(
+            status_code=400, 
+            detail="Lỗi lưu trữ: Kỳ học (semester_id) hoặc Mã lớp hành chính không hợp lệ/chưa tồn tại trên hệ thống."
+        )
     
     return {
         "status": "success", 
         "message": "Tạo lớp tín chỉ thành công!",
         "data": {
-            "class_id": generated_class_id  # Trả về mã để Client biết ID mới sinh là gì
+            "class_id": generated_class_id
         }
     }
 
@@ -72,65 +211,63 @@ def add_credit_class(data: CreditClassCreate, db: Session = Depends(get_db)):
 # ==========================================
 @router.get("/lop_tin_chi")
 def list_credit_classes(
-    semester: Optional[int] = None,
-    academic_year: Optional[str] = None,
+    semester_id: Optional[str] = None,
     subject_id: Optional[str] = None,
     lecturer_id: Optional[str] = None,
-    administrative_class_id: Optional[str] = None,
     status: Optional[str] = None,
+    administrative_class_id: Optional[str] = None, 
     db: Session = Depends(get_db)
 ):
-    """Lấy danh sách lớp tín chỉ, hỗ trợ lọc theo nhiều tiêu chí"""
     query = db.query(CreditClass).options(
         joinedload(CreditClass.subject),
         joinedload(CreditClass.lecturer),
-        joinedload(CreditClass.enrollments)
+        joinedload(CreditClass.target_audiences)
     )
 
-    # Xử lý các bộ lọc động
-    if semester:
-        query = query.filter(CreditClass.semester == semester)
-    if academic_year:
-        query = query.filter(CreditClass.academic_year == academic_year.strip())
+    if semester_id:
+        query = query.filter(CreditClass.semester_id == semester_id.strip())
     if subject_id:
         query = query.filter(CreditClass.subject_id == subject_id.strip())
     if lecturer_id:
         query = query.filter(CreditClass.lecturer_id == lecturer_id.strip())
-    if administrative_class_id:
-        query = query.filter(CreditClass.administrative_class_id == administrative_class_id.strip())
     if status:
         query = query.filter(CreditClass.status == status.strip())
+        
+    if administrative_class_id:
+        query = query.join(ClassTargetAudience).filter(
+            ClassTargetAudience.administrative_class_id == administrative_class_id.strip()
+        )
 
-    classes = query.all()
+    # Convert to dictionary and back to list to deduplicate entities while preserving order
+    classes = list(dict.fromkeys(query.all()))
     
     result = []
     for c in classes:
-        subj = c.subject
-        total_credits = 0
-        if subj:
-            total_credits = subj.credits or (subj.theory_credits + subj.practical_credits) or 0
-        c_dict = {
+        target_classes = [t.administrative_class_id for t in c.target_audiences]
+        
+        result.append({
             "class_id": c.class_id,
+            "parent_class_id": c.parent_class_id,
             "subject_id": c.subject_id,
-            "subject_name": subj.subject_name if subj else None,
-            "credits": total_credits,
             "lecturer_id": c.lecturer_id,
-            "lecturer_name": c.lecturer.full_name if c.lecturer else None,
-            "administrative_class_id": c.administrative_class_id,
-            "semester": c.semester,
-            "academic_year": c.academic_year,
+            "semester_id": c.semester_id,
             "class_group": c.class_group,
+            "class_type": c.class_type,
+            "start_week": c.start_week,
+            "end_week": c.end_week,
             "max_students": c.max_students,
             "current_students": c.current_students,
-            "status": c.status
-        }
-        result.append(c_dict)
+            "status": c.status,
+            "target_classes": target_classes
+        })
     
-    return {
-        "status": "success",
-        "total": len(result),
-        "data": result
-    }
+    return {"status": "success", "total": len(result), "data": result}
+
+from app.models.administrative_class import AdministrativeClass
+@router.get("/administrative-classes")
+def get_all_admin_classes(db: Session = Depends(get_db)):
+    classes = db.query(AdministrativeClass).all()
+    return {"status": "success", "data": [{"class_id": c.class_id, "class_name": c.class_name} for c in classes]}
 
 
 # ==========================================
@@ -142,25 +279,30 @@ def get_credit_class_detail(class_id: str, db: Session = Depends(get_db)):
     cc = db.query(CreditClass).options(
         joinedload(CreditClass.subject),
         joinedload(CreditClass.lecturer),
+        joinedload(CreditClass.target_audiences),
         joinedload(CreditClass.enrollments)
     ).filter(CreditClass.class_id == class_id.strip()).first()
     
     if not cc:
         raise HTTPException(status_code=404, detail="Không tìm thấy lớp học tín chỉ này.")
         
+    target_classes = [t.administrative_class_id for t in cc.target_audiences]
     c_dict = {
         "class_id": cc.class_id,
+        "parent_class_id": cc.parent_class_id,
         "subject_id": cc.subject_id,
         "subject_name": cc.subject.subject_name if cc.subject else None,
         "lecturer_id": cc.lecturer_id,
         "lecturer_name": cc.lecturer.full_name if cc.lecturer else None,
-        "administrative_class_id": cc.administrative_class_id,
-        "semester": cc.semester,
-        "academic_year": cc.academic_year,
+        "semester_id": cc.semester_id,
         "class_group": cc.class_group,
+        "class_type": cc.class_type,
+        "start_week": cc.start_week,
+        "end_week": cc.end_week,
         "max_students": cc.max_students,
         "current_students": cc.current_students,
-        "status": cc.status
+        "status": cc.status,
+        "target_classes": target_classes
     }
         
     return {
@@ -187,20 +329,21 @@ def get_student_classes(mssv: str, db: Session = Depends(get_db)):
         total_credits = 0
         if subj:
             total_credits = subj.credits or (subj.theory_credits + subj.practical_credits) or 0
+        target_classes = [t.administrative_class_id for t in c.target_audiences] if hasattr(c, 'target_audiences') and c.target_audiences else []
         result.append({
             "class_id": c.class_id,
             "subject_id": c.subject_id,
             "subject_name": subj.subject_name if subj else None,
             "lecturer_id": c.lecturer_id,
-            "administrative_class_id": c.administrative_class_id,
-            "semester": c.semester,
-            "academic_year": c.academic_year,
+            "semester_id": c.semester_id,
             "class_group": c.class_group,
+            "class_type": c.class_type,
             "max_students": c.max_students,
             "current_students": c.current_students,
             "status": e.status,           # enrollment status, not class status
             "class_status": c.status,     # actual credit class status
             "credits": total_credits,
+            "target_classes": target_classes,
             "enrollment_date": (e.updated_at or e.enrollment_date).isoformat() if (e.updated_at or e.enrollment_date) else None,
         })
         
@@ -218,27 +361,26 @@ def update_credit_class(class_id: str, data: CreditClassUpdate, db: Session = De
     if not cc:
         raise HTTPException(status_code=404, detail="Không tìm thấy lớp học tín chỉ.")
 
-    # Kiểm tra Giảng viên nếu có yêu cầu đổi
     if data.lecturer_id:
         if not db.query(Lecturer).filter(Lecturer.lecturer_id == data.lecturer_id.strip()).first():
             raise HTTPException(status_code=404, detail=f"Không tìm thấy giảng viên {data.lecturer_id}")
         cc.lecturer_id = data.lecturer_id.strip()
 
-    # Cập nhật các trường có thay đổi (bỏ qua giá trị None)
-    if data.administrative_class_id is not None:
-        # Nếu gửi lên chuỗi rỗng "" thì gán thành NULL trong database
-        cc.administrative_class_id = data.administrative_class_id.strip() if data.administrative_class_id.strip() else None
+    if data.semester_id:
+        cc.semester_id = data.semester_id.strip()
 
     if data.class_group is not None:
         cc.class_group = data.class_group.strip() if data.class_group.strip() else None
 
-    if data.semester is not None:
-        cc.semester = data.semester
+    if data.class_type is not None:
+        cc.class_type = data.class_type.strip()
 
-    if data.academic_year is not None:
-        cc.academic_year = data.academic_year.strip() if data.academic_year.strip() else None
+    if data.start_week is not None:
+        cc.start_week = data.start_week
 
-    # Logic nghiệp vụ: Sĩ số tối đa mới KHÔNG ĐƯỢC nhỏ hơn số sinh viên hiện đang có
+    if data.end_week is not None:
+        cc.end_week = data.end_week
+
     if data.max_students is not None:
         if data.max_students < cc.current_students:
             raise HTTPException(
@@ -250,13 +392,28 @@ def update_credit_class(class_id: str, data: CreditClassUpdate, db: Session = De
     if data.status:
         cc.status = data.status.strip()
 
+    if data.target_classes is not None:
+        db.query(ClassTargetAudience).filter(ClassTargetAudience.class_id == cc.class_id).delete()
+        for admin_class_id in data.target_classes:
+            db.add(ClassTargetAudience(class_id=cc.class_id, administrative_class_id=admin_class_id.strip()))
+
     db.commit()
     db.refresh(cc)
     
     return {
         "status": "success",
         "message": f"Đã cập nhật thành công lớp {cc.class_id}",
-        "data": cc
+        "data": {
+            "class_id": cc.class_id,
+            "subject_id": cc.subject_id,
+            "lecturer_id": cc.lecturer_id,
+            "semester_id": cc.semester_id,
+            "class_group": cc.class_group,
+            "class_type": cc.class_type,
+            "max_students": cc.max_students,
+            "current_students": cc.current_students,
+            "status": cc.status
+        }
     }
 
 # ==========================================
@@ -610,4 +767,4 @@ def get_recent_attendance_logs(db: Session = Depends(get_db)):
             "recorded_at": log.recorded_at
         })
         
-    return {"status": "success", "logs": logs_data}
+    return {"status": "success", "logs": logs_data}
