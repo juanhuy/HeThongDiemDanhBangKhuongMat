@@ -533,8 +533,7 @@ def enroll_student(ma_lop_tc: str = Form(...), mssv: str = Form(...), db: Sessio
         status="Enrolled"
     )
     db.add(enroll)
-    cc.current_students += 1
-    db.add(cc)
+    # Tránh cộng tay vì Database Trigger đã tự động update current_students
     db.commit()
     return {"status": "success", "message": f"Đã đăng ký sinh viên {mssv} vào lớp {ma_lop_tc}"}
 
@@ -559,11 +558,8 @@ def unenroll_student(ma_lop_tc: str, mssv: str, db: Session = Depends(get_db)):
     ).first()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Không tìm thấy thông tin đăng ký học.")
-    # Xóa bản ghi và cập nhật số lượng sinh viên
+    # Xóa bản ghi và cập nhật số lượng sinh viên (Trigger MySQL tự xử lý)
     db.delete(enrollment)
-    if cc.current_students > 0:
-        cc.current_students -= 1
-        db.add(cc)
     db.commit()
     return {"status": "success", "message": f"Đã hủy đăng ký lớp {ma_lop_tc} thành công."}
 
