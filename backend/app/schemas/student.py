@@ -8,9 +8,9 @@ class StudentBase(BaseModel):
     phone_number: Optional[str] = None
     
     administrative_class: Optional[str] = None
-    major: Optional[str] = None
+    major_id: Optional[str] = None
     specialization: Optional[str] = None # Mới thêm
-    department: Optional[str] = None     # Mới thêm
+    faculty_id: Optional[str] = None     # Mới thêm
     cohort: Optional[str] = None
     training_program: Optional[str] = None
     academic_status: Optional[str] = "Đang học"

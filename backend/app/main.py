@@ -52,7 +52,9 @@ from app.api.endpoints import (
     api_admin_classrooms,
     api_auth,
     api_credit_classes,
-    api_ai
+    api_ai,
+    api_faculty,
+    api_major
 )
 
 def include_optional_router(module, prefix: str, tags: list[str]):
@@ -67,6 +69,8 @@ include_optional_router(api_ai, prefix="/api", tags=["AI & Nhận diện"])
 
 # Các Router quản lý (Admin)
 include_optional_router(api_subject, prefix="/api/subjects", tags=["Quản lý Môn học"])
+include_optional_router(api_faculty, prefix="/api/faculties", tags=["Quản lý Khoa"])
+include_optional_router(api_major, prefix="/api/majors", tags=["Quản lý Ngành"])
 include_optional_router(api_admin_students, prefix="/api/admin/students", tags=["Admin - Quản lý Sinh viên"])
 include_optional_router(api_admin_students, prefix="/api/students", tags=["Sinh viên (Alias)"])
 include_optional_router(api_admin_lecturers, prefix="/api/admin/lecturers", tags=["Admin - Quản lý Giảng viên"])

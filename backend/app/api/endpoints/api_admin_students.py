@@ -128,16 +128,25 @@ def import_students_from_excel(file: UploadFile = File(...), db: Session = Depen
     try:
         contents = file.file.read()
         if file.filename.endswith('.csv'):
-            # Đọc CSV (xử lý BOM nếu có, utf-8)
-            df = pd.read_csv(io.BytesIO(contents), encoding='utf-8-sig')
+            # Đọc CSV (xử lý BOM nếu có, utf-8), ép kiểu string để không mất số 0 ở đầu
+            df = pd.read_csv(io.BytesIO(contents), encoding='utf-8-sig', dtype=str)
         else:
-            df = pd.read_excel(io.BytesIO(contents))
+            df = pd.read_excel(io.BytesIO(contents), dtype=str)
         
         success_count = 0
+        
+        def get_val(row, keys, default=None):
+            for key in keys:
+                if key in row:
+                    val = row[key]
+                    if pd.notna(val) and str(val).strip() not in ["", "nan"]:
+                        return str(val).strip()
+            return default
+
         for index, row in df.iterrows():
             # Hỗ trợ lấy theo tên cột Tiếng Việt hoặc Tiếng Anh (từ file dssv.csv)
-            student_id = str(row.get("MSSV", row.get("student_id", ""))).strip()
-            if not student_id or student_id.lower() == "nan" or crud.get_student(db, student_id=student_id):
+            student_id = get_val(row, ["MSSV", "student_id"])
+            if not student_id or crud.get_student(db, student_id=student_id):
                 continue # Bỏ qua nếu dòng trống hoặc sinh viên đã tồn tại
                 
             # Xử lý tự động sinh email
@@ -145,23 +154,23 @@ def import_students_from_excel(file: UploadFile = File(...), db: Session = Depen
                 
             student_data = StudentCreate(
                 student_id=student_id,
-                full_name=str(row.get("Họ và Tên", row.get("full_name", ""))),
+                full_name=get_val(row, ["Họ và Tên", "full_name", "Tên"], ""),
                 email=generated_email,
-                phone_number=str(row.get("Số điện thoại", row.get("phone_number", ""))) if pd.notna(row.get("Số điện thoại", row.get("phone_number"))) else None,
-                administrative_class=str(row.get("Lớp hành chính", row.get("administrative_class", ""))) if pd.notna(row.get("Lớp hành chính", row.get("administrative_class"))) else None,
-                major=str(row.get("Ngành học", row.get("major", ""))) if pd.notna(row.get("Ngành học", row.get("major"))) else None,
-                specialization=str(row.get("Chuyên ngành", row.get("specialization", ""))) if pd.notna(row.get("Chuyên ngành", row.get("specialization"))) else None,
-                department=str(row.get("Khoa", row.get("department", ""))) if pd.notna(row.get("Khoa", row.get("department"))) else None,
-                cohort=str(row.get("Khóa", row.get("cohort", ""))) if pd.notna(row.get("Khóa", row.get("cohort"))) else None,
-                academic_status=str(row.get("Trạng thái", row.get("academic_status", ""))) if pd.notna(row.get("Trạng thái", row.get("academic_status"))) else "Đang học",
-                gender=str(row.get("Giới tính", row.get("gender", ""))) if pd.notna(row.get("Giới tính", row.get("gender"))) else None,
-                citizen_id=str(row.get("CMND", row.get("CCCD", row.get("citizen_id", "")))) if pd.notna(row.get("CMND", row.get("CCCD", row.get("citizen_id")))) else None,
-                ethnicity=str(row.get("Dân tộc", row.get("ethnicity", ""))) if pd.notna(row.get("Dân tộc", row.get("ethnicity"))) else None,
-                religion=str(row.get("Tôn giáo", row.get("religion", ""))) if pd.notna(row.get("Tôn giáo", row.get("religion"))) else None,
-                nationality=str(row.get("Quốc tịch", row.get("nationality", ""))) if pd.notna(row.get("Quốc tịch", row.get("nationality"))) else "Việt Nam",
-                place_of_birth=str(row.get("Nơi sinh", row.get("place_of_birth", ""))) if pd.notna(row.get("Nơi sinh", row.get("place_of_birth"))) else None,
-                training_program=str(row.get("Bậc hệ đào tạo", row.get("training_program", ""))) if pd.notna(row.get("Bậc hệ đào tạo", row.get("training_program"))) else None,
-                address=str(row.get("Địa chỉ", row.get("address", ""))) if pd.notna(row.get("Địa chỉ", row.get("address"))) else None
+                phone_number=get_val(row, ["Số điện thoại", "phone_number"]),
+                administrative_class=get_val(row, ["Lớp hành chính", "administrative_class_id", "administrative_class"]),
+                major_id=get_val(row, ["Ngành học", "major_id"]),
+                specialization=get_val(row, ["Chuyên ngành", "specialization"]),
+                faculty_id=get_val(row, ["Khoa", "faculty_id"]),
+                cohort=get_val(row, ["Khóa", "Niên khóa", "cohort"]),
+                training_program=get_val(row, ["Hệ đào tạo", "Bậc hệ đào tạo", "training_program"]),
+                academic_status=get_val(row, ["Trạng thái", "academic_status"], "Đang học"),
+                gender=get_val(row, ["Giới tính", "gender"]),
+                citizen_id=get_val(row, ["CMND", "CCCD", "citizen_id"]),
+                ethnicity=get_val(row, ["Dân tộc", "ethnicity"]),
+                religion=get_val(row, ["Tôn giáo", "religion"]),
+                nationality=get_val(row, ["Quốc tịch", "nationality"], "Việt Nam"),
+                place_of_birth=get_val(row, ["Nơi sinh", "place_of_birth"]),
+                address=get_val(row, ["Địa chỉ", "address"])
             )
 
             # Xử lý ngày sinh

@@ -8,6 +8,8 @@ import AIAttendance from './components/AIAttendance';
 import AttendanceLogs from './components/AttendanceLogs';
 import Toast from './components/Toast';
 import Login from './components/Login';
+import FacultiesManagement from './components/FacultiesManagement';
+import MajorsManagement from './components/MajorsManagement';
 
 const API_BASE = "http://127.0.0.1:8000";
 
@@ -256,6 +258,10 @@ function App() {
                 logs={isStudent && user.mssv ? logs.filter(log => log.mssv === user.mssv) : logs} 
               />
             </>
+          ) : activeMenu === 'faculties_management' ? (
+            <FacultiesManagement API_BASE={API_BASE} showToast={showToast} />
+          ) : activeMenu === 'majors_management' ? (
+            <MajorsManagement API_BASE={API_BASE} showToast={showToast} />
           ) : (
             <AIAttendance 
               key={activeMenu}

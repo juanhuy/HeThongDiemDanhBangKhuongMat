@@ -8,7 +8,7 @@ class Lecturer(Base):
     lecturer_id = Column(String(20), primary_key=True)
     profile_id = Column(Integer, ForeignKey('user_profiles.profile_id', ondelete='CASCADE'), unique=True, nullable=False)
     
-    department = Column(String(50), nullable=True)
+    faculty_id = Column(String(20), ForeignKey("faculties.faculty_id"))
     academic_title = Column(String(50), nullable=True)
     position = Column(String(100), nullable=True)
     employment_type = Column(String(50), nullable=True)

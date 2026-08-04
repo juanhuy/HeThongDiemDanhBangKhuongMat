@@ -15,7 +15,7 @@ class LecturerBase(BaseModel):
     address: Optional[str] = None
     place_of_birth: Optional[str] = None
     
-    department: Optional[str] = None
+    faculty_id: Optional[str] = None
     academic_title: Optional[str] = None # VD: ThS, TS
     position: Optional[str] = "Giảng viên"       # VD: Trưởng bộ môn
     employment_type: Optional[str] = None# VD: Cơ hữu, Thỉnh giảng
@@ -36,7 +36,7 @@ class LecturerUpdate(BaseModel):
     nationality: Optional[str] = None
     address: Optional[str] = None
     place_of_birth: Optional[str] = None
-    department: Optional[str] = None
+    faculty_id: Optional[str] = None
     academic_title: Optional[str] = None
     position: Optional[str] = None
     employment_type: Optional[str] = None

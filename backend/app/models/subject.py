@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, Computed
+from sqlalchemy import Column, String, Integer, Boolean, Computed, ForeignKey
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -9,13 +9,13 @@ class Subject(Base):
     subject_name = Column(String(150), nullable=False)
     theory_credits = Column(Integer, default=0)
     practical_credits = Column(Integer, default=0)
-    credits = Column(Integer, default=0)
+    credits = Column(Integer, Computed("theory_credits + practical_credits"))
     
     theory_periods = Column(Integer, Computed("theory_credits * 15"))
     practical_periods = Column(Integer, Computed("practical_credits * 45"))
     total_periods = Column(Integer, Computed("(theory_credits * 15) + (practical_credits * 45)"))
 
-    department = Column(String(100), nullable=True)
+    faculty_id = Column(String(20), ForeignKey("faculties.faculty_id"))
     is_active = Column(Boolean, default=True)
 
     classes = relationship("CreditClass", back_populates="subject")

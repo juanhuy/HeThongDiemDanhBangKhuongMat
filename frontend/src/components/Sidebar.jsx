@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   Home, User, Users, BookOpen, Calendar, Clock, 
-  Clipboard, FileText, Camera, ShieldAlert
+  Clipboard, FileText, Camera, ShieldAlert, Building, Layers
 } from 'lucide-react';
 
 const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
@@ -57,6 +57,12 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'attendance' ? 'active' : ''}`} onClick={() => setActiveMenu('attendance')}>
             <User size={16} /> Đăng ký SV mới
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'faculties_management' ? 'active' : ''}`} onClick={() => setActiveMenu('faculties_management')}>
+            <Building size={16} /> Quản lý Khoa
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'majors_management' ? 'active' : ''}`} onClick={() => setActiveMenu('majors_management')}>
+            <Layers size={16} /> Quản lý Ngành
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'schedule' ? 'active' : ''}`} onClick={() => setActiveMenu('schedule')}>
             <Calendar size={16} /> Thêm Lịch học

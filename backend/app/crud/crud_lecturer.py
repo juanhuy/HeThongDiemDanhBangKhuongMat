@@ -82,7 +82,7 @@ def create_lecturer(db: Session, lecturer: LecturerCreate):
     db_lecturer = Lecturer(
         lecturer_id=lecturer_id,
         profile_id=profile.profile_id,
-        department=lecturer.department,
+        faculty_id=lecturer.faculty_id,
         academic_title=lecturer.academic_title,
         position=lecturer.position or "Giảng viên",
         employment_type=lecturer.employment_type,

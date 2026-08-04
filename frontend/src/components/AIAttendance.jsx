@@ -113,9 +113,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     email: "",
     phone_number: "",
     administrative_class: "",
-    major: "",
+    major_id: "",
     specialization: "",
-    department: "",
+    faculty_id: "",
     cohort: "",
     training_program: "",
     academic_status: "Đang học",
@@ -142,6 +142,10 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   const [isCreateClassModalOpen, setIsCreateClassModalOpen] = useState(false);
   const [isEnrolledStudentsModalOpen, setIsEnrolledStudentsModalOpen] = useState(false);
+
+  // Danh mục dùng cho form Add Student
+  const [majorsList, setMajorsList] = useState([]);
+  const [facultiesList, setFacultiesList] = useState([]);
 
   // Lecturer management states
   const [allLecturersList, setAllLecturersList] = useState([]);
@@ -425,6 +429,8 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       fetchLeaveRequests();
     } else if (activeTab === 'students_list') {
       fetchStudentsList();
+      fetchMajors();
+      fetchFaculties();
     } else if (activeTab === 'class_management') {
       fetchLecturersList();
       fetchCreditClasses();
@@ -1005,6 +1011,30 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     return () => clearInterval(interval);
   }, [adminCameras]);
 
+
+  const fetchMajors = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/majors/`);
+      if (res.ok) {
+        const data = await res.json();
+        setMajorsList(data || []);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải danh sách Ngành:", err);
+    }
+  };
+
+  const fetchFaculties = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/faculties/`);
+      if (res.ok) {
+        const data = await res.json();
+        setFacultiesList(data || []);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải danh sách Khoa:", err);
+    }
+  };
 
   const fetchStudentsList = async () => {
     try {
@@ -3150,86 +3180,125 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
               <h3 style={{ marginTop: 0, color: "#0f172a", fontSize: "1.15rem", marginBottom: "16px" }}>
                 Thêm sinh viên thủ công
               </h3>
-              <form onSubmit={handleCreateStudent} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  <div>
-                    <label style={styles.label}>MSSV *</label>
-                    <input required style={styles.input} value={createStudentForm.student_id} onChange={(e) => setCreateStudentForm({ ...createStudentForm, student_id: e.target.value })} placeholder="VD: N22DCCN134" />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Họ tên *</label>
-                    <input required style={styles.input} value={createStudentForm.full_name} onChange={(e) => setCreateStudentForm({ ...createStudentForm, full_name: e.target.value })} placeholder="VD: Nguyễn Văn A" />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Email</label>
-                    <input type="email" style={styles.input} value={createStudentForm.email} onChange={(e) => setCreateStudentForm({ ...createStudentForm, email: e.target.value })} placeholder="student@example.com" />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Số điện thoại</label>
-                    <input style={styles.input} value={createStudentForm.phone_number} onChange={(e) => setCreateStudentForm({ ...createStudentForm, phone_number: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Lớp hành chính</label>
-                    <input style={styles.input} value={createStudentForm.administrative_class} onChange={(e) => setCreateStudentForm({ ...createStudentForm, administrative_class: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Ngành học</label>
-                    <input style={styles.input} value={createStudentForm.major} onChange={(e) => setCreateStudentForm({ ...createStudentForm, major: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Chuyên ngành</label>
-                    <input style={styles.input} value={createStudentForm.specialization} onChange={(e) => setCreateStudentForm({ ...createStudentForm, specialization: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Khoa</label>
-                    <input style={styles.input} value={createStudentForm.department} onChange={(e) => setCreateStudentForm({ ...createStudentForm, department: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Niên khóa</label>
-                    <input style={styles.input} value={createStudentForm.cohort} onChange={(e) => setCreateStudentForm({ ...createStudentForm, cohort: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Bậc hệ đào tạo</label>
-                    <input style={styles.input} value={createStudentForm.training_program} onChange={(e) => setCreateStudentForm({ ...createStudentForm, training_program: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Trạng thái học tập</label>
-                    <select style={styles.input} value={createStudentForm.academic_status} onChange={(e) => setCreateStudentForm({ ...createStudentForm, academic_status: e.target.value })}>
-                      <option value="Đang học">Đang học</option>
-                      <option value="Đình chỉ">Đình chỉ</option>
-                      <option value="Thôi học">Thôi học</option>
-                      <option value="Đã tốt nghiệp">Đã tốt nghiệp</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={styles.label}>Giới tính</label>
-                    <input style={styles.input} value={createStudentForm.gender} onChange={(e) => setCreateStudentForm({ ...createStudentForm, gender: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>CCCD</label>
-                    <input style={styles.input} value={createStudentForm.citizen_id} onChange={(e) => setCreateStudentForm({ ...createStudentForm, citizen_id: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Dân tộc</label>
-                    <input style={styles.input} value={createStudentForm.ethnicity} onChange={(e) => setCreateStudentForm({ ...createStudentForm, ethnicity: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Tôn giáo</label>
-                    <input style={styles.input} value={createStudentForm.religion} onChange={(e) => setCreateStudentForm({ ...createStudentForm, religion: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Quốc tịch</label>
-                    <input style={styles.input} value={createStudentForm.nationality} onChange={(e) => setCreateStudentForm({ ...createStudentForm, nationality: e.target.value })} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Nơi sinh</label>
-                    <input style={styles.input} value={createStudentForm.place_of_birth} onChange={(e) => setCreateStudentForm({ ...createStudentForm, place_of_birth: e.target.value })} />
-                  </div>
-                  <div style={{ gridColumn: "span 2" }}>
-                    <label style={styles.label}>Địa chỉ</label>
-                    <input style={styles.input} value={createStudentForm.address} onChange={(e) => setCreateStudentForm({ ...createStudentForm, address: e.target.value })} />
+              <form onSubmit={handleCreateStudent} style={{ display: "flex", flexDirection: "column", gap: "16px", maxHeight: "70vh", overflowY: "auto", paddingRight: "8px" }}>
+                
+                {/* 1. Thông tin học thuật */}
+                <div>
+                  <h4 style={{ margin: "0 0 12px 0", color: "#334155", borderBottom: "2px solid #e2e8f0", paddingBottom: "6px" }}>1. Thông tin học thuật</h4>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={styles.label}>Ngành học</label>
+                      <select 
+                        style={styles.input} 
+                        value={createStudentForm.major_id} 
+                        onChange={(e) => {
+                          const selectedMajorId = e.target.value;
+                          const selectedMajor = majorsList.find(m => String(m.major_id) === String(selectedMajorId));
+                          setCreateStudentForm({ 
+                            ...createStudentForm, 
+                            major_id: selectedMajorId, 
+                            faculty_id: selectedMajor ? selectedMajor.faculty_id : "" 
+                          });
+                        }}
+                      >
+                        <option value="">-- Chọn ngành học --</option>
+                        {majorsList.map(m => (
+                          <option key={m.major_id} value={m.major_id}>{m.major_id} - {m.major_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={styles.label}>Khoa</label>
+                      <select disabled style={{ ...styles.input, backgroundColor: "#f1f5f9", cursor: "not-allowed" }} value={createStudentForm.faculty_id}>
+                        <option value="">-- Khoa tự động điền --</option>
+                        {facultiesList.map(f => (
+                          <option key={f.faculty_id} value={f.faculty_id}>{f.faculty_id} - {f.faculty_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={styles.label}>Chuyên ngành</label>
+                      <input style={styles.input} value={createStudentForm.specialization} onChange={(e) => setCreateStudentForm({ ...createStudentForm, specialization: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Lớp hành chính</label>
+                      <input style={styles.input} value={createStudentForm.administrative_class} onChange={(e) => setCreateStudentForm({ ...createStudentForm, administrative_class: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Niên khóa</label>
+                      <input style={styles.input} value={createStudentForm.cohort} onChange={(e) => setCreateStudentForm({ ...createStudentForm, cohort: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Bậc hệ đào tạo</label>
+                      <input style={styles.input} value={createStudentForm.training_program} onChange={(e) => setCreateStudentForm({ ...createStudentForm, training_program: e.target.value })} />
+                    </div>
+                    <div style={{ gridColumn: "span 2" }}>
+                      <label style={styles.label}>Trạng thái học tập</label>
+                      <select style={styles.input} value={createStudentForm.academic_status} onChange={(e) => setCreateStudentForm({ ...createStudentForm, academic_status: e.target.value })}>
+                        <option value="Đang học">Đang học</option>
+                        <option value="Đình chỉ">Đình chỉ</option>
+                        <option value="Thôi học">Thôi học</option>
+                        <option value="Đã tốt nghiệp">Đã tốt nghiệp</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
+
+                {/* 2. Thông tin nhân thân */}
+                <div>
+                  <h4 style={{ margin: "0 0 12px 0", color: "#334155", borderBottom: "2px solid #e2e8f0", paddingBottom: "6px" }}>2. Thông tin nhân thân</h4>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={styles.label}>MSSV *</label>
+                      <input required style={styles.input} value={createStudentForm.student_id} onChange={(e) => setCreateStudentForm({ ...createStudentForm, student_id: e.target.value })} placeholder="VD: N22DCCN134" />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Họ tên *</label>
+                      <input required style={styles.input} value={createStudentForm.full_name} onChange={(e) => setCreateStudentForm({ ...createStudentForm, full_name: e.target.value })} placeholder="VD: Nguyễn Văn A" />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Email</label>
+                      <input type="email" style={styles.input} value={createStudentForm.email} onChange={(e) => setCreateStudentForm({ ...createStudentForm, email: e.target.value })} placeholder="student@example.com" />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Số điện thoại</label>
+                      <input style={styles.input} value={createStudentForm.phone_number} onChange={(e) => setCreateStudentForm({ ...createStudentForm, phone_number: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Giới tính</label>
+                      <input style={styles.input} value={createStudentForm.gender} onChange={(e) => setCreateStudentForm({ ...createStudentForm, gender: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>CCCD</label>
+                      <input style={styles.input} value={createStudentForm.citizen_id} onChange={(e) => setCreateStudentForm({ ...createStudentForm, citizen_id: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Ngày sinh</label>
+                      <input type="date" style={styles.input} value={createStudentForm.date_of_birth || ""} onChange={(e) => setCreateStudentForm({ ...createStudentForm, date_of_birth: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Nơi sinh</label>
+                      <input style={styles.input} value={createStudentForm.place_of_birth} onChange={(e) => setCreateStudentForm({ ...createStudentForm, place_of_birth: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Dân tộc</label>
+                      <input style={styles.input} value={createStudentForm.ethnicity} onChange={(e) => setCreateStudentForm({ ...createStudentForm, ethnicity: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Tôn giáo</label>
+                      <input style={styles.input} value={createStudentForm.religion} onChange={(e) => setCreateStudentForm({ ...createStudentForm, religion: e.target.value })} />
+                    </div>
+                    <div style={{ gridColumn: "span 2" }}>
+                      <label style={styles.label}>Quốc tịch</label>
+                      <input style={styles.input} value={createStudentForm.nationality} onChange={(e) => setCreateStudentForm({ ...createStudentForm, nationality: e.target.value })} />
+                    </div>
+                    <div style={{ gridColumn: "span 2" }}>
+                      <label style={styles.label}>Địa chỉ</label>
+                      <input style={styles.input} value={createStudentForm.address} onChange={(e) => setCreateStudentForm({ ...createStudentForm, address: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
                   <button type="button" onClick={() => setIsCreateStudentModalOpen(false)} style={{ ...styles.button, background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1" }}>
                     Hủy
@@ -3354,9 +3423,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                     <div><strong>Tôn giáo:</strong> {selectedStudentForModal.religion || "Trống"}</div>
                     <div><strong>Quốc tịch:</strong> {selectedStudentForModal.nationality || "Trống"}</div>
                     <div><strong>Lớp hành chính:</strong> {selectedStudentForModal.administrative_class || "Trống"}</div>
-                    <div><strong>Ngành học:</strong> {selectedStudentForModal.major || "Trống"}</div>
+                    <div><strong>Ngành học:</strong> {selectedStudentForModal.major_id || "Trống"}</div>
                     <div><strong>Chuyên ngành:</strong> {selectedStudentForModal.specialization || "Trống"}</div>
-                    <div><strong>Khoa:</strong> {selectedStudentForModal.department || "Trống"}</div>
+                    <div><strong>Khoa:</strong> {selectedStudentForModal.faculty_id || "Trống"}</div>
                     <div><strong>Bậc hệ đào tạo:</strong> {selectedStudentForModal.training_program || "Trống"}</div>
                     <div><strong>Niên khóa:</strong> {selectedStudentForModal.cohort || "Trống"}</div>
                   </div>

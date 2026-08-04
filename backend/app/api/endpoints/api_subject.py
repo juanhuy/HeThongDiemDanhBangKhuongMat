@@ -95,8 +95,7 @@ async def import_subjects_csv(file: UploadFile = File(...), db: Session = Depend
                 subject_name=str(row.get('subject_name', '')).strip(),
                 theory_credits=theory,
                 practical_credits=practical,
-                credits=theory + practical,
-                department=str(row.get('department', 'N/A')).strip(),
+                faculty_id=str(row.get('faculty_id', row.get('department', 'N/A'))).strip(),
                 is_active=str(row.get('is_active', 'True')).strip().lower() in ['true', '1', 't', 'yes']
             )
             db.add(new_subject)

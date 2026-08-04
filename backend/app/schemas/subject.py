@@ -6,7 +6,7 @@ class SubjectBase(BaseModel):
     subject_name: str = Field(..., example="Cấu trúc dữ liệu và giải thuật")
     theory_credits: int = Field(default=0, example=2) # Đổi thành tín chỉ lý thuyết
     practical_credits: int = Field(default=0, example=1) # Đổi thành tín chỉ thực hành
-    department: Optional[str] = None
+    faculty_id: Optional[str] = None
     is_active: bool = True
 
 class SubjectCreate(SubjectBase):
@@ -16,7 +16,7 @@ class SubjectUpdate(BaseModel):
     subject_name: Optional[str] = None
     theory_credits: Optional[int] = None
     practical_credits: Optional[int] = None
-    department: Optional[str] = None
+    faculty_id: Optional[str] = None
     is_active: Optional[bool] = None
 
 class SubjectResponse(SubjectBase):

@@ -8,10 +8,11 @@ class Student(Base):
     student_id = Column(String(20), primary_key=True)
     profile_id = Column(Integer, ForeignKey('user_profiles.profile_id', ondelete='CASCADE'), unique=True, nullable=False)
     
-    administrative_class = Column(String(50), nullable=True)
-    major = Column(String(100), nullable=True)
+    administrative_class_id = Column(String(50), ForeignKey("administrative_classes.class_id")) #fix
+
+    major_id = Column(String(20), ForeignKey("majors.major_id"))
     specialization = Column(String(100), nullable=True)
-    department = Column(String(100), nullable=True)
+    faculty_id = Column(String(20), ForeignKey("faculties.faculty_id"))
     cohort = Column(String(20), nullable=True)
     training_program = Column(String(50), nullable=True)
     academic_status = Column(String(50), nullable=True)
@@ -20,6 +21,14 @@ class Student(Base):
     face_features = relationship("FaceFeature", back_populates="student", cascade="all, delete-orphan")
     enrollments = relationship("ClassEnrollment", back_populates="student", cascade="all, delete-orphan")
     attendance_records = relationship("AttendanceRecord", back_populates="student", cascade="all, delete-orphan")
+
+    @property
+    def administrative_class(self):
+        return self.administrative_class_id
+
+    @administrative_class.setter
+    def administrative_class(self, value):
+        self.administrative_class_id = value
 
     @property
     def full_name(self):

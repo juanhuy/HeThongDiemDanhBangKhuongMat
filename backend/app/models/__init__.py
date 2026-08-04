@@ -14,6 +14,9 @@ from .face_feature import FaceFeature
 
 from .semester import Semester
 from .lecturer_busy_time import LecturerBusyTime
+from .administrative_class import AdministrativeClass
+from .faculty import Faculty
+from .major import Major
 
 __all__ = [
     "Account",
@@ -30,4 +33,7 @@ __all__ = [
     "FaceFeature",
     "Semester",
     "LecturerBusyTime",
+    "AdministrativeClass",
+    "Faculty",
+    "Major",
 ]

@@ -14,7 +14,6 @@ def create_subject(db: Session, subject: SubjectCreate):
     subject_data = subject.model_dump()
     theory = subject_data.get('theory_credits', 0)
     practical = subject_data.get('practical_credits', 0)
-    subject_data['credits'] = theory + practical
     
     db_subject = Subject(**subject_data)
     db.add(db_subject)
@@ -31,8 +30,6 @@ def update_subject(db: Session, subject_id: str, subject_update: schemas.Subject
     update_data = subject_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_obj, key, value)
-        
-    db_obj.credits = db_obj.theory_credits + db_obj.practical_credits
         
     db.commit()
     db.refresh(db_obj)

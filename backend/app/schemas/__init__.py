@@ -1,4 +1,6 @@
 from .account import AccountBase, AccountCreate, AccountUpdate, AccountResponse
+from .faculty import FacultyBase, FacultyCreate, FacultyUpdate, FacultyResponse, PaginatedFacultyResponse
+from .major import MajorBase, MajorCreate, MajorUpdate, MajorResponse, PaginatedMajorResponse
 from .token import Token, TokenData
 from .student import StudentBase, StudentCreate, StudentUpdate, StudentResponse, PaginatedStudentResponse
 from .lecturer import LecturerBase, LecturerCreate, LecturerUpdate, LecturerResponse, PaginatedLecturerResponse
@@ -18,6 +20,8 @@ __all__ = [
     # Users
     "StudentBase", "StudentCreate", "StudentUpdate", "StudentResponse", "PaginatedStudentResponse",
     "LecturerBase", "LecturerCreate", "LecturerUpdate", "LecturerResponse", "PaginatedLecturerResponse",
+    "FacultyBase", "FacultyCreate", "FacultyUpdate", "FacultyResponse", "PaginatedFacultyResponse",
+    "MajorBase", "MajorCreate", "MajorUpdate", "MajorResponse", "PaginatedMajorResponse",
     
     # Academic
     "SubjectBase", "SubjectCreate", "SubjectUpdate", "SubjectResponse", "PaginatedSubjectResponse",
