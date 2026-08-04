@@ -202,7 +202,6 @@ CREATE TABLE credit_classes (
 
     subject_id VARCHAR(20) NOT NULL,                                                        -- KHÓA NGOẠI: Liên kết với bảng subjects (Môn học)
     lecturer_id VARCHAR(20) NOT NULL,                                                       -- KHÓA NGOẠI: Liên kết với bảng lecturers (Giảng viên)
-    -- administrative_class_id VARCHAR(50) NULL,                         -- Mã lớp biên chế (VD: D20CQCN01) - Có thể NULL nếu học chung
     semester_id VARCHAR(20) NOT NULL,                                                                  -- Học kỳ (VD: 1, 2, 3, Hè)
 
     class_group VARCHAR(20) NULL,                                                           -- Nhóm/Tổ (VD: Môn CSDL có Lớp chung 01, nhưng chia Tổ TH 1, 2, 3)

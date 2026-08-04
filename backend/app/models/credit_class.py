@@ -9,7 +9,7 @@ class CreditClass(Base):
     subject_id = Column(String(20), ForeignKey('subjects.subject_id', ondelete='CASCADE'), nullable=False)
     lecturer_id = Column(String(20), ForeignKey('lecturers.lecturer_id', ondelete='CASCADE'), nullable=False)
     
-    administrative_class_id = Column(String(50), nullable=True)
+    # administrative_class_id = Column(String(50), nullable=True)
     
     semester = Column(Integer, nullable=False)
     academic_year = Column(String(20), nullable=False)

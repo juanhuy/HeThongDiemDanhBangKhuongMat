@@ -16,6 +16,8 @@ class Lecturer(Base):
     hire_date = Column(Date, nullable=True)
 
     profile = relationship("UserProfile", back_populates="lecturer_info")
+    # faculty = relationship("Faculty", backref="lecturers") # keo data Khoa
+    faculty = relationship("Faculty", foreign_keys=[faculty_id], backref="lecturers")
     classes = relationship("CreditClass", back_populates="lecturer", cascade="all, delete-orphan")
     busy_times = relationship("LecturerBusyTime", back_populates="lecturer", cascade="all, delete-orphan")
 

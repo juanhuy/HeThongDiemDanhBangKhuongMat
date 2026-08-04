@@ -5,7 +5,6 @@ import {
   Camera, StopCircle, Trash2, UserPlus, Users, BookOpen, X
 } from 'lucide-react';
 import { buildManualStudentPayload } from './studentFormUtils';
-import LecturersManagement from './LecturersManagement';
 
 const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMenu }) => {
   const rawRole = (user?.role || 'sinh_vien').toLowerCase();
@@ -149,6 +148,14 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [facultiesList, setFacultiesList] = useState([]);
 
   // Lecturer management states
+  const [allLecturersList, setAllLecturersList] = useState([]);
+  const [lecturerSearch, setLecturerSearch] = useState('');
+  const [isLecturerModalOpen, setIsLecturerModalOpen] = useState(false);
+  const [isLecturerDetailModalOpen, setIsLecturerDetailModalOpen] = useState(false);
+  const [editingLecturerId, setEditingLecturerId] = useState(null);
+  const [selectedLecturerDetail, setSelectedLecturerDetail] = useState(null);
+  const [lecturerForm, setLecturerForm] = useState({ lecturer_id: '', full_name: '', email: '', phone_number: '', date_of_birth: '', gender: '', citizen_id: '', ethnicity: '', religion: '', nationality: 'Việt Nam', address: '', place_of_birth: '', department: '', academic_title: '', position: 'Giảng viên', employment_type: '', teaching_status: 'Active' });
+
   // Classroom management states
   const [classroomsList, setClassroomsList] = useState([]);
   const [classroomSearch, setClassroomSearch] = useState('');
@@ -441,8 +448,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       fetchSubjects();
       fetchFaculties(); // để tải danh sách khoa cho dropdown
     } else if (activeTab === 'lecturers_management') {
-      fetchFaculties(); // để truyền facultiesList cho LecturersManagement
-      // fetchLecturers handled inside LecturersManagement component
+      fetchAllLecturers();
     } else if (activeTab === 'rooms_management') {
       fetchClassrooms();
     }
@@ -471,6 +477,122 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       }
     } catch (err) {
       console.error('Lỗi tải phòng học:', err);
+    }
+  };
+
+  const generateLecturerId = (list = allLecturersList) => {
+    const currentYear = new Date().getFullYear();
+    const prefix = `GV${currentYear}`;
+    const numbers = list
+      .map((item) => item?.lecturer_id || '')
+      .filter((value) => value.startsWith(prefix))
+      .map((value) => Number(value.replace(prefix, '')))
+      .filter((value) => !Number.isNaN(value));
+    const nextSequence = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+    return `${prefix}${String(nextSequence).padStart(3, '0')}`;
+  };
+
+  const openLecturerModal = (lecturer = null) => {
+    if (lecturer) {
+      setEditingLecturerId(lecturer.lecturer_id);
+      setLecturerForm({
+        lecturer_id: lecturer.lecturer_id,
+        full_name: lecturer.full_name || '',
+        email: lecturer.email || '',
+        phone_number: lecturer.phone_number || '',
+        date_of_birth: lecturer.date_of_birth || '',
+        gender: lecturer.gender || '',
+        citizen_id: lecturer.citizen_id || '',
+        ethnicity: lecturer.ethnicity || '',
+        religion: lecturer.religion || '',
+        nationality: lecturer.nationality || 'Việt Nam',
+        address: lecturer.address || '',
+        place_of_birth: lecturer.place_of_birth || '',
+        department: lecturer.department || '',
+        academic_title: lecturer.academic_title || '',
+        position: lecturer.position || '',
+        employment_type: lecturer.employment_type || '',
+        teaching_status: lecturer.teaching_status || 'Active',
+      });
+    } else {
+      setEditingLecturerId(null);
+      setLecturerForm({
+        lecturer_id: generateLecturerId(),
+        full_name: '',
+        email: '',
+        phone_number: '',
+        date_of_birth: '',
+        gender: '',
+        citizen_id: '',
+        ethnicity: '',
+        religion: '',
+        nationality: 'Việt Nam',
+        address: '',
+        place_of_birth: '',
+        department: '',
+        academic_title: '',
+        position: 'Giảng viên',
+        employment_type: '',
+        teaching_status: 'Active'
+      });
+    }
+    setIsLecturerModalOpen(true);
+  };
+
+  const openLecturerDetailModal = (lecturer) => {
+    setSelectedLecturerDetail(lecturer);
+    setIsLecturerDetailModalOpen(true);
+  };
+
+  const handleSaveLecturer = async (e) => {
+    e.preventDefault();
+    try {
+      const isEdit = !!editingLecturerId;
+      const lecturerId = (lecturerForm.lecturer_id || '').trim() || generateLecturerId();
+      const payload = {
+        lecturer_id: lecturerId,
+        full_name: lecturerForm.full_name,
+        email: lecturerForm.email,
+        phone_number: lecturerForm.phone_number,
+        date_of_birth: lecturerForm.date_of_birth || null,
+        gender: lecturerForm.gender || null,
+        citizen_id: lecturerForm.citizen_id || null,
+        ethnicity: lecturerForm.ethnicity || null,
+        religion: lecturerForm.religion || null,
+        nationality: lecturerForm.nationality || 'Việt Nam',
+        address: lecturerForm.address || null,
+        place_of_birth: lecturerForm.place_of_birth || null,
+        department: lecturerForm.department,
+        academic_title: lecturerForm.academic_title,
+        position: lecturerForm.position,
+        employment_type: lecturerForm.employment_type,
+        teaching_status: lecturerForm.teaching_status,
+      };
+      const url = isEdit ? `${API_BASE}/api/admin/lecturers/${editingLecturerId}` : `${API_BASE}/api/admin/lecturers/`;
+      const method = isEdit ? 'PUT' : 'POST';
+      const body = isEdit
+        ? { full_name: lecturerForm.full_name, phone_number: lecturerForm.phone_number, date_of_birth: lecturerForm.date_of_birth || null, gender: lecturerForm.gender || null, citizen_id: lecturerForm.citizen_id || null, ethnicity: lecturerForm.ethnicity || null, religion: lecturerForm.religion || null, nationality: lecturerForm.nationality || 'Việt Nam', address: lecturerForm.address || null, place_of_birth: lecturerForm.place_of_birth || null, department: lecturerForm.department, academic_title: lecturerForm.academic_title, position: lecturerForm.position, employment_type: lecturerForm.employment_type, teaching_status: lecturerForm.teaching_status }
+        : payload;
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (res.ok) {
+        showToast(isEdit ? 'Cập nhật giảng viên thành công!' : 'Thêm giảng viên thành công!');
+        setIsLecturerModalOpen(false);
+        fetchAllLecturers(lecturerSearch);
+      } else {
+        const err = await res.json();
+        showToast(err.detail || 'Lỗi lưu giảng viên', 'danger');
+      }
+    } catch (err) {
+      showToast('Lỗi kết nối API', 'danger');
+    }
+  };
+
+  const handleDeleteLecturer = async (id) => {
+    if (!window.confirm(`Xóa giảng viên ${id}?`)) return;
+    const res = await fetch(`${API_BASE}/api/admin/lecturers/${id}`, { method: 'DELETE' });
+    if (res.ok || res.status === 204) {
+      showToast('Xóa giảng viên thành công!');
+      fetchAllLecturers(lecturerSearch);
     }
   };
 
@@ -2357,6 +2479,248 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   };
 
   
+  const renderLecturersManagementTab = () => {
+    const filtered = allLecturersList.filter(l =>
+      (l.lecturer_id || '').toLowerCase().includes(lecturerSearch.toLowerCase()) ||
+      (l.full_name || '').toLowerCase().includes(lecturerSearch.toLowerCase()) ||
+      (l.department || '').toLowerCase().includes(lecturerSearch.toLowerCase())
+    );
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Users size={24} color="#0f766e" />
+            <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Giảng viên</h2>
+          </div>
+          <button style={{ ...styles.btn, background: "#0f766e", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => openLecturerModal()}>
+            <UserPlus size={16} /> Thêm giảng viên
+          </button>
+        </div>
+
+        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ padding: "15px", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "10px" }}>
+            <input type="text" placeholder="Tìm kiếm theo mã GV, họ tên, khoa..." style={{ ...styles.input, flex: 1 }}
+              value={lecturerSearch} onChange={(e) => { setLecturerSearch(e.target.value); fetchAllLecturers(e.target.value); }} />
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+              <thead style={{ background: "#f8fafc" }}>
+                <tr>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Mã GV</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Họ tên</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Khoa/Bộ môn</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Học hàm/vị</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Chức vụ</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Trạng thái</th>
+                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan="7" style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>Không tìm thấy giảng viên.</td></tr>
+                ) : (
+                  filtered.map((l, idx) => (
+                    <tr key={l.lecturer_id} style={{ borderBottom: "1px solid #f1f5f9", backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
+                      <td style={{ padding: "12px 15px", fontWeight: "600", color: "#0f172a" }}>{l.lecturer_id}</td>
+                      <td style={{ padding: "12px 15px" }}>
+                        <div style={{ fontWeight: "600" }}>{l.full_name}</div>
+                        {l.email && <div style={{ fontSize: "0.7rem", color: "#64748b" }}>{l.email}</div>}
+                      </td>
+                      <td style={{ padding: "12px 15px" }}>{l.department || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Chưa cập nhật</span>}</td>
+                      <td style={{ padding: "12px 15px" }}>{l.academic_title || '—'}</td>
+                      <td style={{ padding: "12px 15px" }}>{l.position || '—'}</td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <span style={{
+                          padding: "4px 10px", borderRadius: "12px", fontWeight: "600", fontSize: "0.75rem", display: "inline-block",
+                          backgroundColor: l.teaching_status === 'Active' ? '#dcfce7' : '#fee2e2',
+                          color: l.teaching_status === 'Active' ? '#166534' : '#991b1b',
+                          border: `1px solid ${l.teaching_status === 'Active' ? '#bbf7d0' : '#fecaca'}`
+                        }}>
+                          {l.teaching_status === 'Active' ? 'Đang dạy' : 'Ngừng dạy'}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
+                        <div style={{ display: "flex", justifyContent: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <button onClick={() => openLecturerDetailModal(l)} style={{ padding: "4px 8px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", cursor: "pointer", color: "#1d4ed8", fontSize: "0.75rem" }}>ℹ️ Chi tiết</button>
+                          <button onClick={() => openLecturerModal(l)} style={{ padding: "4px 8px", background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", fontSize: "0.75rem" }}>✏️ Sửa</button>
+                          <button onClick={() => handleDeleteLecturer(l.lecturer_id)} style={{ padding: "4px 8px", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: "6px", cursor: "pointer", color: "#991b1b", fontSize: "0.75rem" }}>🗑️ Xóa</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {isLecturerDetailModalOpen && selectedLecturerDetail && (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: "12px", width: "620px", maxWidth: "95%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)", overflow: "hidden" }}>
+              <div style={{ padding: "20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.1rem" }}>Chi tiết giảng viên</h3>
+                <button onClick={() => setIsLecturerDetailModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
+              </div>
+              <div style={{ padding: "20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div style={{ gridColumn: "span 2", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                  <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Thông tin tài khoản</div>
+                  <div><strong>Tên đăng nhập:</strong> {(selectedLecturerDetail.lecturer_id || '').toLowerCase()}</div>
+                  <div><strong>Vai trò:</strong> giang_vien</div>
+                  <div><strong>Mật khẩu mặc định:</strong> 123456</div>
+                </div>
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                  <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Hồ sơ nhân thân</div>
+                  <div><strong>Mã GV:</strong> {selectedLecturerDetail.lecturer_id}</div>
+                  <div><strong>Họ tên:</strong> {selectedLecturerDetail.full_name || '—'}</div>
+                  <div><strong>Ngày sinh:</strong> {selectedLecturerDetail.date_of_birth || '—'}</div>
+                  <div><strong>Giới tính:</strong> {selectedLecturerDetail.gender || '—'}</div>
+                  <div><strong>CCCD:</strong> {selectedLecturerDetail.citizen_id || '—'}</div>
+                  <div><strong>Dân tộc:</strong> {selectedLecturerDetail.ethnicity || '—'}</div>
+                  <div><strong>Tôn giáo:</strong> {selectedLecturerDetail.religion || '—'}</div>
+                  <div><strong>Quốc tịch:</strong> {selectedLecturerDetail.nationality || '—'}</div>
+                  <div><strong>Nơi sinh:</strong> {selectedLecturerDetail.place_of_birth || '—'}</div>
+                  <div><strong>Địa chỉ:</strong> {selectedLecturerDetail.address || '—'}</div>
+                  <div><strong>Email:</strong> {selectedLecturerDetail.email || '—'}</div>
+                  <div><strong>Số điện thoại:</strong> {selectedLecturerDetail.phone_number || '—'}</div>
+                </div>
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                  <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Thông tin công tác</div>
+                  <div><strong>Khoa/Bộ môn:</strong> {selectedLecturerDetail.department || '—'}</div>
+                  <div><strong>Học hàm/Học vị:</strong> {selectedLecturerDetail.academic_title || '—'}</div>
+                  <div><strong>Chức vụ:</strong> {selectedLecturerDetail.position || '—'}</div>
+                  <div><strong>Loại hợp đồng:</strong> {selectedLecturerDetail.employment_type || '—'}</div>
+                  <div><strong>Trạng thái:</strong> {selectedLecturerDetail.teaching_status || '—'}</div>
+                  <div><strong>Ngày tuyển dụng:</strong> {selectedLecturerDetail.hire_date || '—'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isLecturerModalOpen && (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: "12px", width: "600px", maxWidth: "95%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+              <div style={{ padding: "20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.25rem" }}>{editingLecturerId ? 'Sửa thông tin' : 'Thêm'} Giảng viên</h3>
+                <button onClick={() => setIsLecturerModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
+              </div>
+              <div style={{ padding: "20px", overflowY: "auto" }}>
+                <form onSubmit={handleSaveLecturer} style={{ display: "grid", gap: "15px" }}>
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                    <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Thông tin tài khoản</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div>
+                        <label style={styles.label}>Mã giảng viên</label>
+                        <input readOnly style={styles.input} placeholder="VD: GV2026001" value={lecturerForm.lecturer_id} onChange={e => setLecturerForm({...lecturerForm, lecturer_id: e.target.value.toUpperCase()})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Vai trò</label>
+                        <input readOnly style={styles.input} value="Giảng viên" />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "8px", color: "#475569", fontSize: "0.85rem" }}>
+                      Hệ thống sẽ tự tạo tài khoản đăng nhập với tên đăng nhập là mã giảng viên và mật khẩu mặc định là <strong>123456</strong>.
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                    <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Hồ sơ nhân thân</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div style={{ gridColumn: "span 2" }}>
+                        <label style={styles.label}>Họ và Tên *</label>
+                        <input required style={styles.input} placeholder="Nguyễn Văn A" value={lecturerForm.full_name} onChange={e => setLecturerForm({...lecturerForm, full_name: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Ngày sinh</label>
+                        <input type="date" style={styles.input} value={lecturerForm.date_of_birth} onChange={e => setLecturerForm({...lecturerForm, date_of_birth: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Giới tính</label>
+                        <select style={styles.input} value={lecturerForm.gender} onChange={e => setLecturerForm({...lecturerForm, gender: e.target.value})}>
+                          <option value="">-- Chọn --</option>
+                          <option value="Nam">Nam</option>
+                          <option value="Nữ">Nữ</option>
+                          <option value="Khác">Khác</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={styles.label}>CCCD</label>
+                        <input style={styles.input} placeholder="012345678901" value={lecturerForm.citizen_id} onChange={e => setLecturerForm({...lecturerForm, citizen_id: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Dân tộc</label>
+                        <input style={styles.input} placeholder="Kinh" value={lecturerForm.ethnicity} onChange={e => setLecturerForm({...lecturerForm, ethnicity: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Tôn giáo</label>
+                        <input style={styles.input} placeholder="Không" value={lecturerForm.religion} onChange={e => setLecturerForm({...lecturerForm, religion: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Quốc tịch</label>
+                        <input style={styles.input} placeholder="Việt Nam" value={lecturerForm.nationality} onChange={e => setLecturerForm({...lecturerForm, nationality: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Nơi sinh</label>
+                        <input style={styles.input} placeholder="Hà Nội" value={lecturerForm.place_of_birth} onChange={e => setLecturerForm({...lecturerForm, place_of_birth: e.target.value})} />
+                      </div>
+                      <div style={{ gridColumn: "span 2" }}>
+                        <label style={styles.label}>Địa chỉ</label>
+                        <input style={styles.input} placeholder="Số nhà, đường, phường/xã, quận/huyện" value={lecturerForm.address} onChange={e => setLecturerForm({...lecturerForm, address: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Email</label>
+                        <input style={styles.input} type="email" placeholder="gv@ptit.edu.vn" value={lecturerForm.email} onChange={e => setLecturerForm({...lecturerForm, email: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Số điện thoại</label>
+                        <input style={styles.input} placeholder="0901234567" value={lecturerForm.phone_number} onChange={e => setLecturerForm({...lecturerForm, phone_number: e.target.value})} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                    <div style={{ fontWeight: "700", color: "#0f172a", marginBottom: "8px" }}>Thông tin công tác</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div>
+                        <label style={styles.label}>Khoa/Bộ môn</label>
+                        <input style={styles.input} placeholder="Khoa CNTT" value={lecturerForm.department} onChange={e => setLecturerForm({...lecturerForm, department: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Học hàm/Học vị</label>
+                        <input style={styles.input} placeholder="ThS, TS, PGS..." value={lecturerForm.academic_title} onChange={e => setLecturerForm({...lecturerForm, academic_title: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Chức vụ</label>
+                        <input style={styles.input} placeholder="Trưởng bộ môn..." value={lecturerForm.position} onChange={e => setLecturerForm({...lecturerForm, position: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Loại hợp đồng</label>
+                        <input style={styles.input} placeholder="Cơ hữu / Thỉnh giảng" value={lecturerForm.employment_type} onChange={e => setLecturerForm({...lecturerForm, employment_type: e.target.value})} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Trạng thái</label>
+                        <select style={styles.input} value={lecturerForm.teaching_status} onChange={e => setLecturerForm({...lecturerForm, teaching_status: e.target.value})}>
+                          <option value="Active">Đang dạy</option>
+                          <option value="Inactive">Ngừng dạy</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #e2e8f0", paddingTop: "15px", marginTop: "5px" }}>
+                    <button type="button" style={{ ...styles.btn, background: "#94a3b8" }} onClick={() => setIsLecturerModalOpen(false)}>Hủy bỏ</button>
+                    <button type="submit" style={{ ...styles.btn, background: "#0f766e" }}>Lưu giảng viên</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
   const renderRoomsManagementTab = () => {
     const filtered = classroomsList.filter(r =>
       (r.room_id || '').toLowerCase().includes(classroomSearch.toLowerCase()) ||
@@ -3786,7 +4150,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                 {activeTab === 'students_list' && renderStudentsListTab()}
 
                 {activeTab === 'class_management' && renderClassManagementTab()}
-                {activeTab === 'lecturers_management' && <LecturersManagement facultiesList={facultiesList} showToast={showToast} />}
+                {activeTab === 'lecturers_management' && renderLecturersManagementTab()}
                 {activeTab === 'rooms_management' && renderRoomsManagementTab()}
               </>
             )}

@@ -39,7 +39,10 @@ def read_lecturer_by_id(lecturer_id: str, db: Session = Depends(get_db)):
 # =========================================================================
 @router.post("/", response_model=LecturerResponse, status_code=status.HTTP_201_CREATED)
 def create_new_lecturer(lecturer: LecturerCreate, db: Session = Depends(get_db)):
-    """Thêm mới giảng viên (Hệ thống tự động tạo Account và UserProfile đi kèm)"""
+    # Nếu Frontend không gửi lecturer_id, tự động sinh mã mới
+    if not lecturer.lecturer_id:
+        lecturer.lecturer_id = crud.generate_lecturer_id(db) # (Hoặc hàm tự sinh mã của bạn)
+        
     db_lecturer = crud.get_lecturer(db, lecturer_id=lecturer.lecturer_id)
     if db_lecturer:
         raise HTTPException(status_code=400, detail="Mã giảng viên đã tồn tại trong hệ thống")

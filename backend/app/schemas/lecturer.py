@@ -1,7 +1,14 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 from typing import Optional
 from datetime import date
 
+# 1. Tạo schema chứa thông tin Khoa trả về
+class FacultyInfo(BaseModel):
+    faculty_id: str
+    faculty_name: str
+
+    class Config:
+        from_attributes = True
 class LecturerBase(BaseModel):
     full_name: str
     email: Optional[EmailStr] = None
@@ -23,6 +30,27 @@ class LecturerBase(BaseModel):
 
 class LecturerCreate(LecturerBase):
     lecturer_id: Optional[str] = None
+
+    # Cho phép bỏ qua các trường không khai báo
+    model_config = ConfigDict(extra='ignore')
+
+    # Chuyển chuỗi rỗng thành None cho tất cả trường string có thể
+    @field_validator('email', 'phone_number', 'citizen_id', 'ethnicity', 'religion',
+                     'address', 'place_of_birth', 'faculty_id', 'academic_title',
+                     'employment_type', 'gender', 'nationality', 'position',
+                     'teaching_status', 'lecturer_id', mode='before')
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if v == '':
+            return None
+        return v
+
+    @field_validator('date_of_birth', mode='before')
+    @classmethod
+    def parse_date(cls, v):
+        if v == '' or v is None:
+            return None
+        return v
 
 class LecturerUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -47,6 +75,8 @@ class LecturerResponse(LecturerBase):
     lecturer_id: str
     profile_id: Optional[int] = None
     hire_date: Optional[date] = None
+
+    faculty: Optional[FacultyInfo] = None
 
     class Config:
         from_attributes = True
