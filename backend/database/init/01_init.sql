@@ -56,25 +56,26 @@ CREATE TABLE user_profiles (
 -- ==================================================================
 CREATE TABLE classrooms (
     -- Khóa chính
-    room_id         VARCHAR(20)  PRIMARY KEY,       -- Mã định danh phòng học
+    room_id         VARCHAR(20)  PRIMARY KEY,       -- VD: PH2026001
 
-    -- Thông tin cơ bản
-    room_name       VARCHAR(100) NOT NULL,          -- Tên phòng học (VD: Phòng 101, Giảng đường A)
-    building        VARCHAR(50),                    -- Tòa nhà/Khu vực (VD: Tòa A, Khu C)
-    notes           VARCHAR(255) NULL,              -- Ghi chú thêm (VD: "Máy chiếu đang hỏng mờ")
+    -- Vị trí & Định danh
+    campus          VARCHAR(100) NOT NULL,          -- Cơ sở (VD: CS Tăng Nhơn Phú, CS Quận 1)
+    building        VARCHAR(50)  NOT NULL,          -- Tòa nhà (VD: A, B, Trung tâm)
+    room_number     VARCHAR(20)  NOT NULL,          -- Số thứ tự/Số phòng (VD: 101, 102)
+    room_name       VARCHAR(100) NOT NULL,          -- Tên phòng (Sẽ được Backend ghép: Tòa nhà + Số phòng)
+    notes           VARCHAR(255) NULL,              -- Ghi chú
 
     -- Camera giám sát
-    camera_rtsp_url VARCHAR(255) NULL,              -- URL luồng camera (RTSP/HTTP)
-    camera_status   VARCHAR(20) DEFAULT 'Online',   -- Trạng thái Camera: Online / Offline / Defective
+    camera_rtsp_url VARCHAR(255) NULL,
+    camera_status   VARCHAR(20)  DEFAULT 'Online',  -- Trạng thái: Online / Offline / Defective
 
     -- Quản lý sức chứa và phân loại
-    capacity        INT DEFAULT 50,                 -- Sức chứa tối đa
-    room_type       VARCHAR(50) DEFAULT 'Theory',   -- Loại phòng: Theory / Computer_Lab / Specialized_Lab
+    capacity        INT          DEFAULT 50,
+    room_type       VARCHAR(50)  DEFAULT 'Theory',  -- Loại phòng: Theory / Computer_Lab / Specialized_Lab
 
     -- Quản lý trạng thái
-    status          VARCHAR(20) DEFAULT 'Active'    -- Trạng thái phòng: Active / Maintenance
+    status          VARCHAR(20)  DEFAULT 'Active'   -- Trạng thái: Active / Maintenance
 );
-
 -- ==================================================================
 -- BẢNG 6: SUBJECTS (Thông tin môn học)
 -- ==================================================================

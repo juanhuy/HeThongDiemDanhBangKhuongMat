@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { buildManualStudentPayload } from './studentFormUtils';
 import LecturersManagement from './LecturersManagement';
+import RoomsManagement from './RoomsManagement';
 
 const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMenu }) => {
   const rawRole = (user?.role || 'sinh_vien').toLowerCase();
@@ -150,12 +151,6 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
   // Lecturer management states
   // Classroom management states
-  const [classroomsList, setClassroomsList] = useState([]);
-  const [classroomSearch, setClassroomSearch] = useState('');
-  const [isClassroomModalOpen, setIsClassroomModalOpen] = useState(false);
-  const [editingRoomId, setEditingRoomId] = useState(null);
-  const [classroomForm, setClassroomForm] = useState({ room_id: '', room_name: '', building: '', capacity: 50, room_type: 'Theory', camera_rtsp_url: '', camera_status: 'Online', notes: '', status: 'Active' });
-
   const [adminCameras, setAdminCameras] = useState([
     { id: 1, name: "Camera Cửa Lớp A2-301", status: "Online", room: "A2-301", isSimulating: false },
     { id: 2, name: "Camera Bàn Giảng Viên A2-301", status: "Online", room: "A2-301", isSimulating: false },
@@ -444,7 +439,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
       fetchFaculties(); // để truyền facultiesList cho LecturersManagement
       // fetchLecturers handled inside LecturersManagement component
     } else if (activeTab === 'rooms_management') {
-      fetchClassrooms();
+      // fetch handled inside RoomsManagement component
     }
   }, [activeTab]);
 
@@ -461,75 +456,6 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     }
   };
 
-  const fetchClassrooms = async (query = '') => {
-    try {
-      const url = query ? `${API_BASE}/api/admin/classrooms?search=${encodeURIComponent(query)}` : `${API_BASE}/api/admin/classrooms`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setClassroomsList(data || []);
-      }
-    } catch (err) {
-      console.error('Lỗi tải phòng học:', err);
-    }
-  };
-
-  const openClassroomModal = (room = null) => {
-    if (room) {
-      setEditingRoomId(room.room_id);
-      setClassroomForm({
-        room_id: room.room_id,
-        room_name: room.room_name || '',
-        building: room.building || '',
-        capacity: room.capacity || 50,
-        room_type: room.room_type || 'Theory',
-        camera_rtsp_url: room.camera_rtsp_url || '',
-        camera_status: room.camera_status || 'Online',
-        notes: room.notes || '',
-        status: room.status || 'Active',
-      });
-    } else {
-      setEditingRoomId(null);
-      setClassroomForm({ room_id: '', room_name: '', building: '', capacity: 50, room_type: 'Theory', camera_rtsp_url: '', camera_status: 'Online', notes: '', status: 'Active' });
-    }
-    setIsClassroomModalOpen(true);
-  };
-
-  const handleSaveClassroom = async (e) => {
-    e.preventDefault();
-    try {
-      const isEdit = !!editingRoomId;
-      const url = isEdit ? `${API_BASE}/api/admin/classrooms/${editingRoomId}` : `${API_BASE}/api/admin/classrooms/`;
-      const method = isEdit ? 'PUT' : 'POST';
-      let body = isEdit
-        ? { room_name: classroomForm.room_name, building: classroomForm.building, capacity: classroomForm.capacity, room_type: classroomForm.room_type, camera_rtsp_url: classroomForm.camera_rtsp_url, camera_status: classroomForm.camera_status, notes: classroomForm.notes, status: classroomForm.status }
-        : { ...classroomForm };
-      
-      if (!isEdit && !body.room_id) {
-        delete body.room_id;
-      }
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (res.ok) {
-        showToast(isEdit ? 'Cập nhật phòng học thành công!' : 'Thêm phòng học thành công!');
-        setIsClassroomModalOpen(false);
-        fetchClassrooms(classroomSearch);
-      } else {
-        const err = await res.json();
-        showToast(err.detail || 'Lỗi lưu phòng học', 'danger');
-      }
-    } catch (err) {
-      showToast('Lỗi kết nối API', 'danger');
-    }
-  };
-
-  const handleDeleteClassroom = async (id) => {
-    if (!window.confirm(`Xóa phòng học ${id}?`)) return;
-    const res = await fetch(`${API_BASE}/api/admin/classrooms/${id}`, { method: 'DELETE' });
-    if (res.ok || res.status === 204) {
-      showToast('Xóa phòng học thành công!');
-      fetchClassrooms(classroomSearch);
-    }
-  };
 
 
   const fetchAvailableClasses = async () => {
@@ -2357,156 +2283,6 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   };
 
   
-  const renderRoomsManagementTab = () => {
-    const filtered = classroomsList.filter(r =>
-      (r.room_id || '').toLowerCase().includes(classroomSearch.toLowerCase()) ||
-      (r.room_name || '').toLowerCase().includes(classroomSearch.toLowerCase()) ||
-      (r.building || '').toLowerCase().includes(classroomSearch.toLowerCase())
-    );
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <BookOpen size={24} color="#7c3aed" />
-            <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Phòng học</h2>
-          </div>
-          <button style={{ ...styles.btn, background: "#7c3aed", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => openClassroomModal()}>
-            <BookOpen size={16} /> Thêm phòng học
-          </button>
-        </div>
-
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ padding: "15px", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "10px" }}>
-            <input type="text" placeholder="Tìm theo mã phòng, tên phòng, tòa nhà..." style={{ ...styles.input, flex: 1 }}
-              value={classroomSearch} onChange={(e) => { setClassroomSearch(e.target.value); fetchClassrooms(e.target.value); }} />
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
-              <thead style={{ background: "#f8fafc" }}>
-                <tr>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Mã phòng</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Tên phòng</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Tòa nhà</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Sức chứa</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Loại phòng</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Camera</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Trạng thái</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>Lớp đăng ký</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Có lớp học?</th>
-                  <th style={{ padding: "12px 15px", fontWeight: "600", color: "#475569", borderBottom: "2px solid #e2e8f0", textAlign: "center" }}>Hành động</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan="10" style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>Không tìm thấy phòng học.</td></tr>
-                ) : (
-                  filtered.map((r, idx) => (
-                    <tr key={r.room_id} style={{ borderBottom: "1px solid #f1f5f9", backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
-                      <td style={{ padding: "12px 15px", fontWeight: "600", color: "#0f172a" }}>{r.room_id}</td>
-                      <td style={{ padding: "12px 15px", fontWeight: "600" }}>{r.room_name}</td>
-                      <td style={{ padding: "12px 15px" }}>{r.building || '—'}</td>
-                      <td style={{ padding: "12px 15px", textAlign: "center" }}>{r.capacity}</td>
-                      <td style={{ padding: "12px 15px" }}>
-                        <span style={{ background: r.room_type === 'Lab' ? '#ede9fe' : '#e0f2fe', color: r.room_type === 'Lab' ? '#5b21b6' : '#0369a1', padding: "2px 8px", borderRadius: "10px", fontSize: "0.75rem", fontWeight: "600" }}>
-                          {r.room_type === 'Theory' ? 'Lý thuyết' : r.room_type === 'Lab' ? 'Thực hành' : r.room_type}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
-                        <span style={{ padding: "2px 8px", borderRadius: "10px", fontSize: "0.75rem", fontWeight: "600", backgroundColor: r.camera_status === 'Online' ? '#dcfce7' : '#fee2e2', color: r.camera_status === 'Online' ? '#166534' : '#991b1b' }}>
-                          {r.camera_status || 'N/A'}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
-                        <span style={{ padding: "4px 10px", borderRadius: "12px", fontWeight: "600", fontSize: "0.75rem", display: "inline-block", backgroundColor: r.status === 'Active' ? '#dcfce7' : '#fee2e2', color: r.status === 'Active' ? '#166534' : '#991b1b' }}>
-                          {r.status === 'Active' ? 'Đang dùng' : 'Tạm đóng'}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 15px", fontSize: "0.8rem", color: "#475569" }}>
-                        {r.scheduled_classes && r.scheduled_classes.length > 0 ? r.scheduled_classes.join(', ') : '—'}
-                      </td>
-                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
-                        <span style={{ padding: "4px 10px", borderRadius: "12px", fontWeight: "600", fontSize: "0.75rem", display: "inline-block", backgroundColor: r.is_occupied ? '#fee2e2' : '#dcfce7', color: r.is_occupied ? '#991b1b' : '#166534' }}>
-                          {r.is_occupied ? 'Đang có lớp' : 'Trống'}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 15px", textAlign: "center" }}>
-                        <div style={{ display: "flex", justifyContent: "center", gap: "8px" }}>
-                          <button onClick={() => openClassroomModal(r)} style={{ padding: "4px 8px", background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", fontSize: "0.75rem" }}>✏️ Sửa</button>
-                          <button onClick={() => handleDeleteClassroom(r.room_id)} style={{ padding: "4px 8px", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: "6px", cursor: "pointer", color: "#991b1b", fontSize: "0.75rem" }}>🗑️ Xóa</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {isClassroomModalOpen && (
-          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ background: "#fff", borderRadius: "12px", width: "600px", maxWidth: "95%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
-              <div style={{ padding: "20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h3 style={{ margin: 0, color: "#0f172a", fontSize: "1.25rem" }}>{editingRoomId ? 'Sửa thông tin' : 'Thêm'} Phòng học</h3>
-                <button onClick={() => setIsClassroomModalOpen(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
-              </div>
-              <div style={{ padding: "20px", overflowY: "auto" }}>
-                <form onSubmit={handleSaveClassroom} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
-                  <div style={{ gridColumn: "span 2" }}>
-                    <label style={styles.label}>Tên phòng *</label>
-                    <input required style={styles.input} placeholder="Phòng học A2-301" value={classroomForm.room_name} onChange={e => setClassroomForm({...classroomForm, room_name: e.target.value})} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Tòa nhà</label>
-                    <input style={styles.input} placeholder="Tòa A2" value={classroomForm.building} onChange={e => setClassroomForm({...classroomForm, building: e.target.value})} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Sức chứa (chỗ ngồi)</label>
-                    <input type="number" min="1" style={styles.input} value={classroomForm.capacity} onChange={e => setClassroomForm({...classroomForm, capacity: parseInt(e.target.value) || 50})} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Loại phòng</label>
-                    <select style={styles.input} value={classroomForm.room_type} onChange={e => setClassroomForm({...classroomForm, room_type: e.target.value})}>
-                      <option value="Theory">Lý thuyết</option>
-                      <option value="Lab">Thực hành (Lab)</option>
-                      <option value="Seminar">Hội thảo</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={styles.label}>Trạng thái Camera</label>
-                    <select style={styles.input} value={classroomForm.camera_status} onChange={e => setClassroomForm({...classroomForm, camera_status: e.target.value})}>
-                      <option value="Online">Online</option>
-                      <option value="Offline">Offline</option>
-                    </select>
-                  </div>
-                  <div style={{ gridColumn: "span 2" }}>
-                    <label style={styles.label}>URL RTSP Camera</label>
-                    <input style={styles.input} placeholder="rtsp://..." value={classroomForm.camera_rtsp_url} onChange={e => setClassroomForm({...classroomForm, camera_rtsp_url: e.target.value})} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Trạng thái phòng</label>
-                    <select style={styles.input} value={classroomForm.status} onChange={e => setClassroomForm({...classroomForm, status: e.target.value})}>
-                      <option value="Active">Đang sử dụng</option>
-                      <option value="Inactive">Tạm đóng</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={styles.label}>Ghi chú</label>
-                    <input style={styles.input} placeholder="Ghi chú..." value={classroomForm.notes} onChange={e => setClassroomForm({...classroomForm, notes: e.target.value})} />
-                  </div>
-                  <div style={{ gridColumn: "span 2", display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #e2e8f0", paddingTop: "15px", marginTop: "5px" }}>
-                    <button type="button" style={{ ...styles.btn, background: "#94a3b8" }} onClick={() => setIsClassroomModalOpen(false)}>Hủy bỏ</button>
-                    <button type="submit" style={{ ...styles.btn, background: "#7c3aed" }}>Lưu phòng học</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const handleOpenStudentModal = (st) => {
     setSelectedStudentForModal(st);
     setEditStudentForm({
@@ -3787,7 +3563,7 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
 
                 {activeTab === 'class_management' && renderClassManagementTab()}
                 {activeTab === 'lecturers_management' && <LecturersManagement facultiesList={facultiesList} showToast={showToast} />}
-                {activeTab === 'rooms_management' && renderRoomsManagementTab()}
+                {activeTab === 'rooms_management' && <RoomsManagement showToast={showToast} />}
               </>
             )}
 
