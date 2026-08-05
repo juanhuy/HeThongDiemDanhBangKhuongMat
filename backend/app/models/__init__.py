@@ -5,7 +5,7 @@ from .user_profile import UserProfile
 from .student import Student
 from .lecturer import Lecturer
 from .subject import Subject
-from .credit_class import CreditClass, ClassTargetAudience
+from .credit_class import CreditClass, ExpectedClassMapping
 from .class_enrollments import ClassEnrollment
 from .classroom import Classroom
 from .class_schedule import ClassSchedule

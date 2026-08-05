@@ -5,12 +5,12 @@ from app.db.session import Base
 # ==========================================
 # BẢNG TRUNG GIAN: Phân luồng Lớp Biên Chế
 # ==========================================
-class ClassTargetAudience(Base):
-    __tablename__ = 'class_target_audiences'
+class ExpectedClassMapping(Base):
+    __tablename__ = 'expected_class_mappings'
 
-    target_id = Column(Integer, primary_key=True, autoincrement=True)
-    class_id = Column(String(50), ForeignKey('credit_classes.class_id', ondelete='CASCADE'), nullable=False)
-    administrative_class_id = Column(String(50), ForeignKey('administrative_classes.class_id', ondelete='CASCADE'), nullable=False)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    credit_class_id = Column(String(50), ForeignKey('credit_classes.class_id', ondelete='CASCADE'), nullable=False)
+    admin_class_id = Column(String(50), ForeignKey('administrative_classes.class_id', ondelete='CASCADE'), nullable=False)
 
 # ==========================================
 # BẢNG CHÍNH: Lớp tín chỉ
@@ -25,7 +25,8 @@ class CreditClass(Base):
     lecturer_id = Column(String(20), ForeignKey('lecturers.lecturer_id', ondelete='CASCADE'), nullable=True)
     semester_id = Column(String(20), ForeignKey('semesters.semester_id', ondelete='CASCADE'), nullable=False)
 
-    class_group = Column(String(20), nullable=True)
+    group_number = Column(Integer, nullable=False, default=1)
+    sub_group_number = Column(Integer, nullable=True)
     class_type = Column(String(20), default='Combined')
     start_week = Column(Integer, nullable=True)
     end_week = Column(Integer, nullable=True)
@@ -42,7 +43,7 @@ class CreditClass(Base):
     sub_groups = relationship("CreditClass", backref=backref("parent_class", remote_side=[class_id]))
     
     # Quan hệ với bảng trung gian để lấy danh sách Lớp hành chính được gán
-    target_audiences = relationship("ClassTargetAudience", backref="credit_class", cascade="all, delete-orphan")
+    expected_mappings = relationship("ExpectedClassMapping", backref="credit_class", cascade="all, delete-orphan")
     sessions = relationship("ClassSession", back_populates="credit_class", cascade="all, delete-orphan")
     enrollments = relationship("ClassEnrollment", back_populates="credit_class", cascade="all, delete-orphan")
     schedules = relationship("ClassSchedule", back_populates="credit_class", cascade="all, delete-orphan")

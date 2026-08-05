@@ -205,7 +205,8 @@ CREATE TABLE credit_classes (
     lecturer_id VARCHAR(20) NOT NULL,                                                       -- KHÓA NGOẠI: Liên kết với bảng lecturers (Giảng viên)
     semester_id VARCHAR(20) NOT NULL,                                                                  -- Học kỳ (VD: 1, 2, 3, Hè)
 
-    class_group VARCHAR(20) NULL,                                                           -- Nhóm/Tổ (VD: Môn CSDL có Lớp chung 01, nhưng chia Tổ TH 1, 2, 3)
+    group_number INT NOT NULL,                    -- Số thứ tự Nhóm (VD: 1, 2, 3)
+    sub_group_number INT NULL,                    -- Số thứ tự Tổ thực hành (VD: 1, 2). NULL nếu là lớp lý thuyết/chung
     class_type VARCHAR(20) DEFAULT 'Combined',    -- ĐÃ THÊM: 'Theory', 'Practice', 'Combined'
     start_week INT NULL,                          -- ĐÃ THÊM: Tuần bắt đầu học
     end_week INT NULL,                            -- ĐÃ THÊM: Tuần kết thúc học

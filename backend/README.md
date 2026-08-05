@@ -33,7 +33,7 @@ Mở terminal, di chuyển vào thư mục `database` bên trong `backend` và s
 **1. Khởi động MySQL ở chế độ chạy ngầm:**
 
 ```bash
-cd <đường_dẫn_tới_project>\backend\database
+cd ..\HeThongDiemDanhBangKhuongMat\backend\database
 docker compose up -d
 
 ```
@@ -58,7 +58,7 @@ Mở một tab terminal mới (hoặc dùng tab hiện tại), di chuyển về 
 Trên Windows (PowerShell/CMD):
 
 ```bash
-cd <đường_dẫn_tới_project>\backend
+cd ..\HeThongDiemDanhBangKhuongMat\backend
 .\.venv\Scripts\activate
 
 ```
@@ -73,7 +73,7 @@ uv run uvicorn app.main:app --reload --port 8000
 ```
 
 *Cờ `--reload` giúp server tự động cập nhật lại mỗi khi bạn chỉnh sửa và lưu code.*
-g
+
 ---
 
 ## Bước 3: Xem tài liệu và test API (Swagger UI)
