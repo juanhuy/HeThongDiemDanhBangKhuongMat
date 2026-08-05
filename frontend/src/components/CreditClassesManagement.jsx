@@ -10,8 +10,11 @@ export default function CreditClassesManagement({ showToast }) {
   const [lecturers, setLecturers] = useState([]);
   const [semesters, setSemesters] = useState([]);
   const [adminClasses, setAdminClasses] = useState([]);
+  const [faculties, setFaculties] = useState([]); // Khoa quản lý
   
   const [selectedSemester, setSelectedSemester] = useState("");
+  const [selectedFaculty, setSelectedFaculty] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
   const [expandedRows, setExpandedRows] = useState(new Set());
   
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -66,9 +69,21 @@ export default function CreditClassesManagement({ showToast }) {
         fetch('http://localhost:8000/api/semesters/').then(r => r.json()),
         fetch('http://localhost:8000/api/administrative-classes/').then(r => r.json())
       ]);
-      setClasses(clsRes.data || clsRes);
-      setSubjects(subRes.map(s => ({ value: s.subject_id, label: `${s.subject_id} - ${s.subject_name}` })));
-      setLecturers(lecRes.map(l => ({ value: l.lecturer_id, label: `${l.lecturer_id} - ${l.full_name}` })));
+      
+      const clsData = clsRes.data || clsRes;
+      setClasses(clsData);
+      
+      const subList = (subRes.data || subRes).map(s => ({
+        value: s.subject_id,
+        label: `${s.subject_id} - ${s.subject_name}`,
+        faculty_id: s.faculty_id || s.department_id || null
+      }));
+      setSubjects(subList);
+      
+      setLecturers((lecRes.data || lecRes).map(l => ({
+        value: l.lecturer_id,
+        label: `${l.lecturer_id} - ${l.full_name}`
+      })));
       
       const actualSemRes = semRes.data || semRes;
       const semList = actualSemRes.map(s => ({
@@ -87,7 +102,28 @@ export default function CreditClassesManagement({ showToast }) {
       }
 
       const actualAdminRes = adminRes.data || adminRes;
-      setAdminClasses(actualAdminRes.map(c => ({ value: c.class_id, label: c.class_id })));
+      setAdminClasses(actualAdminRes.map(c => ({
+        value: c.class_id,
+        label: c.class_id,
+        faculty_id: c.faculty_id || c.department_id || null
+      })));
+
+      // Lấy danh sách Khoa từ admin classes hoặc subjects (nếu có)
+      const facultyMap = new Map();
+      actualAdminRes.forEach(c => {
+        const fid = c.faculty_id || c.department_id;
+        const fname = c.faculty_name || c.department_name;
+        if (fid && fname) facultyMap.set(fid, fname);
+      });
+      // Fallback nếu không có dữ liệu khoa → dùng vài giá trị mẫu phổ biến
+      if (facultyMap.size === 0) {
+        facultyMap.set('CNTT', 'Công nghệ thông tin');
+        facultyMap.set('KT', 'Kinh tế');
+        facultyMap.set('NN', 'Ngoại ngữ');
+      }
+      setFaculties(
+        Array.from(facultyMap.entries()).map(([value, label]) => ({ value, label }))
+      );
     } catch (error) {
       if (showToast) showToast('Lỗi khi tải dữ liệu!', 'error');
     } finally {
@@ -102,7 +138,6 @@ export default function CreditClassesManagement({ showToast }) {
   const getSubjectName = (id) => subjects.find(s => s.value === id)?.label.split(' - ')[1] || 'Đang cập nhật';
   const getLecturerName = (id) => lecturers.find(l => l.value === id)?.label.split(' - ')[1] || (id || '—');
   
-  // Hiển thị danh sách lớp biên chế gọn
   const getTargetClassesLabel = (targetClasses) => {
     if (!targetClasses || targetClasses.length === 0) return '—';
     if (Array.isArray(targetClasses)) {
@@ -113,16 +148,38 @@ export default function CreditClassesManagement({ showToast }) {
     return targetClasses;
   };
 
-  // Format số nhóm/tổ thành 01, 02...
   const formatGroupNumber = (num) => {
     if (!num && num !== 0) return '01';
     return String(num).padStart(2, '0');
   };
 
+  // Lọc dữ liệu theo Học kỳ + Khoa + Môn học + Search
   const treeData = useMemo(() => {
     let filtered = classes.filter(c => {
+      // Học kỳ
       if (selectedSemester && c.semester_id !== selectedSemester) return false;
+      
+      // Môn học
+      if (selectedSubject && c.subject_id !== selectedSubject) return false;
+      
+      // Khoa quản lý (dựa vào target_classes hoặc subject)
+      if (selectedFaculty) {
+        const subject = subjects.find(s => s.value === c.subject_id);
+        const hasFacultyFromSubject = subject?.faculty_id === selectedFaculty;
+        
+        // Hoặc kiểm tra qua lớp biên chế
+        const targets = c.target_classes || [];
+        const hasFacultyFromTarget = targets.some(tc => {
+          const admin = adminClasses.find(a => a.value === tc);
+          return admin?.faculty_id === selectedFaculty;
+        });
+        
+        if (!hasFacultyFromSubject && !hasFacultyFromTarget) return false;
+      }
+      
+      // Tìm kiếm mã lớp
       if (searchTerm && !c.class_id.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+      
       return true;
     });
 
@@ -133,7 +190,37 @@ export default function CreditClassesManagement({ showToast }) {
       ...g,
       children: subGroups.filter(sg => sg.parent_class_id === g.class_id)
     }));
-  }, [classes, selectedSemester, searchTerm]);
+  }, [classes, selectedSemester, selectedSubject, selectedFaculty, searchTerm, subjects, adminClasses]);
+
+  // Đổi trạng thái lớp
+  const handleChangeStatus = async (classItem, newStatus) => {
+    if (classItem.status === newStatus) return;
+    
+    try {
+      const res = await fetch(`http://localhost:8000/api/lop_tin_chi/${classItem.class_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) throw new Error('Failed to update status');
+      
+      // Cập nhật local state ngay
+      setClasses(prev => prev.map(c => 
+        c.class_id === classItem.class_id ? { ...c, status: newStatus } : c
+      ));
+      
+      const statusLabel = {
+        Active: 'Đang mở',
+        Planning: 'Dự kiến',
+        Cancelled: 'Đã hủy'
+      }[newStatus] || newStatus;
+      
+      if (showToast) showToast(`Đã chuyển trạng thái sang "${statusLabel}"`, 'success');
+    } catch (error) {
+      console.error(error);
+      if (showToast) showToast('Lỗi khi cập nhật trạng thái!', 'error');
+    }
+  };
 
   const handleEditClick = (classItem) => {
     let subjId = classItem.subject_id;
@@ -185,7 +272,6 @@ export default function CreditClassesManagement({ showToast }) {
   };
 
   const handleOpenWizard = () => {
-    // Mặc định luôn có Nhóm 01
     setWizardData(prev => ({
       ...prev,
       subject_id: "",
@@ -204,7 +290,6 @@ export default function CreditClassesManagement({ showToast }) {
   const removeGroup = (groupId) => {
     setWizardData(prev => {
       const filtered = prev.groups.filter(g => g.id !== groupId);
-      // Đánh số lại từ 01
       return {
         ...prev,
         groups: filtered.map((g, idx) => ({ ...g, group_number: idx + 1 }))
@@ -316,6 +401,29 @@ export default function CreditClassesManagement({ showToast }) {
     }
   };
 
+  // Component hiển thị + đổi trạng thái
+  const StatusBadge = ({ item }) => {
+    const statusConfig = {
+      Active: { label: 'Đang mở', bg: 'bg-green-100', text: 'text-green-700' },
+      Planning: { label: 'Dự kiến', bg: 'bg-amber-100', text: 'text-amber-700' },
+      Cancelled: { label: 'Đã hủy', bg: 'bg-gray-200', text: 'text-gray-600' }
+    };
+    const cfg = statusConfig[item.status] || statusConfig.Planning;
+
+    return (
+      <select
+        value={item.status || 'Planning'}
+        onChange={(e) => handleChangeStatus(item, e.target.value)}
+        className={`text-xs font-medium px-2 py-1 rounded border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 ${cfg.bg} ${cfg.text}`}
+        title="Nhấn để đổi trạng thái"
+      >
+        <option value="Planning">Dự kiến</option>
+        <option value="Active">Đang mở</option>
+        <option value="Cancelled">Đã hủy</option>
+      </select>
+    );
+  };
+
   return (
     <div className="bg-gray-50 min-h-screen p-5 font-sans text-gray-800">
       <div className="max-w-7xl mx-auto">
@@ -334,23 +442,36 @@ export default function CreditClassesManagement({ showToast }) {
         {/* Filter */}
         <div className="bg-white border border-gray-200 rounded p-4 mb-5">
           <div className="flex flex-wrap gap-4 items-end">
-            <div className="flex-1 min-w-[180px]">
+            <div className="flex-1 min-w-[160px]">
               <label className="block text-xs font-medium text-gray-600 mb-1">Học kỳ</label>
               <SearchableSelect options={semesters} value={selectedSemester} onChange={setSelectedSemester} />
             </div>
-            <div className="flex-1 min-w-[180px]">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Khoa/Bộ môn</label>
-              <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
-                <option>Công nghệ thông tin</option>
+            
+            <div className="flex-1 min-w-[160px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Khoa quản lý</label>
+              <select
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                value={selectedFaculty}
+                onChange={(e) => setSelectedFaculty(e.target.value)}
+              >
+                <option value="">Tất cả khoa</option>
+                {faculties.map(f => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
               </select>
             </div>
+            
             <div className="flex-1 min-w-[180px]">
               <label className="block text-xs font-medium text-gray-600 mb-1">Môn học</label>
-              <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
-                <option>Tất cả</option>
-              </select>
+              <SearchableSelect
+                options={[{ value: '', label: 'Tất cả môn học' }, ...subjects]}
+                value={selectedSubject}
+                onChange={setSelectedSubject}
+                placeholder="Chọn môn học..."
+              />
             </div>
-            <div className="flex-1 min-w-[180px]">
+            
+            <div className="flex-1 min-w-[160px]">
               <label className="block text-xs font-medium text-gray-600 mb-1">Tìm kiếm</label>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -363,8 +484,16 @@ export default function CreditClassesManagement({ showToast }) {
                 />
               </div>
             </div>
-            <button className="flex items-center gap-1.5 px-4 py-2 border border-blue-600 text-blue-600 rounded text-sm hover:bg-blue-50">
-              <Filter size={15} /> Lọc
+            
+            <button 
+              onClick={() => {
+                setSelectedFaculty('');
+                setSelectedSubject('');
+                setSearchTerm('');
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-gray-600 rounded text-sm hover:bg-gray-50"
+            >
+              <Filter size={15} /> Xóa lọc
             </button>
           </div>
         </div>
@@ -432,12 +561,7 @@ export default function CreditClassesManagement({ showToast }) {
                         </td>
                         <td className="py-3 px-3 text-center">{group.current_students}/{group.max_students}</td>
                         <td className="py-3 px-3 text-center">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            group.status === 'Active' ? 'bg-green-100 text-green-700' : 
-                            group.status === 'Planning' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {group.status === 'Active' ? 'Đang mở' : group.status === 'Planning' ? 'Dự kiến' : 'Đã đầy'}
-                          </span>
+                          <StatusBadge item={group} />
                         </td>
                         <td className="py-3 px-3 text-center">
                           <div className="flex justify-center gap-3 text-gray-500">
@@ -460,7 +584,6 @@ export default function CreditClassesManagement({ showToast }) {
                             {getLecturerName(sg.lecturer_id)}
                           </td>
                           <td className="py-2.5 px-3 text-gray-400 text-xs">
-                            {/* Tổ kế thừa từ nhóm cha */}
                             {getTargetClassesLabel(group.target_classes)}
                           </td>
                           <td className="py-2.5 px-3 text-gray-600">
@@ -477,11 +600,7 @@ export default function CreditClassesManagement({ showToast }) {
                           </td>
                           <td className="py-2.5 px-3 text-center">{sg.current_students}/{sg.max_students}</td>
                           <td className="py-2.5 px-3 text-center">
-                            <span className={`px-2 py-0.5 rounded text-xs ${
-                              sg.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                            }`}>
-                              {sg.status === 'Active' ? 'Đang mở' : 'Đã đầy'}
-                            </span>
+                            <StatusBadge item={sg} />
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <div className="flex justify-center gap-3 text-gray-500">
@@ -507,7 +626,7 @@ export default function CreditClassesManagement({ showToast }) {
           
           {/* Pagination */}
           <div className="border-t border-gray-200 px-4 py-3 flex justify-between items-center text-sm text-gray-600">
-            <div>Hiển thị 1-10 của 124 lớp</div>
+            <div>Hiển thị {treeData.length} lớp</div>
             <div className="flex gap-1">
               <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400">
                 <ChevronRight size={16} className="rotate-180" />
@@ -535,7 +654,6 @@ export default function CreditClassesManagement({ showToast }) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
-              {/* Step 1 */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">1. Thông tin chung</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -560,7 +678,6 @@ export default function CreditClassesManagement({ showToast }) {
                 </div>
               </div>
 
-              {/* Step 2 */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">2. Cấu hình Nhóm & Tổ</h3>
                 
@@ -641,7 +758,6 @@ export default function CreditClassesManagement({ showToast }) {
                       </div>
                     </div>
 
-                    {/* Tổ thực hành */}
                     <div className="bg-gray-50 border border-gray-200 rounded p-3">
                       <div className="text-xs font-medium text-gray-500 mb-2">Tổ thực hành</div>
                       

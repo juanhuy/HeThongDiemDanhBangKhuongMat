@@ -499,12 +499,8 @@ def enroll_student(ma_lop_tc: str = Form(...), mssv: str = Form(...), db: Sessio
     cc = db.query(CreditClass).filter(CreditClass.class_id == ma_lop_tc.strip()).first()
     if not cc:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp tín chỉ {ma_lop_tc}")
-        
-    from app.models.classroom import Classroom
-    room = db.query(Classroom).filter(Classroom.room_id == phong_hoc.strip()).first()
-    if not room:
-        raise HTTPException(status_code=400, detail=f"Không tìm thấy phòng học {phong_hoc}. Vui lòng kiểm tra lại mã phòng.")
-    if cc.status.lower() != "active":
+    # Ensure status is compared safely when it's None
+    if (cc.status or "").lower() != "active":
         raise HTTPException(status_code=400, detail=f"Lớp tín chỉ {ma_lop_tc} không mở để đăng ký.")
     st = db.query(Student).filter(Student.student_id == mssv.strip().upper()).first()
     if not st:
