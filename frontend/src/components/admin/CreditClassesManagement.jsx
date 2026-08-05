@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, Edit2, Trash2, ChevronRight, Save, X, Filter } from 'lucide-react';
-import SearchableSelect from './SearchableSelect';
+import SearchableSelect from '../common/SearchableSelect';
 
 export default function CreditClassesManagement({ showToast }) {
   const [classes, setClasses] = useState([]);
