@@ -37,6 +37,7 @@ import {
   PendingFaces,
   ScheduleAdmin,
 } from './components/admin';
+// import CreditClassesManagement from './components/admin/CreditClassesManagement/index.jsx';
 
 import { API_BASE } from './api/client';
 import { attendanceApi } from './api';

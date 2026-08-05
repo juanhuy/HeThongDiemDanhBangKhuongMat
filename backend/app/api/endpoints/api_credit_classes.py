@@ -96,10 +96,12 @@ def save_generated_classes(req: SaveDraftRequest, db: Session = Depends(get_db))
         db.flush() 
         saved_classes.append(t_id)
 
+        # Map lớp biên chế cho Nhóm LT (Đã có sẵn)
         if hasattr(t_group, 'target_classes') and t_group.target_classes:
             for admin_class_id in t_group.target_classes:
                 db.add(ExpectedClassMapping(credit_class_id=t_id, admin_class_id=admin_class_id))
 
+        # --- VÒNG LẶP TẠO TỔ THỰC HÀNH ---
         for j, p_group in enumerate(t_group.sub_groups):
             p_grp = int(p_group.class_group) if (p_group.class_group and str(p_group.class_group).isdigit()) else (j + 1)
             p_id = f"{t_id}_T{p_grp:02d}"
@@ -118,6 +120,11 @@ def save_generated_classes(req: SaveDraftRequest, db: Session = Depends(get_db))
             )
             db.add(new_practice)
             saved_classes.append(p_id)
+
+            # 🟢 MỚI: BỔ SUNG MAPPING LỚP BIÊN CHẾ CHO TỔ THỰC HÀNH (p_id)
+            if hasattr(t_group, 'target_classes') and t_group.target_classes:
+                for admin_class_id in t_group.target_classes:
+                    db.add(ExpectedClassMapping(credit_class_id=p_id, admin_class_id=admin_class_id))
 
     db.commit()
     return {"status": "success", "message": "Thành công", "saved_ids": saved_classes}
@@ -205,17 +212,26 @@ def list_credit_classes(
         query = query.join(ExpectedClassMapping).filter(ExpectedClassMapping.admin_class_id == administrative_class_id.strip())
 
     classes = list(dict.fromkeys(query.all()))
-    
+
     result = []
     for c in classes:
         target_classes = [t.admin_class_id for t in c.expected_mappings]
+
+        subj = c.subject
+        subject_name = subj.subject_name if subj else None
+        total_credits = subj.credits or (subj.theory_credits + subj.practical_credits) or 0 if subj else 0
+        
         result.append({
             "class_id": c.class_id,
             "parent_class_id": c.parent_class_id,
             "subject_id": c.subject_id,
+            "subject_name": subject_name,
+            "credits": total_credits,
             "lecturer_id": c.lecturer_id,
             "semester_id": c.semester_id,
             "class_group": format_class_group(c),
+            "group_number": c.group_number,           
+            "sub_group_number": c.sub_group_number,
             "class_type": c.class_type,
             "start_week": c.start_week,
             "end_week": c.end_week,
@@ -257,15 +273,22 @@ def get_credit_class_detail(class_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Không tìm thấy lớp học tín chỉ này.")
         
     target_classes = [t.admin_class_id for t in cc.expected_mappings]
+
+    subj = cc.subject
+    total_credits = subj.credits or (subj.theory_credits + subj.practical_credits) or 0 if subj else 0
+
     c_dict = {
         "class_id": cc.class_id,
         "parent_class_id": cc.parent_class_id,
         "subject_id": cc.subject_id,
         "subject_name": cc.subject.subject_name if cc.subject else None,
+        "credits": total_credits,
         "lecturer_id": cc.lecturer_id,
         "lecturer_name": cc.lecturer.full_name if cc.lecturer else None,
         "semester_id": cc.semester_id,
         "class_group": format_class_group(cc),
+        "group_number": c.group_number,          
+        "sub_group_number": c.sub_group_number,
         "class_type": cc.class_type,
         "start_week": cc.start_week,
         "end_week": cc.end_week,
@@ -302,6 +325,8 @@ def get_student_classes(student_id: str, db: Session = Depends(get_db)):
             "lecturer_id": c.lecturer_id,
             "semester_id": c.semester_id,
             "class_group": format_class_group(c),
+            "group_number": c.group_number,
+            "sub_group_number": c.sub_group_number,
             "class_type": c.class_type,
             "max_students": c.max_students,
             "current_students": c.current_students,
@@ -400,33 +425,58 @@ def enroll_student(class_id: str, student_id: str = Form(...), db: Session = Dep
     st = db.query(Student).filter(Student.student_id == student_id.strip().upper()).first()
     if not st: raise HTTPException(status_code=404, detail=f"Không tìm thấy sinh viên {student_id}")
         
-    existing = db.query(ClassEnrollment).filter(ClassEnrollment.class_id == class_id.strip(), ClassEnrollment.student_id == student_id.strip().upper()).first()
-    if existing: return {"status": "success", "message": f"Sinh viên {student_id} đã có trong lớp {class_id}"}
-        
-    new_sessions = db.query(ClassSchedule).filter(ClassSchedule.class_id == class_id.strip()).all()
-    if new_sessions:
-        enrolled_classes = db.query(ClassEnrollment).filter(ClassEnrollment.student_id == student_id.strip().upper()).all()
-        enrolled_class_ids = [e.class_id for e in enrolled_classes]
-        
-        if enrolled_class_ids:
-            enrolled_sessions = db.query(ClassSchedule).filter(ClassSchedule.class_id.in_(enrolled_class_ids)).all()
-            for ns in new_sessions:
-                for es in enrolled_sessions:
-                    if ns.start_time < es.end_time and ns.end_time > es.start_time:
-                        ns_time = ns.start_time.strftime("%d/%m/%Y %H:%M")
-                        es_time = es.start_time.strftime("%H:%M")
-                        raise HTTPException(status_code=400, detail=f"Trùng lịch học! Lớp {class_id} ({ns_time}) bị trùng với lớp {es.class_id} ({es_time}) bạn đã đăng ký.")
+    # 1. Xác định danh sách lớp cần đăng ký (Bao gồm lớp cha nếu là Tổ TH)
+    classes_to_enroll = [cc]
+    if cc.class_type == "Practice" and cc.parent_class_id:
+        parent_cc = db.query(CreditClass).filter(CreditClass.class_id == cc.parent_class_id).first()
+        if parent_cc:
+            classes_to_enroll.append(parent_cc)
 
-    enroll = ClassEnrollment(
-        class_id=class_id.strip(),
-        student_id=student_id.strip().upper(),
-        enrollment_date=datetime.now(),
-        updated_at=datetime.now(),
-        status="Enrolled"
-    )
-    db.add(enroll)
+    # 2. Lấy danh sách các lớp sinh viên ĐÃ đăng ký
+    enrolled_class_ids_query = db.query(ClassEnrollment.class_id).filter(ClassEnrollment.student_id == student_id.strip().upper())
+    enrolled_class_ids = [r[0] for r in enrolled_class_ids_query.all()]
+
+    # 3. Kiểm tra sức chứa (Capacity) cho tất cả các lớp liên quan
+    new_enroll_ids = []
+    for c_enroll in classes_to_enroll:
+        if c_enroll.class_id in enrolled_class_ids:
+            continue # Bỏ qua nếu đã đăng ký lớp này từ trước
+            
+        if c_enroll.current_students >= c_enroll.max_students:
+             raise HTTPException(status_code=400, detail=f"Lớp {c_enroll.class_id} đã đạt giới hạn sĩ số.")
+        
+        new_enroll_ids.append(c_enroll.class_id)
+
+    if not new_enroll_ids:
+        return {"status": "success", "message": "Sinh viên đã đăng ký các lớp này rồi."}
+
+    # 4. Kiểm tra trùng lịch (Dựa trên danh sách cần thêm mới)
+    new_sessions = db.query(ClassSchedule).filter(ClassSchedule.class_id.in_(new_enroll_ids)).all()
+    if new_sessions and enrolled_class_ids:
+        enrolled_sessions = db.query(ClassSchedule).filter(ClassSchedule.class_id.in_(enrolled_class_ids)).all()
+        for ns in new_sessions:
+            for es in enrolled_sessions:
+                if ns.start_time < es.end_time and ns.end_time > es.start_time:
+                    ns_time = ns.start_time.strftime("%d/%m/%Y %H:%M")
+                    es_time = es.start_time.strftime("%H:%M")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Trùng lịch học! Lớp {ns.class_id} ({ns_time}) bị trùng với lớp {es.class_id} ({es_time})."
+                    )
+
+    # 5. Lưu toàn bộ vào Database
+    for c_id in new_enroll_ids:
+        enroll = ClassEnrollment(
+            class_id=c_id,
+            student_id=student_id.strip().upper(),
+            enrollment_date=datetime.now(),
+            updated_at=datetime.now(),
+            status="Enrolled"
+        )
+        db.add(enroll)
+        
     db.commit()
-    return {"status": "success", "message": f"Đã đăng ký sinh viên {student_id} vào lớp {class_id}"}
+    return {"status": "success", "message": f"Đã đăng ký thành công: {', '.join(new_enroll_ids)}"}
 
 
 @router.delete("/credit-classes/{class_id}/enrollments/{student_id}")
@@ -435,12 +485,35 @@ def unenroll_student(class_id: str, student_id: str, db: Session = Depends(get_d
     if not cc: raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp học tín chỉ {class_id}.")
     if cc.status.lower() != "active": raise HTTPException(status_code=400, detail=f"Lớp {class_id} không mở, không thể hủy đăng ký.")
     
-    enrollment = db.query(ClassEnrollment).filter(ClassEnrollment.class_id == class_id.strip(), ClassEnrollment.student_id == student_id.strip().upper()).first()
-    if not enrollment: raise HTTPException(status_code=404, detail="Không tìm thấy thông tin đăng ký học.")
+    # 1. Xác định chuỗi các lớp cần hủy (Bundled unenrollment)
+    classes_to_unenroll = [class_id.strip()]
     
-    db.delete(enrollment)
+    if cc.class_type == "Practice" and cc.parent_class_id:
+        # Nếu hủy TH -> Hủy luôn LT cha
+        classes_to_unenroll.append(cc.parent_class_id)
+    elif cc.class_type == "Theory":
+        # Nếu hủy LT -> Tìm và Hủy luôn Tổ TH con mà SV đang theo học
+        child_classes = db.query(CreditClass.class_id).filter(CreditClass.parent_class_id == class_id.strip()).all()
+        child_class_ids = [c[0] for c in child_classes]
+        if child_class_ids:
+            classes_to_unenroll.extend(child_class_ids)
+
+    # 2. Lấy các record enrollments thực tế của sinh viên này
+    enrollments = db.query(ClassEnrollment).filter(
+        ClassEnrollment.class_id.in_(classes_to_unenroll), 
+        ClassEnrollment.student_id == student_id.strip().upper()
+    ).all()
+    
+    if not enrollments: 
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông tin đăng ký học.")
+    
+    # 3. Thực thi xóa
+    for e in enrollments:
+        db.delete(e)
+        
     db.commit()
-    return {"status": "success", "message": f"Đã hủy đăng ký lớp {class_id} thành công."}
+    deleted_ids = [e.class_id for e in enrollments]
+    return {"status": "success", "message": f"Đã hủy đăng ký thành công: {', '.join(deleted_ids)}"}
 
 
 # =========================================================================
