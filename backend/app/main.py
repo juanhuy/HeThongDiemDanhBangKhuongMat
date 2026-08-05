@@ -9,6 +9,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi import Request
 
+from app.api.endpoints import api_timetable
+
 # Thêm đường dẫn gốc để import config
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
@@ -77,7 +79,7 @@ def include_optional_router(module, prefix: str, tags: list[str]):
 include_optional_router(api_auth, prefix="/api/auth", tags=["Xác thực"])
 include_optional_router(api_credit_classes, prefix="/api", tags=["Lớp học & Điểm danh"])
 include_optional_router(api_ai, prefix="/api", tags=["AI & Nhận diện"])
-
+include_optional_router(api_timetable, prefix="/api", tags=["Thời khóa biểu"])
 # Các Router quản lý (Admin)
 include_optional_router(api_subject, prefix="/api/subjects", tags=["Quản lý Môn học"])
 include_optional_router(api_faculty, prefix="/api/faculties", tags=["Quản lý Khoa"])

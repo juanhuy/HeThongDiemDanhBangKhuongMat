@@ -95,6 +95,14 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'teaching_schedule' ? 'active' : ''}`} onClick={() => setActiveMenu('teaching_schedule')}>
             <Calendar size={16} /> Xem Lịch dạy
           </div>
+          
+          <div
+            className={`ptit-sidebar-item ${activeMenu === 'lecturer_timetable' ? 'active' : ''}`}
+            onClick={() => setActiveMenu('lecturer_timetable')}
+          >
+            <Calendar size={16} /> Lịch giảng dạy
+          </div>
+
           <div className={`ptit-sidebar-item ${activeMenu === 'manual_checkin' ? 'active' : ''}`} onClick={() => setActiveMenu('manual_checkin')}>
             <Clock size={16} /> Điểm danh nhanh
           </div>
@@ -120,6 +128,15 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
         <div className={`ptit-sidebar-item ${activeMenu === 'course_registration' ? 'active' : ''}`} onClick={() => setActiveMenu('course_registration')}>
           <BookOpen size={16} /> Đăng ký học phần
         </div>
+
+        {/* Trong block menu sinh viên */}
+        <div
+          className={`ptit-sidebar-item ${activeMenu === 'timetable' ? 'active' : ''}`}
+          onClick={() => setActiveMenu('timetable')}
+        >
+          <Calendar size={16} /> Thời khóa biểu
+        </div>
+
         <div className={`ptit-sidebar-item ${activeMenu === 'submit_leave' ? 'active' : ''}`} onClick={() => setActiveMenu('submit_leave')}>
           <Clipboard size={16} /> Xin nghỉ phép
         </div>

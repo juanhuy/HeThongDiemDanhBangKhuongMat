@@ -13,6 +13,7 @@ import {
   CourseInfoCard,
   SubmitLeave,
   FaceBiometrics,
+  StudentTimetable,
 } from './components/student';
 
 import {
@@ -21,6 +22,7 @@ import {
   SummaryReport,
   LeaveRequests,
   LecturerInfoCard,
+  LecturerTimetable,
 } from './components/lecturer';
 
 import {
@@ -282,6 +284,8 @@ function App() {
         return <SubmitLeave user={userForStudent} showToast={showToast} />;
       case 'refresh_biometrics':
         return <FaceBiometrics user={userForStudent} showToast={showToast} />;
+      case 'timetable':
+        return <StudentTimetable user={userForStudent} showToast={showToast} />;
 
       // —— Lecturer ——
       case 'teaching_schedule':
@@ -292,6 +296,8 @@ function App() {
         return <SummaryReport user={user} showToast={showToast} />;
       case 'leave_requests':
         return <LeaveRequests API_BASE={API_BASE} showToast={showToast} />;
+      case 'lecturer_timetable':
+        return <LecturerTimetable user={user} showToast={showToast} />;
 
       // —— Admin ——
       case 'faculties_management':

@@ -9,3 +9,4 @@ export * as attendanceApi from "./attendance";
 export * as subjectsApi from "./subjects";
 export * as facultiesApi from "./faculties";
 export * as majorsApi from "./majors";
+export { timetableApi } from './timetable';
