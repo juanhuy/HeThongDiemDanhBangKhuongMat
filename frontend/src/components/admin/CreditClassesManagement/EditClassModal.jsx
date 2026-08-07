@@ -454,9 +454,9 @@ export default function EditClassModal({
           <div className="flex flex-col gap-5 border-l-0 lg:border-l border-gray-200 lg:pl-8">
             
             <div className={`p-4 rounded-xl border ${editingScheduleIndex !== null ? 'border-orange-300 bg-orange-50' : 'border-transparent'}`}>
-              <h3 className="text-[13px] font-bold text-[#1a73e8] uppercase tracking-wider mb-2 border-b border-gray-200 pb-1.5 flex items-center gap-2">
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>
                 {editingScheduleIndex !== null ? <><Edit2 size={16}/> Đang sửa Buổi {editingScheduleIndex + 1}</> : 'Thêm lịch học'}
-              </h3>
+              </h2>
 
               {/* Thông báo hướng dẫn nghiệp vụ tổ thực hành */}
               <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 p-2.5 rounded-lg mb-3 text-[12px] text-blue-800">

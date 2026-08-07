@@ -5,7 +5,6 @@ export default function SubjectsManagement({ showToast }) {
   const [subjects, setSubjects] = useState([]);
   const [faculties, setFaculties] = useState([]);
   
-  // States cho Lọc & Sắp xếp
   const [search, setSearch] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'updated_at', direction: 'desc' }); // Mặc định sắp xếp ngày cập nhật giảm dần (mới nhất lên đầu)
   const [filters, setFilters] = useState({ faculty_id: '', is_active: '' });
@@ -73,7 +72,6 @@ export default function SubjectsManagement({ showToast }) {
         showToast?.('Thêm môn học thành công');
       }
       setIsOpen(false);
-      // Ưu tiên hiển thị dữ liệu mới/vừa cập nhật lên đầu
       setSortConfig({ key: 'updated_at', direction: 'desc' });
       fetchAll();
     } catch (err) {
@@ -93,20 +91,16 @@ export default function SubjectsManagement({ showToast }) {
       
       const prevCount = subjects.length;
       const response = await subjectsApi.importCsv(formData);
-      
-      // Chờ API tải lại dữ liệu mới nhất
+  
       const subRes = await subjectsApi.listSubjects();
       const newData = subRes.data || subRes || [];
       setSubjects(newData);
       
-      // Giả định API trả về số dòng thành công trong response.data.importedCount
-      // Nếu không, ta tự tính dựa trên sự chênh lệch (Lưu ý: Cách này chỉ đúng nếu data chỉ được thêm, không bị ghi đè)
       const importedCount = response?.data?.importedCount || (newData.length - prevCount);
       const countMsg = importedCount > 0 ? ` (${importedCount} dòng dữ liệu)` : '';
 
       showToast?.(`Import thành công${countMsg}!`);
-      
-      // Ép Sort về ngày cập nhật giảm dần để những môn vừa Import trồi lên đầu
+
       setSortConfig({ key: 'updated_at', direction: 'desc' });
 
     } catch (err) {
@@ -117,8 +111,6 @@ export default function SubjectsManagement({ showToast }) {
       if (fileInputRef.current) fileInputRef.current.value = ''; 
     }
   };
-
-  // --- LOGIC XỬ LÝ LỌC & SẮP XẾP TỔNG HỢP ---
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
@@ -126,13 +118,11 @@ export default function SubjectsManagement({ showToast }) {
   };
 
   const processedData = useMemo(() => {
-    // 1. Lọc theo thanh tìm kiếm tổng quát
     let filtered = subjects.filter(s =>
       (s.subject_id || '').toLowerCase().includes(search.toLowerCase()) ||
       (s.subject_name || '').toLowerCase().includes(search.toLowerCase())
     );
 
-    // 2. Lọc theo các dropdown filters (Khoa, Trạng thái)
     if (filters.faculty_id !== '') {
       filtered = filtered.filter(s => s.faculty_id === filters.faculty_id);
     }
@@ -140,14 +130,12 @@ export default function SubjectsManagement({ showToast }) {
       const isActive = filters.is_active === 'true';
       filtered = filtered.filter(s => s.is_active === isActive);
     }
-
-    // 3. Sắp xếp
     if (sortConfig.key) {
       filtered.sort((a, b) => {
         let valA = a[sortConfig.key] ?? '';
         let valB = b[sortConfig.key] ?? '';
 
-        // Xử lý riêng cho ngày tháng (nếu dữ liệu trả về kiểu ISO chuỗi)
+    
         if (sortConfig.key === 'updated_at' || sortConfig.key === 'created_at') {
            valA = new Date(valA).getTime() || 0;
            valB = new Date(valB).getTime() || 0;
@@ -162,7 +150,6 @@ export default function SubjectsManagement({ showToast }) {
     return filtered;
   }, [subjects, search, filters, sortConfig]);
 
-  // Hàm định dạng ngày
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
     const d = new Date(dateStr);
@@ -176,7 +163,7 @@ export default function SubjectsManagement({ showToast }) {
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
       <div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', gap: 12, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, color: '#106fa6', fontSize: '1.15rem' }}>Quản lý Môn học</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Quản lý Môn học</h2>
         <div style={{ display: 'flex', gap: 10 }}>
           <input
             value={search}
@@ -191,7 +178,7 @@ export default function SubjectsManagement({ showToast }) {
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}
             style={{ 
-              padding: '8px 16px', background: '#f59e0b', color: '#fff', border: 'none', 
+              padding: '8px 16px', background: '#f8fafc', color: '#106fa6', border: 'none', 
               borderRadius: 6, fontWeight: 600, cursor: isImporting ? 'not-allowed' : 'pointer', opacity: isImporting ? 0.7 : 1
             }}
           >

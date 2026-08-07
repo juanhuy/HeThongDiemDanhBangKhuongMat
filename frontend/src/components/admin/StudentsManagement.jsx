@@ -36,6 +36,11 @@ const STATUS_COLORS = {
   'Bảo lưu': '#FFC107',
 };
 
+export const TRAINING_PROGRAM_OPTIONS = [
+    { value: 'DAI_TRA', label: 'Đại trà' },
+    { value: 'NANG_CAO', label: 'Nâng cao' },
+];
+
 export default function StudentsManagement({ showToast }) {
   const [students, setStudents] = useState([]);
   const [faculties, setFaculties] = useState([]);
@@ -680,7 +685,6 @@ export default function StudentsManagement({ showToast }) {
                 ['administrative_class', 'Lớp biên chế', false],
                 ['cohort', 'Niên khóa', false],
                 ['specialization', 'Chuyên ngành', false],
-                ['training_program', 'Chương trình ĐT', false],
                 ['citizen_id', 'CCCD', false],
                 ['gender', 'Giới tính', false],
                 ['ethnicity', 'Dân tộc', false],
@@ -710,6 +714,17 @@ export default function StudentsManagement({ showToast }) {
                 <select value={createForm.faculty_id} onChange={(e) => setCreateForm({ ...createForm, faculty_id: e.target.value })} style={inputStyle}>
                   <option value="">-- Chọn --</option>
                   {faculties.map((f) => <option key={f.faculty_id} value={f.faculty_id}>{f.faculty_name || f.faculty_id}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Chương trình đào tạo</label>
+                <select value={createForm.training_program} onChange={(e) => setCreateForm({ ...createForm, training_program: e.target.value })} style={inputStyle}>
+                  <option value="">-- Chọn --</option>
+                  {TRAINING_PROGRAM_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>

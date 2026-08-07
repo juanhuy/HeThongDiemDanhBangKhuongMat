@@ -63,7 +63,9 @@ const AttendanceLogs = ({ logs }) => {
   return (
     <div style={styles.card}>
       <div style={styles.cardHeader}>
-        <CalendarDays size={16} /> Nhật ký điểm danh lớp học
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>
+          <CalendarDays size={16} /> Nhật ký điểm danh lớp học
+        </h2>
       </div>
       <div style={styles.cardBody}>
         <div style={{ overflowX: "auto", width: "100%" }}>

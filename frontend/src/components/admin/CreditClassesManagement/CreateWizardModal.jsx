@@ -1,14 +1,61 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, X, Save, Copy, LibraryAdd, AutoFixHigh, Group, CalendarMonth, ChevronRight } from 'lucide-react';
-import SearchableSelect from '../common/SearchableSelect';
-import { batchCreateCreditClasses } from '../../../api/creditClasses';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Plus, X, Save, BookPlus, ChevronRight, Sparkles } from 'lucide-react';
+import SearchableSelect from '../../common/SearchableSelect';
+import { batchCreateCreditClasses, listSemesters } from '../../../api/creditClasses';
+import GroupCard from './GroupCard';
+import styles from './Styles';
 
 export default function CreateWizardModal({
-    onClose, onSuccess, semesters, subjects, lecturers,
-    adminClasses, showToast, defaultSemesterId
+    onClose, 
+    onSuccess, 
+    semesters, 
+    subjects, 
+    lecturers,
+    adminClasses, 
+    rooms, 
+    showToast, 
+    defaultSemesterId,
+    // --- Bổ sung props hỗ trợ Chỉnh sửa ---
+    initialData = null,
+    onUpdate = null,
+    isEdit = false
 }) {
+    // Xác định chế độ Sửa hay Tạo
+    const isEditMode = isEdit || Boolean(initialData);
+
+    const [localSemesters, setLocalSemesters] = useState(semesters || []);
+
+    const resolvedSemesters = useMemo(() => {
+        if (Array.isArray(localSemesters) && localSemesters.length > 0) {
+            return localSemesters.map((sem) => ({
+                value: sem.value ?? sem.semester_id ?? sem.id ?? "",
+                label: sem.label || sem.semester_id || `${sem.semester ? `Học kỳ ${sem.semester}` : ""}${sem.academic_year ? ` (${sem.academic_year})` : ""}`.trim() || 'Học kỳ'
+            })).filter((item) => item.value);
+        }
+
+        return [];
+    }, [localSemesters]);
+
+    const resolvedRooms = useMemo(() => {
+        if (Array.isArray(rooms) && rooms.length > 0) {
+            return rooms.map((room) => ({
+                value: room.room_id || room.id || room.value || room.room_name || "",
+                label: room.room_name || room.room_id || room.name || room.label || "Phòng học",
+                subtitle: [room.building, room.room_type].filter(Boolean).join(" • ")
+            })).filter((item) => item.value);
+        }
+
+        return [
+            { value: "A101", label: "A101", subtitle: "Phòng lý thuyết" },
+            { value: "A102", label: "A102", subtitle: "Phòng lý thuyết" },
+            { value: "P.301", label: "P.301", subtitle: "Phòng thực hành" },
+            { value: "LAB-1", label: "LAB-1", subtitle: "Phòng lab" },
+        ];
+    }, [rooms]);
+
+    // Khởi tạo State wizardData
     const [wizardData, setWizardData] = useState({
-        semester_id: defaultSemesterId || (semesters?.[0]?.value || ""),
+        semester_id: "",
         subject_id: "",
         allow_registration: true,
         is_advanced: false,
@@ -30,8 +77,80 @@ export default function CreateWizardModal({
     });
 
     const [selectedSubject, setSelectedSubject] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [loadingSemesters, setLoadingSemesters] = useState(false);
 
     const formatGroupNumber = (num) => String(num || 1).padStart(2, '0');
+
+    // Nạp dữ liệu cũ vào state khi ở chế độ EDIT
+    useEffect(() => {
+        if (initialData) {
+            setWizardData({
+                semester_id: initialData.semester_id || defaultSemesterId || "",
+                subject_id: initialData.subject_id || "",
+                allow_registration: initialData.allow_registration ?? true,
+                is_advanced: initialData.is_advanced ?? false,
+                note: initialData.note || "",
+                groups: Array.isArray(initialData.groups) && initialData.groups.length > 0
+                    ? initialData.groups.map((g, idx) => ({
+                        id: g.id || Date.now() + idx,
+                        group_number: g.group_number || g.class_group || idx + 1,
+                        lecturer_id: g.lecturer_id || "",
+                        max_students: g.max_students || 60,
+                        target_classes: g.target_classes || [],
+                        schedule_day: g.schedule_day || "Thứ 2",
+                        schedule_room: g.schedule_room || "",
+                        start_date: g.start_date || "2024-08-15",
+                        end_date: g.end_date || "2024-12-30",
+                        sub_groups: Array.isArray(g.sub_groups) ? g.sub_groups.map((sg, sgIdx) => ({
+                            id: sg.id || Date.now() + sgIdx + 100,
+                            sub_group_number: sg.sub_group_number || sgIdx + 1,
+                            lecturer_id: sg.lecturer_id || g.lecturer_id || "",
+                            max_students: sg.max_students || 30,
+                            schedule_day: sg.schedule_day || "",
+                            schedule_room: sg.schedule_room || "",
+                            start_date: sg.start_date || g.start_date || "2024-08-15",
+                            end_date: sg.end_date || g.end_date || "2024-12-30"
+                        })) : []
+                    }))
+                    : []
+            });
+        }
+    }, [initialData, defaultSemesterId]);
+
+    // Tự động tìm thông tin Subject chi tiết dựa trên subject_id
+    useEffect(() => {
+        if (wizardData.subject_id && Array.isArray(subjects)) {
+            const sub = subjects.find(s => s.value === wizardData.subject_id || s.id === wizardData.subject_id);
+            if (sub) {
+                setSelectedSubject(sub);
+            }
+        }
+    }, [wizardData.subject_id, subjects]);
+
+    useEffect(() => {
+        if (!wizardData.semester_id && defaultSemesterId && !isEditMode) {
+            setWizardData((prev) => ({ ...prev, semester_id: defaultSemesterId }));
+        }
+    }, [defaultSemesterId, isEditMode]);
+
+    useEffect(() => {
+        if ((!Array.isArray(semesters) || semesters.length === 0) && !loadingSemesters) {
+            setLoadingSemesters(true);
+            listSemesters()
+                .then((res) => {
+                    const data = Array.isArray(res) ? res : res?.data || [];
+                    setLocalSemesters(data);
+                    if (!wizardData.semester_id && data[0]?.semester_id && !isEditMode) {
+                        setWizardData((prev) => ({ ...prev, semester_id: data[0].semester_id }));
+                    }
+                })
+                .catch((err) => {
+                    console.error('Lỗi tải học kỳ từ BE:', err);
+                })
+                .finally(() => setLoadingSemesters(false));
+        }
+    }, [semesters, loadingSemesters, wizardData.semester_id, isEditMode]);
 
     const generateEmptyGroup = (index = 0) => ({
         id: Date.now() + Math.random(),
@@ -57,7 +176,7 @@ export default function CreateWizardModal({
         end_date: parentGroup.end_date
     });
 
-    // --- Các hàm thao tác state nội bộ ---
+    // --- Các hàm thao tác state ---
     const addGroup = () => setWizardData(p => ({ 
         ...p, 
         groups: [...p.groups, generateEmptyGroup(p.groups.length)] 
@@ -133,54 +252,142 @@ export default function CreateWizardModal({
         showToast?.("Đã tự động chia tổ thực hành thành công!", "success");
     };
 
+    const buildBatchPayload = (data) => ({
+        ...(isEditMode && initialData?.id ? { id: initialData.id } : {}),
+        subject_id: data.subject_id,
+        semester_id: data.semester_id,
+        lecturer_id: data.groups?.[0]?.lecturer_id || data.lecturer_id || null,
+        allow_registration: data.allow_registration,
+        is_advanced: data.is_advanced,
+        note: data.note,
+        groups: Array.isArray(data.groups)
+            ? data.groups.map((group) => ({
+                class_group: formatGroupNumber(group.group_number || group.class_group || 1),
+                class_type: "Theory",
+                max_students: Number(group.max_students || 0),
+                target_classes: Array.isArray(group.target_classes) ? group.target_classes : [],
+                sub_groups: Array.isArray(group.sub_groups)
+                    ? group.sub_groups.map((sub) => ({
+                        class_group: `Tổ ${sub.sub_group_number || sub.class_group || "1"}`,
+                        max_students: Number(sub.max_students || 0),
+                        class_type: sub.class_type || "Practice"
+                    }))
+                    : []
+            }))
+            : []
+    });
+
     const handleSubmit = async () => {
+        if (!wizardData.subject_id) {
+            return showToast?.('Vui lòng chọn môn học trước khi lưu.', 'error');
+        }
+        if (!wizardData.semester_id) {
+            return showToast?.('Vui lòng chọn học kỳ trước khi lưu.', 'error');
+        }
+        if (!resolvedSemesters?.find((sem) => sem.value === wizardData.semester_id)) {
+            return showToast?.('Học kỳ không hợp lệ. Vui lòng chọn lại.', 'error');
+        }
+        if (!Array.isArray(wizardData.groups) || wizardData.groups.length === 0) {
+            return showToast?.('Vui lòng tạo ít nhất một nhóm lớp.', 'error');
+        }
+
+        for (const group of wizardData.groups) {
+            if (!group.max_students || Number(group.max_students) <= 0) {
+                return showToast?.(`Nhóm ${group.group_number || ''} cần nhập sĩ số tối đa lớn hơn 0.`, 'error');
+            }
+            for (const sub of group.sub_groups || []) {
+                if (!sub.max_students || Number(sub.max_students) <= 0) {
+                    return showToast?.(`Tổ ${sub.sub_group_number || ''} cần nhập sĩ số tối đa lớn hơn 0.`, 'error');
+                }
+            }
+        }
+
+        setIsSubmitting(true);
         try {
-            await batchCreateCreditClasses(wizardData);
-            showToast?.("Tạo lớp tín chỉ thành công!", "success");
-            onSuccess?.();
+            const payload = buildBatchPayload(wizardData);
+
+            if (isEditMode) {
+                if (typeof onUpdate === 'function') {
+                    await onUpdate(payload);
+                } else {
+                    await onSuccess?.(payload);
+                }
+                showToast?.("Cập nhật lớp tín chỉ thành công!", "success");
+            } else {
+                await batchCreateCreditClasses(payload);
+                showToast?.("Tạo lớp tín chỉ thành công!", "success");
+                onSuccess?.();
+            }
             onClose?.();
         } catch (error) {
-            showToast?.(error.message || "Có lỗi xảy ra khi tạo lớp.", "error");
+            showToast?.(error?.message || `Có lỗi xảy ra khi ${isEditMode ? 'cập nhật' : 'tạo'} lớp.`, "error");
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm overflow-y-auto p-4">
-            <div className="bg-surface w-full max-w-6xl rounded-2xl shadow-2xl border border-outline-variant flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)', padding: '16px'
+        }}>
+            <div style={{
+                ...styles.card,
+                width: '100%', maxWidth: '1200px', maxHeight: 'calc(100vh - 32px)',
+                display: 'flex', flexDirection: 'column', borderRadius: 16,
+                overflow: 'visible'
+            }}>
                 
                 {/* Modal Header */}
-                <div className="flex justify-between items-center px-6 py-4 bg-primary text-on-primary">
-                    <div>
-                        <div className="flex items-center gap-2 text-on-primary/80 text-xs uppercase tracking-wider mb-1">
-                            <span>Quản lý đào tạo</span>
-                            <ChevronRight size={14} />
-                            <span>Lớp tín chỉ</span>
+                <div style={{ ...styles.header, background: '#106fa6', color: '#fff', borderBottom: 'none' }}>
+                    <div style={styles.titleWrapper}>
+                        <ChevronRight style={{ ...styles.titleIcon, color: '#fff' }} />
+                        <div>
+                            <h2 style={{ ...styles.title, color: '#fff' }}>
+                                {isEditMode ? "Chỉnh sửa lớp tín chỉ" : "Tạo lớp tín chỉ mới"}
+                            </h2>
+                            <p style={{ ...styles.description, color: 'rgba(255, 255, 255, 0.8)' }}>
+                                {isEditMode ? "Quản lý đào tạo • Cập nhật thông tin lớp" : "Quản lý đào tạo • Khóa học mới"}
+                            </p>
                         </div>
-                        <h2 className="text-xl font-bold font-manrope">Tạo lớp tín chỉ mới</h2>
                     </div>
                     <button 
                         onClick={onClose}
-                        className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-on-primary/10 transition-colors"
+                        style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: 4 }}
                     >
-                        <X size={20} />
+                        <X size={22} />
                     </button>
                 </div>
 
                 {/* Modal Body */}
-                <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 xl:grid-cols-12 gap-6 bg-background">
+                <div style={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: 'auto',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(12, 1fr)',
+                    gap: 16,
+                    padding: 20
+                }}>
                     
-                    {/* Left Column: Core Setup */}
-                    <div className="xl:col-span-8 flex flex-col gap-6">
+                    {/* Left Column */}
+                    <div style={{ gridColumn: 'span 8', display: 'flex', flexDirection: 'column', gap: 16 }}>
                         
                         {/* Section 1: Thông tin môn học */}
-                        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm">
-                            <h3 className="text-base font-bold text-on-surface mb-4 flex items-center gap-2 font-manrope">
-                                <span className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">1</span>
+                        <div style={{ ...styles.card, padding: 20, overflow: 'visible' }}>
+                            <h3 style={{ ...styles.title, fontSize: '1rem', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{
+                                    width: 28, height: 28, borderRadius: '50%', background: '#f0f9ff',
+                                    color: '#106fa6', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13
+                                }}>1</span>
                                 Thông tin môn học
                             </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="flex flex-col gap-1.5">
-                                    <label className="text-xs text-on-surface-variant font-medium">Chọn môn học</label>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div>
+                                    <label style={{ ...styles.description, display: 'block', marginBottom: 6, fontSize: '0.75rem', fontWeight: 600 }}>
+                                        Chọn môn học
+                                    </label>
                                     <SearchableSelect 
                                         options={subjects}
                                         value={wizardData.subject_id}
@@ -192,328 +399,180 @@ export default function CreateWizardModal({
                                         placeholder="Nhập mã hoặc tên môn học..."
                                     />
                                 </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <label className="text-xs text-on-surface-variant font-medium">Học kỳ / Năm học</label>
+                                <div>
+                                    <label style={{ ...styles.description, display: 'block', marginBottom: 6, fontSize: '0.75rem', fontWeight: 600 }}>
+                                        Học kỳ / Năm học
+                                    </label>
                                     <select 
                                         value={wizardData.semester_id}
                                         onChange={(e) => setWizardData(p => ({ ...p, semester_id: e.target.value }))}
-                                        className="w-full h-11 px-3 border border-outline-variant rounded-lg focus:border-primary focus:ring-1 focus:ring-primary outline-none text-sm bg-surface"
+                                        disabled={!resolvedSemesters.length}
+                                        style={{
+                                            width: '100%', height: 42, padding: '0 12px',
+                                            border: '1px solid #d0e0eb', borderRadius: 8, background: '#fff',
+                                            color: '#1e293b', fontSize: '0.875rem', outline: 'none',
+                                            opacity: resolvedSemesters.length ? 1 : 0.6,
+                                            cursor: resolvedSemesters.length ? 'pointer' : 'not-allowed'
+                                        }}
                                     >
-                                        {semesters?.map(sem => (
+                                        <option value="" disabled>
+                                            {resolvedSemesters.length ? 'Chọn học kỳ' : 'Chưa có học kỳ khả dụng'}
+                                        </option>
+                                        {resolvedSemesters.map(sem => (
                                             <option key={sem.value} value={sem.value}>{sem.label}</option>
                                         ))}
                                     </select>
+                                    {!resolvedSemesters.length && (
+                                        <div style={{ marginTop: 8, color: '#b91c1c', fontSize: '0.75rem' }}>
+                                            Hiện chưa có học kỳ thực tế từ backend. Vui lòng kiểm tra dữ liệu học kỳ.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
                             {selectedSubject && (
-                                <div className="mt-4 p-3 bg-surface-container-low rounded-lg border border-outline-variant flex justify-between items-center">
+                                <div style={{
+                                    marginTop: 12, padding: 12, background: '#f8fafc',
+                                    border: '1px solid #d0e0eb', borderRadius: 8,
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                }}>
                                     <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-bold text-on-surface text-sm">{selectedSubject.label}</span>
-                                            <span className="px-2 py-0.5 bg-secondary-container text-on-secondary-container rounded text-[10px] font-bold">{selectedSubject.code}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.875rem' }}>{selectedSubject.label}</span>
+                                            <span style={{ padding: '2px 6px', background: '#e0f2fe', color: '#106fa6', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700 }}>
+                                                {selectedSubject.code}
+                                            </span>
                                         </div>
-                                        <div className="text-xs text-on-surface-variant mt-1">
-                                            Số tín chỉ: {selectedSubject.credits || 3} • {selectedSubject.department || 'Khoa Công nghệ thông tin'}
-                                        </div>
+                                        <p style={{ ...styles.description, fontSize: '0.75rem', marginTop: 4 }}>
+                                            Số tín chỉ: {selectedSubject.credits || 3} &bull; {selectedSubject.department || 'Khoa Công nghệ thông tin'}
+                                        </p>
                                     </div>
                                     <button 
                                         onClick={() => { setSelectedSubject(null); setWizardData(p => ({ ...p, subject_id: "" })); }}
-                                        className="text-error hover:bg-error/10 p-1.5 rounded-full transition-colors"
+                                        style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer' }}
                                     >
-                                        <X size={16} />
+                                        <X size={18} />
                                     </button>
                                 </div>
                             )}
                         </div>
 
-                        {/* Section 2: Cấu trúc lớp tín chỉ */}
-                        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-base font-bold text-on-surface flex items-center gap-2 font-manrope">
-                                    <span className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>
+                        {/* Section 2: Danh sách Lớp tín chỉ (GroupCards) */}
+                        <div style={{ ...styles.card, padding: 20 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                <h3 style={{ ...styles.title, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{
+                                        width: 28, height: 28, borderRadius: '50%', background: '#f0f9ff',
+                                        color: '#106fa6', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13
+                                    }}>2</span>
                                     Cấu trúc lớp tín chỉ
                                 </h3>
-                                <button 
-                                    onClick={addGroup}
-                                    className="text-primary text-xs font-bold flex items-center gap-1 hover:bg-primary/5 px-3 py-2 rounded-lg transition-colors border border-primary/20"
-                                >
-                                    <Plus size={14} /> Thêm lớp
+                                <button onClick={addGroup} style={{ ...styles.secondaryButton, height: 36, borderColor: '#106fa6', color: '#106fa6' }}>
+                                    <Plus size={16} /> Thêm lớp
                                 </button>
                             </div>
 
-                            {/* List of Groups */}
-                            <div className="space-y-4">
-                                {wizardData.groups.map((group, gIdx) => (
-                                    <div key={group.id} className="border border-outline-variant rounded-xl overflow-hidden shadow-sm bg-surface">
-                                        
-                                        {/* Group Header */}
-                                        <div className="bg-surface-container-low px-4 py-3 flex justify-between items-center border-b border-outline-variant">
-                                            <div className="flex items-center gap-3">
-                                                <span className="font-bold text-on-surface text-sm">Lớp {formatGroupNumber(group.group_number)}</span>
-                                                <span className="px-2 py-1 bg-surface rounded border border-outline-variant text-xs flex items-center gap-1.5">
-                                                    <Group size={14} className="text-primary" /> Sĩ số max: 
-                                                    <input 
-                                                        type="number" 
-                                                        value={group.max_students}
-                                                        onChange={(e) => updateGroup(group.id, 'max_students', Number(e.target.value))}
-                                                        className="w-12 h-6 p-1 border border-outline-variant rounded text-center text-xs font-bold" 
-                                                    />
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <button onClick={() => duplicateGroup(group)} className="text-on-surface-variant hover:text-primary p-1.5 rounded transition-colors" title="Nhân bản lớp">
-                                                    <Copy size={16} />
-                                                </button>
-                                                {wizardData.groups.length > 1 && (
-                                                    <button onClick={() => removeGroup(group.id)} className="text-error hover:bg-error/10 p-1.5 rounded transition-colors" title="Xóa lớp">
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Group Body */}
-                                        <div className="p-4 space-y-4">
-                                            
-                                            {/* Theory Group Setup */}
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <span className="w-2 h-2 rounded-full bg-primary"></span>
-                                                    <span className="text-xs font-bold text-on-surface uppercase tracking-wide">Nhóm lý thuyết (Bắt buộc)</span>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pl-4">
-                                                    <div className="md:col-span-4 flex flex-col gap-1">
-                                                        <label className="text-[11px] text-on-surface-variant font-medium">Giảng viên</label>
-                                                        <select 
-                                                            value={group.lecturer_id}
-                                                            onChange={(e) => updateGroup(group.id, 'lecturer_id', e.target.value)}
-                                                            className="w-full h-9 px-2 border border-outline-variant rounded text-xs bg-surface"
-                                                        >
-                                                            <option value="">-- Chọn giảng viên --</option>
-                                                            {lecturers?.map(l => (
-                                                                <option key={l.value} value={l.value}>{l.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                    <div className="md:col-span-4 flex flex-col gap-1">
-                                                        <label className="text-[11px] text-on-surface-variant font-medium">Lớp biên chế mục tiêu</label>
-                                                        <select 
-                                                            className="w-full h-9 px-2 border border-outline-variant rounded text-xs bg-surface"
-                                                        >
-                                                            <option value="">Tất cả / Tự do</option>
-                                                            {adminClasses?.map(ac => (
-                                                                <option key={ac.value} value={ac.value}>{ac.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                    <div className="md:col-span-4 flex flex-col gap-1">
-                                                        <label className="text-[11px] text-on-surface-variant font-medium">Lịch học & Phòng</label>
-                                                        <div className="grid grid-cols-2 gap-1">
-                                                            <select 
-                                                                value={group.schedule_day}
-                                                                onChange={(e) => updateGroup(group.id, 'schedule_day', e.target.value)}
-                                                                className="h-9 px-1 border border-outline-variant rounded text-xs bg-surface"
-                                                            >
-                                                                {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map(d => (
-                                                                    <option key={d} value={d}>{d}</option>
-                                                                ))}
-                                                            </select>
-                                                            <input 
-                                                                type="text" 
-                                                                value={group.schedule_room}
-                                                                onChange={(e) => updateGroup(group.id, 'schedule_room', e.target.value)}
-                                                                placeholder="Phòng" 
-                                                                className="h-9 px-2 border border-outline-variant rounded text-xs bg-surface" 
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div className="md:col-span-6 flex flex-col gap-1">
-                                                        <label className="text-[11px] text-on-surface-variant font-medium">Ngày bắt đầu</label>
-                                                        <input 
-                                                            type="date" 
-                                                            value={group.start_date}
-                                                            onChange={(e) => updateGroup(group.id, 'start_date', e.target.value)}
-                                                            className="w-full h-9 px-2 border border-outline-variant rounded text-xs bg-surface" 
-                                                        />
-                                                    </div>
-                                                    <div className="md:col-span-6 flex flex-col gap-1">
-                                                        <label className="text-[11px] text-on-surface-variant font-medium">Ngày kết thúc</label>
-                                                        <input 
-                                                            type="date" 
-                                                            value={group.end_date}
-                                                            onChange={(e) => updateGroup(group.id, 'end_date', e.target.value)}
-                                                            className="w-full h-9 px-2 border border-outline-variant rounded text-xs bg-surface" 
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Practice Sub-Groups Setup */}
-                                            <div className="border-t border-outline-variant/60 pt-4">
-                                                <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-secondary"></span>
-                                                        <span className="text-xs font-bold text-on-surface uppercase tracking-wide">Tổ thực hành / Bài tập</span>
-                                                        <span className="text-xs text-primary font-medium italic ml-2">
-                                                            ({group.max_students} SV / 30 SV max = {Math.ceil(group.max_students / 30)} tổ)
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <button 
-                                                            onClick={() => handleAutoSplitSubGroups(group.id)}
-                                                            className="h-8 px-3 bg-primary/10 text-primary text-xs font-bold rounded-lg flex items-center gap-1 hover:bg-primary/20 transition-colors"
-                                                        >
-                                                            <AutoFixHigh size={14} /> Tự động chia tổ
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => addSubGroup(group.id)}
-                                                            className="text-primary text-xs font-bold hover:underline px-2"
-                                                        >
-                                                            + Thêm tổ TH
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-2 pl-4">
-                                                    {group.sub_groups.map((sg, sgIdx) => (
-                                                        <div key={sg.id} className="flex flex-wrap md:flex-nowrap gap-2 items-center bg-surface-container-low p-2.5 rounded-lg border border-outline-variant/50">
-                                                            <div className="w-20 flex flex-col">
-                                                                <span className="text-xs font-bold text-on-surface">Tổ {sg.sub_group_number}</span>
-                                                                <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded w-fit mt-0.5 font-medium">Sĩ số: {sg.max_students}</span>
-                                                            </div>
-                                                            <div className="flex-1 min-w-[140px]">
-                                                                <label className="text-[9px] text-on-surface-variant uppercase mb-0.5 block font-bold">Giảng viên TH</label>
-                                                                <select 
-                                                                    value={sg.lecturer_id}
-                                                                    onChange={(e) => updateSubGroup(group.id, sg.id, 'lecturer_id', e.target.value)}
-                                                                    className="w-full h-8 px-2 border border-outline-variant rounded text-xs bg-surface"
-                                                                >
-                                                                    <option value="">-- Chọn giảng viên --</option>
-                                                                    {lecturers?.map(l => (
-                                                                        <option key={l.value} value={l.value}>{l.label}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                            <div className="flex-1 min-w-[140px] grid grid-cols-2 gap-1">
-                                                                <div>
-                                                                    <label className="text-[9px] text-on-surface-variant uppercase mb-0.5 block font-bold">Thứ</label>
-                                                                    <select 
-                                                                        value={sg.schedule_day}
-                                                                        onChange={(e) => updateSubGroup(group.id, sg.id, 'schedule_day', e.target.value)}
-                                                                        className="w-full h-8 px-1 border border-outline-variant rounded text-xs bg-surface"
-                                                                    >
-                                                                        {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map(d => (
-                                                                            <option key={d} value={d}>{d}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                                <div>
-                                                                    <label className="text-[9px] text-on-surface-variant uppercase mb-0.5 block font-bold">Phòng</label>
-                                                                    <input 
-                                                                        type="text" 
-                                                                        value={sg.schedule_room}
-                                                                        onChange={(e) => updateSubGroup(group.id, sg.id, 'schedule_room', e.target.value)}
-                                                                        placeholder="Phòng TH" 
-                                                                        className="w-full h-8 px-2 border border-outline-variant rounded text-xs bg-surface" 
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                            <button 
-                                                                onClick={() => removeSubGroup(group.id, sg.id)}
-                                                                className="text-error/70 hover:text-error p-1.5 rounded transition-colors mt-4 md:mt-0"
-                                                            >
-                                                                <X size={16} />
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                    {group.sub_groups.length === 0 && (
-                                                        <div className="text-center py-2 text-xs text-on-surface-variant italic">
-                                                            Chưa có tổ thực hành nào. Nhấn "Thêm tổ TH" hoặc "Tự động chia tổ".
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                        </div>
-                                    </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                {wizardData.groups.map((group) => (
+                                    <GroupCard
+                                        key={group.id}
+                                        group={group}
+                                        lecturers={lecturers}
+                                        adminClasses={adminClasses}
+                                        canRemoveGroup={wizardData.groups.length > 1}
+                                        formatGroupNumber={formatGroupNumber}
+                                        onUpdateGroup={(field, value) => updateGroup(group.id, field, value)}
+                                        onDuplicateGroup={() => duplicateGroup(group)}
+                                        onRemoveGroup={() => removeGroup(group.id)}
+                                        onAddSubGroup={() => addSubGroup(group.id)}
+                                        onRemoveSubGroup={(subId) => removeSubGroup(group.id, subId)}
+                                        onUpdateSubGroup={(subId, field, value) => updateSubGroup(group.id, subId, field, value)}
+                                        onAutoSplitSubGroups={() => handleAutoSplitSubGroups(group.id)}
+                                        rooms={resolvedRooms}
+                                    />
                                 ))}
                             </div>
 
-                            <div className="flex justify-center mt-4">
-                                <button 
-                                    onClick={addGroup}
-                                    className="px-4 py-2 border border-dashed border-outline-variant rounded-xl text-on-surface-variant hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors text-xs font-bold flex items-center gap-2"
-                                >
-                                    <LibraryAdd size={16} /> Tạo nhanh nhiều lớp
-                                </button>
-                            </div>
+                            <button 
+                                onClick={addGroup}
+                                style={{
+                                    ...styles.secondaryButton,
+                                    width: '100%', marginTop: 16, borderStyle: 'dashed',
+                                    borderColor: '#d0e0eb', color: '#64748b'
+                                }}
+                            >
+                                <BookPlus size={16} /> Tạo nhanh nhiều lớp
+                            </button>
                         </div>
 
                     </div>
 
-                    {/* Right Column: Settings & Bulk Actions */}
-                    <div className="xl:col-span-4 flex flex-col gap-6">
+                    {/* Right Column: Cài đặt & Thao tác hàng loạt */}
+                    <div style={{ gridColumn: 'span 4', display: 'flex', flexDirection: 'column', gap: 16 }}>
                         
-                        {/* General Settings */}
-                        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm">
-                            <h3 className="text-base font-bold text-on-surface mb-4 font-manrope">Cài đặt chung</h3>
-                            <div className="space-y-4">
-                                <label className="flex items-start gap-3 cursor-pointer">
+                        <div style={{ ...styles.card, padding: 20 }}>
+                            <h3 style={{ ...styles.title, fontSize: '1rem', marginBottom: 16 }}>Cài đặt chung</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <label style={{ display: 'flex', gap: 10, cursor: 'pointer' }}>
                                     <input 
                                         type="checkbox" 
                                         checked={wizardData.allow_registration}
                                         onChange={(e) => setWizardData(p => ({ ...p, allow_registration: e.target.checked }))}
-                                        className="mt-1 w-4 h-4 text-primary rounded border-outline-variant focus:ring-primary" 
+                                        style={{ marginTop: 3 }}
                                     />
                                     <div>
-                                        <span className="text-sm font-bold text-on-surface block">Cho phép sinh viên đăng ký</span>
-                                        <span className="text-xs text-on-surface-variant">Lớp sẽ hiển thị trong đợt đăng ký tín chỉ sắp tới.</span>
+                                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b', display: 'block' }}>Cho phép sinh viên đăng ký</span>
+                                        <span style={{ ...styles.description, fontSize: '0.75rem' }}>Hiển thị trong đợt đăng ký tín chỉ</span>
                                     </div>
                                 </label>
 
-                                <label className="flex items-start gap-3 cursor-pointer">
+                                <label style={{ display: 'flex', gap: 10, cursor: 'pointer' }}>
                                     <input 
                                         type="checkbox" 
                                         checked={wizardData.is_advanced}
                                         onChange={(e) => setWizardData(p => ({ ...p, is_advanced: e.target.checked }))}
-                                        className="mt-1 w-4 h-4 text-primary rounded border-outline-variant focus:ring-primary" 
+                                        style={{ marginTop: 3 }}
                                     />
                                     <div>
-                                        <span className="text-sm font-bold text-on-surface block">Lớp đặc thù / Tiên tiến</span>
-                                        <span className="text-xs text-on-surface-variant">Yêu cầu điều kiện đặc biệt để đăng ký.</span>
+                                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b', display: 'block' }}>Lớp đặc thù / Tiên tiến</span>
+                                        <span style={{ ...styles.description, fontSize: '0.75rem' }}>Yêu cầu điều kiện xét tuyển</span>
                                     </div>
                                 </label>
 
-                                <div className="flex flex-col gap-1.5 pt-2">
-                                    <label className="text-xs text-on-surface-variant font-medium">Ghi chú (Hiển thị cho SV)</label>
+                                <div style={{ marginTop: 8 }}>
+                                    <label style={{ ...styles.description, fontSize: '0.75rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                                        Ghi chú (Hiển thị cho SV)
+                                    </label>
                                     <textarea 
                                         rows={3}
                                         value={wizardData.note}
                                         onChange={(e) => setWizardData(p => ({ ...p, note: e.target.value }))}
-                                        placeholder="Ví dụ: Lớp học bằng tiếng Anh, học tại cơ sở Quận 9..."
-                                        className="w-full p-3 border border-outline-variant rounded-lg focus:border-primary focus:ring-1 focus:ring-primary outline-none text-xs bg-surface resize-none"
+                                        placeholder="Ghi chú thêm..."
+                                        style={{
+                                            width: '100%', padding: 10, border: '1px solid #d0e0eb',
+                                            borderRadius: 8, fontSize: '0.875rem', outline: 'none', resize: 'none',
+                                            boxSizing: 'border-box'
+                                        }}
                                     />
                                 </div>
                             </div>
                         </div>
 
-                        {/* Bulk Actions */}
-                        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm">
-                            <h3 className="text-base font-bold text-on-surface mb-3 flex items-center gap-2 font-manrope text-primary">
-                                <AutoFixHigh size={18} /> Thao tác hàng loạt
+                        <div style={{ ...styles.card, padding: 20 }}>
+                            <h3 style={{ ...styles.title, fontSize: '1rem', color: '#106fa6', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Sparkles size={18} /> Thao tác hàng loạt
                             </h3>
-                            <p className="text-xs text-on-surface-variant mb-4">Áp dụng cấu hình cho tất cả các lớp tín chỉ đang tạo.</p>
-                            <div className="space-y-3">
+                            <p style={{ ...styles.description, fontSize: '0.75rem', marginBottom: 16 }}>Áp dụng cấu hình cho tất cả lớp đang tạo.</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 <button 
                                     onClick={() => showToast?.("Đã tự động phân phòng học tối ưu.", "success")}
-                                    className="w-full h-10 border border-outline-variant rounded-lg text-xs font-bold text-on-surface hover:bg-surface-container-high transition-colors"
+                                    style={{ ...styles.secondaryButton, width: '100%', height: 38, fontSize: '0.75rem' }}
                                 >
                                     Hệ thống tự phân phòng học
                                 </button>
                                 <button 
                                     onClick={() => showToast?.("Đã đồng bộ sĩ số các tổ thực hành.", "success")}
-                                    className="w-full h-10 border border-outline-variant rounded-lg text-xs font-bold text-on-surface hover:bg-surface-container-high transition-colors"
+                                    style={{ ...styles.secondaryButton, width: '100%', height: 38, fontSize: '0.75rem' }}
                                 >
                                     Đồng bộ sĩ số các tổ TH
                                 </button>
@@ -525,18 +584,31 @@ export default function CreateWizardModal({
                 </div>
 
                 {/* Modal Footer */}
-                <div className="flex justify-end gap-3 px-6 py-4 bg-surface-container-low border-t border-outline-variant">
-                    <button 
-                        onClick={onClose}
-                        className="h-10 px-5 border border-primary text-primary text-sm font-bold rounded-lg hover:bg-primary/5 transition-colors"
-                    >
+                <div style={{
+                    ...styles.header,
+                    justifyContent: 'flex-end',
+                    background: '#f8fafc',
+                    borderTop: '1px solid #d0e0eb',
+                    gap: 12,
+                    flexWrap: 'wrap'
+                }}>
+                    <button onClick={onClose} style={styles.secondaryButton}>
                         Hủy
                     </button>
-                    <button 
+                    <button
                         onClick={handleSubmit}
-                        className="h-10 px-6 bg-primary text-on-primary text-sm font-bold rounded-lg hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2"
+                        disabled={isSubmitting}
+                        style={{
+                            ...styles.primaryButton,
+                            opacity: isSubmitting ? 0.7 : 1,
+                            cursor: isSubmitting ? 'not-allowed' : 'pointer'
+                        }}
                     >
-                        <Save size={16} /> Lưu thay đổi
+                        <Save size={16} /> 
+                        {isSubmitting 
+                            ? (isEditMode ? 'Đang cập nhật...' : 'Đang tạo...') 
+                            : (isEditMode ? 'Cập nhật' : 'Tạo lớp')
+                        }
                     </button>
                 </div>
 

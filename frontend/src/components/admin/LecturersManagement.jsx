@@ -11,7 +11,7 @@ const styles = {
   badge: { padding: "4px 8px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "600" }
 };
 
-const LecturersManagement = ({ facultiesList, showToast }) => {
+const LecturersManagement = ({ facultiesList, showToast, API_BASE }) => {
   const [allLecturersList, setAllLecturersList] = useState([]);
   const [fetchedFaculties, setFetchedFaculties] = useState([]);
   const [lecturerSearch, setLecturerSearch] = useState('');
@@ -51,7 +51,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
     
     try {
       showToast('Đang import dữ liệu...', 'info');
-      const res = await fetch('http://localhost:8000/api/admin/lecturers/import', {
+      const res = await fetch(`${API_BASE}/api/admin/lecturers/import`, {
         method: 'POST',
         body: formData,
       });
@@ -90,7 +90,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
   const fetchFaculties = async () => {
     if (facultiesList && facultiesList.length > 0) return;
     try {
-      const res = await fetch('http://localhost:8000/api/faculties/');
+      const res = await fetch(`${API_BASE}/api/faculties/`);
       if (res.ok) {
         const data = await res.json();
         setFetchedFaculties(Array.isArray(data) ? data : data.items || []);
@@ -104,7 +104,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
 
   const fetchAllLecturers = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/admin/lecturers/');
+      const response = await fetch(`${API_BASE}/api/admin/lecturers/`);
       if (response.ok) {
         const result = await response.json();
         const data = result.items ? result.items : result;
@@ -181,7 +181,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
     e.preventDefault();
     try {
       if (editingLecturerId) {
-        const response = await fetch(`http://localhost:8000/api/admin/lecturers/${editingLecturerId}`, {
+        const response = await fetch(`${API_BASE}/api/admin/lecturers/${editingLecturerId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(lecturerForm)
@@ -202,7 +202,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
         }
         showToast('Đã cập nhật giảng viên!');
       } else {
-        const response = await fetch('http://localhost:8000/api/admin/lecturers/', {
+        const response = await fetch(`${API_BASE}/api/admin/lecturers/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(lecturerForm)
@@ -234,7 +234,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
   const handleDeleteLecturer = async (id) => {
     if (!window.confirm(`Bạn có chắc muốn xóa giảng viên ${id}?`)) return;
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/lecturers/${id}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE}/api/admin/lecturers/${id}`, { method: 'DELETE' });
       if (!response.ok) {
          const err = await response.json();
          let errMsg = 'Lỗi khi xóa';
@@ -267,8 +267,8 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <Users size={24} color="#7c3aed" />
-          <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Giảng viên</h2>
+          <Users size={24} color="#106fa6" />
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Quản lý Giảng viên</h2>
         </div>
         <div style={{ display: "flex", gap: "10px" }}>
           <input 
@@ -281,7 +281,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
           <button style={{ ...styles.btn, background: "#10b981", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => fileInputRef.current?.click()}>
             <Upload size={16} /> Import nhanh
           </button>
-          <button style={{ ...styles.btn, background: "#7c3aed", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => openLecturerModal()}>
+            <button style={{ ...styles.btn, background: "#106fa6", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => openLecturerModal()}>
             <UserPlus size={16} /> Thêm giảng viên
           </button>
         </div>

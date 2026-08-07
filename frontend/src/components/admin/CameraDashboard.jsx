@@ -128,7 +128,7 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <h2 style={{ margin: 0, fontSize: '1.15rem', color: '#106fa6', fontWeight: 700 }}>Điểm danh Camera</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Điểm danh Camera</h2>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Phòng:</label>
           <input

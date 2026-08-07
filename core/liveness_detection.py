@@ -1,7 +1,11 @@
 import os
 import cv2 as cv
 import numpy as np
-import onnxruntime as ort
+
+try:
+    import onnxruntime as ort
+except ImportError:
+    ort = None
 
 class LivenessDetector:
     def __init__(self, model_path=None):
@@ -14,6 +18,10 @@ class LivenessDetector:
         self.session = None
         
         # Thử tải mô hình ONNX
+        if ort is None:
+            print("-> [Liveness] onnxruntime chưa được cài đặt. Chế độ heuristic sẽ được dùng.")
+            return
+
         if os.path.exists(self.model_path):
             try:
                 self.session = ort.InferenceSession(self.model_path, providers=["CPUExecutionProvider"])

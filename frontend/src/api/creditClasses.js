@@ -20,6 +20,12 @@ export const batchCreateCreditClasses = (payload) =>
     body: JSON.stringify(payload),
   });
 
+export const importCreditClasses = (formData) =>
+  apiFetch("/api/credit-classes/import/csv", {
+    method: "POST",
+    body: formData,
+  });
+
 /** Cập nhật lớp */
 export const updateCreditClass = (classId, body) =>
   apiFetch(`/api/credit-classes/${classId}`, {
@@ -27,7 +33,6 @@ export const updateCreditClass = (classId, body) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-
 /** Xóa lớp */
 export const deleteCreditClass = (classId) =>
   apiFetch(`/api/credit-classes/${classId}`, { method: "DELETE" });

@@ -8,7 +8,7 @@ class DatabaseService:
     def __init__(self):
         self.db_config = settings.database
         self.host = self.db_config.get("host", "127.0.0.1")
-        self.port = int(self.db_config.get("port", 3306))
+        self.port = int(self.db_config.get("port", 3309))
         self.user = self.db_config.get("user", "root")
         self.password = self.db_config.get("password", "")
         self.db_name = self.db_config.get("db_name", "ptit_diem_danh")

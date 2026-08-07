@@ -11,7 +11,7 @@ const styles = {
   badge: { padding: "4px 8px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "600" }
 };
 
-const RoomsManagement = ({ showToast }) => {
+const RoomsManagement = ({ showToast, API_BASE }) => {
   const [classroomsList, setClassroomsList] = useState([]);
   const [classroomSearch, setClassroomSearch] = useState('');
   const [isClassroomModalOpen, setIsClassroomModalOpen] = useState(false);
@@ -39,7 +39,7 @@ const RoomsManagement = ({ showToast }) => {
     
     try {
       showToast('Đang import dữ liệu...', 'info');
-      const res = await fetch('http://localhost:8000/api/admin/classrooms/import', {
+      const res = await fetch(`${API_BASE || 'http://127.0.0.1:8000'}/api/admin/classrooms/import`, {
         method: 'POST',
         body: formData,
       });
@@ -66,7 +66,7 @@ const RoomsManagement = ({ showToast }) => {
 
   const fetchClassrooms = async (search = classroomSearch) => {
     try {
-      const url = `http://localhost:8000/api/admin/classrooms/?skip=0&limit=100${search ? `&search=${encodeURIComponent(search)}` : ''}`;
+      const url = `${API_BASE || 'http://127.0.0.1:8000'}/api/admin/classrooms/?skip=0&limit=100${search ? `&search=${encodeURIComponent(search)}` : ''}`;
       const response = await fetch(url);
       if (response.ok) {
         const result = await response.json();
@@ -114,7 +114,7 @@ const RoomsManagement = ({ showToast }) => {
     e.preventDefault();
     try {
       const isEdit = !!editingRoomId;
-      const url = isEdit ? `http://localhost:8000/api/admin/classrooms/${editingRoomId}` : `http://localhost:8000/api/admin/classrooms/`;
+      const url = isEdit ? `${API_BASE || 'http://127.0.0.1:8000'}/api/admin/classrooms/${editingRoomId}` : `${API_BASE || 'http://127.0.0.1:8000'}/api/admin/classrooms/`;
       const method = isEdit ? 'PUT' : 'POST';
       
       const body = { ...classroomForm };
@@ -136,7 +136,7 @@ const RoomsManagement = ({ showToast }) => {
   const handleDeleteClassroom = async (id) => {
     if (!window.confirm(`Bạn có chắc muốn xóa phòng ${id}?`)) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/admin/classrooms/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE || 'http://127.0.0.1:8000'}/api/admin/classrooms/${id}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('Đã xóa phòng học thành công!');
         fetchClassrooms(classroomSearch);
@@ -160,7 +160,7 @@ const RoomsManagement = ({ showToast }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px", borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <BookOpen size={24} color="#7c3aed" />
-          <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Phòng học</h2>
+           <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Quản lý Phòng học</h2>
         </div>
         <div style={{ display: "flex", gap: "10px" }}>
           <input 

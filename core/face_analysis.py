@@ -4,7 +4,12 @@ import time
 import threading
 import numpy as np
 import cv2 as cv
-from insightface.app import FaceAnalysis
+
+try:
+    from insightface.app import FaceAnalysis
+except ImportError:
+    FaceAnalysis = None
+
 from config.settings import settings
 
 # Thiết lập PATH cho CUDA/CuDNN trong venv
@@ -20,18 +25,26 @@ class FaceAnalyzer:
         
         self.threshold = ai_config.get("threshold", 0.65)
         self.det_size = tuple(ai_config.get("det_size", [480, 480]))
+        self.app = None
         
-        # Khởi tạo mô hình InsightFace
-        self.app = FaceAnalysis(
-            name=ai_config.get("model_name", "buffalo_l"), 
-            providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
-        )
-        self.app.prepare(ctx_id=0, det_size=self.det_size)
-        
-        try:
-            print(f"-> He thong AI dang chay tren backend: {self.app.backend.get_provider()}")
-        except Exception:
-            print("-> Dang kiem tra cau hinh phan cung...")
+        # Khởi tạo mô hình InsightFace nếu có sẵn
+        if FaceAnalysis is not None:
+            try:
+                self.app = FaceAnalysis(
+                    name=ai_config.get("model_name", "buffalo_l"), 
+                    providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+                )
+                self.app.prepare(ctx_id=0, det_size=self.det_size)
+                
+                try:
+                    print(f"-> He thong AI dang chay tren backend: {self.app.backend.get_provider()}")
+                except Exception:
+                    print("-> Dang kiem tra cau hinh phan cung...")
+            except Exception as e:
+                print(f"-> [AI] Không thể khởi tạo InsightFace: {e}")
+                self.app = None
+        else:
+            print("-> [AI] insightface chưa được cài đặt. Chức năng nhận diện sẽ bị vô hiệu hóa.")
             
         self.known_embeddings = []
         self.known_names = []
@@ -101,6 +114,10 @@ class FaceAnalyzer:
 
     def dang_ky_mat(self, image_path, mssv, ho_ten="Unknown", lop_base="Unknown", **kwargs):
         """Trích xuất và lưu vector khuôn mặt vào bảng FaceFeature"""
+        if self.app is None:
+            print("-> [AI] Không thể đăng ký khuôn mặt vì InsightFace chưa sẵn sàng.")
+            return False
+
         img = cv.imread(image_path)
         if img is None:
             print(f"Khong the doc duoc anh tai: {image_path}")
@@ -157,6 +174,10 @@ class FaceAnalyzer:
         """Nhận diện khuôn mặt từ một ảnh tĩnh (OpenCV Image)"""
         if img is None:
             print("-> [AI] Anh nhan vao bi null!")
+            return []
+
+        if self.app is None:
+            print("-> [AI] InsightFace chưa sẵn sàng. Bỏ qua nhận diện.")
             return []
             
         faces = self.app.get(img)
@@ -232,7 +253,7 @@ class FaceAnalyzer:
                 continue
                 
             self.frame_ready_event.clear()
-            if self.current_frame is None or len(self.known_embeddings) == 0:
+            if self.current_frame is None or len(self.known_embeddings) == 0 or self.app is None:
                 continue
                 
             frame_to_process = self.current_frame.copy()

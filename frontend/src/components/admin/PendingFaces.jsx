@@ -48,7 +48,7 @@ export default function PendingFaces({ showToast }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2edf5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#106fa6', fontWeight: 700 }}>Duyệt Face ID chờ xác nhận</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Duyệt Face ID chờ xác nhận</h2>
         <button onClick={fetchPending} style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#f8fafc', cursor: 'pointer', fontSize: '0.8rem' }}>
           Làm mới
         </button>

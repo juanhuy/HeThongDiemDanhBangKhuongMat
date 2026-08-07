@@ -55,9 +55,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'students_list' ? 'active' : ''}`} onClick={() => setActiveMenu('students_list')}>
             <User size={16} /> Quản lý Sinh viên
           </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'attendance' ? 'active' : ''}`} onClick={() => setActiveMenu('attendance')}>
+          {/* <div className={`ptit-sidebar-item ${activeMenu === 'attendance' ? 'active' : ''}`} onClick={() => setActiveMenu('attendance')}>
             <User size={16} /> Đăng ký SV mới
-          </div>
+          </div> */}
           <div className={`ptit-sidebar-item ${activeMenu === 'faculties_management' ? 'active' : ''}`} onClick={() => setActiveMenu('faculties_management')}>
             <Building size={16} /> Quản lý Khoa
           </div>

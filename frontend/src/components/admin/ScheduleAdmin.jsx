@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { schedulesApi, creditClassesApi, roomsApi } from '../../api';
+import {roomsApi } from '../../api';
+import {creditClassesApi } from '../../api';
+import {schedulesApi } from '../../api';
 
 export default function ScheduleAdmin({ showToast }) {
   const [schedules, setSchedules] = useState([]);
@@ -82,7 +84,7 @@ export default function ScheduleAdmin({ showToast }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Form thêm */}
       <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, padding: 18 }}>
-        <h2 style={{ margin: '0 0 14px', fontSize: '1.1rem', color: '#106fa6', fontWeight: 700 }}>Thêm lịch học</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Thêm lịch học</h2>
         <form onSubmit={handleAdd} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, alignItems: 'end' }}>
           <div>
             <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Lớp tín chỉ *</label>
