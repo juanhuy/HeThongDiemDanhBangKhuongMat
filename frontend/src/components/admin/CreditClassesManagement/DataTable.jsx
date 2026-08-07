@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle, X } from 'lucide-react';
 
 const styles = {
   table: { width: "100%", borderCollapse: "collapse", background: "#fff", fontSize: "0.95rem" },
@@ -9,6 +9,7 @@ const styles = {
 
 const DataTable = ({ classes, loading, selectedIds, setSelectedIds, onStatusChange, onDelete, onEdit }) => {
   const [currentPage, setCurrentPage] = useState(1);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, students }
   const itemsPerPage = 10;
 
   if (loading) {
@@ -102,33 +103,36 @@ const DataTable = ({ classes, loading, selectedIds, setSelectedIds, onStatusChan
                     <div style={{ color: '#334155', fontSize: '0.85rem', marginTop: '2px' }}>{cls.subject_name}</div>
                     <div style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '2px' }}>TC: <b style={{color: '#475569'}}>{cls.credits}</b></div>
                   </td>
-                  <td style={{...styles.td, textAlign: "center", fontWeight: "900", color: "#f59e0b"}}>
-                    {cls.display_group}
+                  <td style={{...styles.td, textAlign: "center", fontWeight: "700", color: "#f59e0b"}}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                      <span>{cls.group_number ? String(cls.group_number).padStart(2, '0') : '01'}</span>
+                      {cls.class_type === 'Practice' && <span style={{fontSize: "0.8rem", color: "#7e22ce"}}>{cls.sub_group_number ? String(cls.sub_group_number).padStart(2, '0') : '01'}</span>}
+                    </div>
                   </td>
                   <td style={styles.td}>
-                    {cls.target_classes_display?.length > 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                        {cls.target_classes_display.map((tc, idx) => (
-                          <span key={idx} style={{ padding: "2px 8px", background: "#f1f5f9", color: "#334155", borderRadius: "4px", fontSize: "0.75rem", fontWeight: "600", width: "max-content" }}>{tc}</span>
+                    {cls.target_classes?.length > 0 ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", maxWidth: "160px" }}>
+                        {cls.target_classes.map((tc, idx) => (
+                          <span key={idx} style={{ padding: "2px 6px", background: "#f1f5f9", color: "#334155", borderRadius: "4px", fontSize: "0.75rem", fontWeight: "600", whiteSpace: "nowrap" }}>{tc}</span>
                         ))}
                       </div>
-                    ) : <span style={{ color: "#94a3b8", fontStyle: "italic", fontSize: "0.85rem" }}>Chưa xếp</span>}
+                    ) : <span style={{ color: "#ef4444", fontWeight: "600", fontSize: "0.85rem" }}>Chưa cập nhật</span>}
                   </td>
                   
                   {/* GIẢNG VIÊN */}
                   <td style={styles.td}>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {cls.theory_class && (
+                      {cls.class_type === 'Practice' && (
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "4px", borderBottom: "1px dashed #cbd5e1" }}>
                           <span style={{ fontWeight: "800", color: "#1d4ed8", background: "#dbeafe", padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem" }}>LT</span>
-                          <span style={{ color: "#1e293b", fontWeight: "500", fontSize: "0.85rem" }} title={cls.theory_class.lecturer_name}>{cls.theory_class.lecturer_name || <span style={{color: "#94a3b8", fontStyle: "italic"}}>Chưa xếp GV</span>}</span>
+                          <span style={{ color: "#1e293b", fontWeight: "500", fontSize: "0.85rem" }} title={cls.theory_class?.lecturer_name}>{cls.theory_class?.lecturer_name || <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa cập nhật</span>}</span>
                         </div>
                       )}
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ fontWeight: "800", padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem", color: cls.theory_class ? "#7e22ce" : "#1d4ed8", background: cls.theory_class ? "#f3e8ff" : "#dbeafe" }}>
+                        <span style={{ fontWeight: "800", padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem", color: cls.class_type === 'Practice' ? "#7e22ce" : "#1d4ed8", background: cls.class_type === 'Practice' ? "#f3e8ff" : "#dbeafe" }}>
                           {cls.class_type === 'Practice' ? 'TH' : 'LT'}
                         </span>
-                        <span style={{ color: "#1e293b", fontWeight: "500", fontSize: "0.85rem" }} title={cls.lecturer_name}>{cls.lecturer_name || <span style={{color: "#94a3b8", fontStyle: "italic"}}>Chưa xếp GV</span>}</span>
+                        <span style={{ color: "#1e293b", fontWeight: "500", fontSize: "0.85rem" }} title={cls.lecturer_name}>{cls.lecturer_name || <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa cập nhật</span>}</span>
                       </div>
                     </div>
                   </td>
@@ -136,21 +140,31 @@ const DataTable = ({ classes, loading, selectedIds, setSelectedIds, onStatusChan
                   {/* PHÒNG */}
                   <td style={styles.td}>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {cls.theory_class && <div style={{ fontSize: "0.85rem", fontWeight: "700", color: "#1d4ed8", paddingBottom: "4px", borderBottom: "1px dashed #cbd5e1" }}>A2-101</div>}
-                      <div style={{ fontSize: "0.85rem", fontWeight: "700", color: cls.theory_class ? "#7e22ce" : "#1d4ed8" }}>PM-205</div>
+                      {cls.class_type === 'Practice' && (
+                        <div style={{ fontSize: "0.85rem", fontWeight: "700", color: "#1d4ed8", paddingBottom: "4px", borderBottom: "1px dashed #cbd5e1" }}>
+                          {cls.theory_class?.schedules && cls.theory_class.schedules.length > 0 ? cls.theory_class.schedules[0].room_id || <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa cập nhật</span> : <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa cập nhật</span>}
+                        </div>
+                      )}
+                      <div style={{ fontSize: "0.85rem", fontWeight: "700", color: cls.class_type === 'Practice' ? "#7e22ce" : "#1d4ed8" }}>
+                        {cls.schedules && cls.schedules.length > 0 ? cls.schedules[0].room_id || <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa xếp phòng</span> : <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa xếp phòng</span>}
+                      </div>
                     </div>
                   </td>
 
                   {/* LỊCH HỌC */}
                   <td style={styles.td}>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px", color: "#334155", fontSize: "0.85rem" }}>
-                      {cls.theory_class && (
+                      {cls.class_type === 'Practice' && (
                         <div style={{ paddingBottom: "4px", borderBottom: "1px dashed #cbd5e1" }}>
-                          <b>T2</b> (07:00-09:30) <br /><span style={{ fontSize: "0.75rem", color: "#64748b" }}>15/08 - 30/11</span>
+                          {cls.theory_class?.schedules && cls.theory_class.schedules.length > 0 ? (
+                            <><b>T{cls.theory_class.schedules[0].day_of_week}</b> (Ca {cls.theory_class.schedules[0].start_shift}-{cls.theory_class.schedules[0].end_shift})</>
+                          ) : <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa xếp lịch</span>}
                         </div>
                       )}
                       <div>
-                        <b>T4</b> (13:00-15:30) <br /><span style={{ fontSize: "0.75rem", color: "#64748b" }}>15/08 - 30/11</span>
+                        {cls.schedules && cls.schedules.length > 0 ? (
+                           <><b>T{cls.schedules[0].day_of_week}</b> (Ca {cls.schedules[0].start_shift}-{cls.schedules[0].end_shift})</>
+                        ) : <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa xếp lịch</span>}
                       </div>
                     </div>
                   </td>
@@ -186,7 +200,7 @@ const DataTable = ({ classes, loading, selectedIds, setSelectedIds, onStatusChan
                       <button onClick={() => onEdit(cls)} style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#106fa6' }} title="Sửa" onMouseOver={e=>e.currentTarget.style.background="#f1f5f9"} onMouseOut={e=>e.currentTarget.style.background="#fff"}>
                          <Edit size={16} />
                       </button>
-                      <button onClick={() => onDelete(cls.class_id, cls.current_students)} style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: cls.current_students > 0 ? 'not-allowed' : 'pointer', color: cls.current_students > 0 ? '#94a3b8' : '#ef4444' }} title="Xóa" onMouseOver={e=>e.currentTarget.style.background=cls.current_students > 0 ? "#fff" : "#fef2f2"} onMouseOut={e=>e.currentTarget.style.background="#fff"}>
+                      <button onClick={() => setDeleteConfirm({id: cls.class_id, students: cls.current_students})} style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#ef4444' }} title="Xóa" onMouseOver={e=>e.currentTarget.style.background="#fef2f2"} onMouseOut={e=>e.currentTarget.style.background="#fff"}>
                          <Trash2 size={16} />
                       </button>
                     </div>
@@ -198,6 +212,39 @@ const DataTable = ({ classes, loading, selectedIds, setSelectedIds, onStatusChan
         </tbody>
       </table>
       {renderPagination()}
+
+      {/* CUSTOM DELETE CONFIRM MODAL */}
+      {deleteConfirm && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(15, 23, 42, 0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: "12px", width: "400px", maxWidth: "90%", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)", overflow: "hidden" }}>
+            <div style={{ padding: "20px", display: "flex", gap: "15px" }}>
+              <div style={{ background: "#fee2e2", width: "48px", height: "48px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <AlertTriangle size={24} color="#ef4444" />
+              </div>
+              <div>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", color: "#0f172a" }}>Xác nhận xóa lớp</h3>
+                <p style={{ margin: 0, fontSize: "0.9rem", color: "#475569", lineHeight: "1.5" }}>
+                  {deleteConfirm.students > 0 
+                    ? `Lớp này đang có ${deleteConfirm.students} sinh viên đăng ký. Việc xóa lớp sẽ ảnh hưởng đến kết quả học tập của sinh viên. Bạn có chắc chắn muốn xóa lớp ${deleteConfirm.id} không?`
+                    : `Bạn có chắc chắn muốn xóa lớp tín chỉ ${deleteConfirm.id} không? Hành động này không thể hoàn tác.`
+                  }
+                </p>
+              </div>
+            </div>
+            <div style={{ padding: "12px 20px", background: "#f8fafc", display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #e2e8f0" }}>
+              <button onClick={() => setDeleteConfirm(null)} style={{ padding: "8px 16px", borderRadius: "6px", background: "#fff", border: "1px solid #cbd5e1", color: "#475569", fontWeight: "600", cursor: "pointer" }}>
+                Hủy
+              </button>
+              <button 
+                onClick={() => { onDelete(deleteConfirm.id, 0 /* pass 0 to bypass the block in onDelete */); setDeleteConfirm(null); }} 
+                style={{ padding: "8px 16px", borderRadius: "6px", background: "#ef4444", border: "none", color: "#fff", fontWeight: "600", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                <Trash2 size={16} /> Xóa lớp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

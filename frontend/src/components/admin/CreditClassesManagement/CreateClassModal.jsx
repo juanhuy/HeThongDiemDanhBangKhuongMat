@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Plus, Trash2, Copy, Users, Wand2, Calendar, X } from 'lucide-react';
+import { Search, ChevronDown, Plus, Trash2, Copy, Users, Wand2, Calendar, X, AlertTriangle } from 'lucide-react';
 
 export default function CreateClassModal({ onClose, onSuccess, metaData, showToast }) {
   // Dữ liệu mock hiển thị giao diện theo thiết kế
@@ -11,45 +11,51 @@ export default function CreateClassModal({ onClose, onSuccess, metaData, showToa
     class_group: '01',
     status: 'Planning'
   });
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { type: 'class' | 'group', id: string/number }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm">
-      <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
-        <div className="relative transform overflow-hidden rounded-xl bg-white text-left shadow-2xl transition-all sm:my-8 w-full max-w-5xl">
-          
-          {/* TOP HEADER */}
-          <div className="flex justify-between items-start p-6 lg:p-8 border-b border-slate-200">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }}>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-[0_8px_30px_rgba(0,0,0,0.12)] w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
+        
+        {/* TOP HEADER */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 bg-gray-50/50 flex-shrink-0">
             <div>
-              <div className="text-[11px] font-bold text-slate-500 tracking-wider mb-2 uppercase">
-                Quản lý đào tạo &gt; Lớp tín chỉ
+              <div className="flex items-center gap-3">
+                <div className="bg-[#106fa6]/10 p-2 rounded-lg text-[#106fa6]">
+                  <Plus size={20} />
+                </div>
+                <div>
+                  <h2 className="text-[18px] font-bold text-gray-900 leading-tight">Tạo lớp tín chỉ mới</h2>
+                  <p className="text-[13px] font-medium text-gray-500 mt-0.5">Cấu hình và mở lớp tín chỉ cho học kỳ hiện tại.</p>
+                </div>
               </div>
-              <h1 className="text-3xl font-extrabold text-slate-800 mb-2">Tạo lớp tín chỉ mới</h1>
-              <p className="text-sm text-slate-500">Cấu hình và mở lớp tín chỉ cho học kỳ hiện tại.</p>
             </div>
-            <div className="flex gap-3 mt-2">
+            <div className="flex gap-3">
               <button 
                 onClick={onClose}
-                className="px-5 py-2 text-sm font-semibold text-blue-600 bg-white border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                className="px-5 py-2 text-[14px] font-semibold text-[#106fa6] bg-white border border-[#106fa6] rounded-lg hover:bg-blue-50 transition-colors"
               >
                 Hủy
               </button>
               <button 
-                className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-5 py-2 text-[14px] font-semibold text-white rounded-lg transition-colors"
+                style={{ backgroundColor: '#106fa6' }}
               >
-                Lưu thay đổi
+                Lưu hệ thống
               </button>
             </div>
           </div>
 
-          <div className="p-6 lg:p-8 flex flex-col gap-8 bg-slate-50/50">
+          <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50 flex flex-col gap-6 custom-scrollbar">
             
             {/* SECTION 1: Thông tin môn học */}
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
+                <div className="w-8 h-8 rounded-full bg-[#106fa6]/10 text-[#106fa6] flex items-center justify-center font-bold text-sm">
                   1
                 </div>
-                <h2 className="text-xl font-bold text-slate-800">Thông tin môn học</h2>
+                <h2 className="text-[16px] font-bold text-slate-800">Thông tin môn học</h2>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
@@ -96,12 +102,12 @@ export default function CreateClassModal({ onClose, onSuccess, metaData, showToa
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm relative">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
+                  <div className="w-8 h-8 rounded-full bg-[#106fa6]/10 text-[#106fa6] flex items-center justify-center font-bold text-sm">
                     2
                   </div>
-                  <h2 className="text-xl font-bold text-slate-800">Cấu trúc lớp tín chỉ</h2>
+                  <h2 className="text-[16px] font-bold text-slate-800">Cấu trúc lớp tín chỉ</h2>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-600 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#106fa6] bg-white border border-[#106fa6] rounded-lg hover:bg-[#106fa6]/5 transition-colors">
                   <Plus size={16} /> Thêm lớp
                 </button>
               </div>
@@ -122,7 +128,7 @@ export default function CreateClassModal({ onClose, onSuccess, metaData, showToa
                     <button className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-slate-200 rounded transition-colors">
                       <Copy size={16} />
                     </button>
-                    <button className="text-red-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded transition-colors">
+                    <button onClick={() => setDeleteConfirm({type: 'class', id: 'Lớp 01'})} className="text-red-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded transition-colors">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -263,7 +269,7 @@ export default function CreateClassModal({ onClose, onSuccess, metaData, showToa
                       </div>
 
                       <div className="flex justify-end md:block mt-2 md:mt-0">
-                        <button className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition-colors ml-2">
+                        <button onClick={() => setDeleteConfirm({type: 'group', id: 'Tổ 1'})} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition-colors ml-2">
                           <X size={16} />
                         </button>
                       </div>
@@ -277,6 +283,36 @@ export default function CreateClassModal({ onClose, onSuccess, metaData, showToa
           </div>
         </div>
       </div>
-    </div>
+      
+      {/* CUSTOM DELETE CONFIRM MODAL FOR CREATE CLASS MODAL */}
+      {deleteConfirm && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(15, 23, 42, 0.6)", display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: "12px", width: "400px", maxWidth: "90%", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)", overflow: "hidden" }}>
+            <div style={{ padding: "20px", display: "flex", gap: "15px" }}>
+              <div style={{ background: "#fee2e2", width: "48px", height: "48px", borderRadius: "50%", display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <AlertTriangle size={24} color="#ef4444" />
+              </div>
+              <div>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", color: "#0f172a" }}>Xác nhận xóa {deleteConfirm.type === 'class' ? 'lớp' : 'tổ'}</h3>
+                <p style={{ margin: 0, fontSize: "0.9rem", color: "#475569", lineHeight: "1.5" }}>
+                  Bạn có chắc chắn muốn xóa {deleteConfirm.type === 'class' ? 'toàn bộ' : ''} <strong>{deleteConfirm.id}</strong> không? Hành động này không thể hoàn tác.
+                </p>
+              </div>
+            </div>
+            <div style={{ padding: "12px 20px", background: "#f8fafc", display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #e2e8f0" }}>
+              <button onClick={() => setDeleteConfirm(null)} style={{ padding: "8px 16px", borderRadius: "6px", background: "#fff", border: "1px solid #cbd5e1", color: "#475569", fontWeight: "600", cursor: "pointer" }}>
+                Hủy
+              </button>
+              <button 
+                onClick={() => setDeleteConfirm(null)} 
+                style={{ padding: "8px 16px", borderRadius: "6px", background: "#ef4444", border: "none", color: "#fff", fontWeight: "600", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                <Trash2 size={16} /> Xóa {deleteConfirm.type === 'class' ? 'lớp' : 'tổ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

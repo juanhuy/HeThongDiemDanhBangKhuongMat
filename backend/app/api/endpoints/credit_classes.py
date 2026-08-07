@@ -8,8 +8,9 @@ import math
 import uuid
 
 from app.db.session import get_db
+from app.db.session import get_db
 from app.schemas.credit_class import CreditClassCreate, CreditClassUpdate, AutoGenerateRequest, SaveDraftRequest
-from app.models import Subject, CreditClass, Lecturer, ExpectedClassMapping
+from app.models import Subject, CreditClass, Lecturer, ExpectedClassMapping, AdministrativeClass
 
 router = APIRouter()
 
@@ -152,8 +153,13 @@ def list_credit_classes(
     if subject_id: query = query.filter(CreditClass.subject_id == subject_id.strip())
     if lecturer_id: query = query.filter(CreditClass.lecturer_id == lecturer_id.strip())
     if status: query = query.filter(CreditClass.status == status.strip())
-    if administrative_class_id: query = query.join(ExpectedClassMapping).filter(ExpectedClassMapping.admin_class_id == administrative_class_id.strip())
-    if major_id: query = query.join(Subject).filter(Subject.major_id == major_id.strip())
+    if administrative_class_id: 
+        query = query.join(ExpectedClassMapping, CreditClass.class_id == ExpectedClassMapping.credit_class_id).filter(ExpectedClassMapping.admin_class_id == administrative_class_id.strip())
+    if major_id: 
+        # Check if ExpectedClassMapping is already joined to avoid duplicate join
+        if not administrative_class_id:
+            query = query.join(ExpectedClassMapping, CreditClass.class_id == ExpectedClassMapping.credit_class_id)
+        query = query.join(AdministrativeClass, ExpectedClassMapping.admin_class_id == AdministrativeClass.class_id).filter(AdministrativeClass.major_id == major_id.strip())
 
     classes = list(dict.fromkeys(query.all()))
     result = []
@@ -238,6 +244,21 @@ def delete_credit_class(class_id: str, db: Session = Depends(get_db)):
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
     if not cc: raise HTTPException(status_code=404, detail="Không tìm thấy lớp học tín chỉ.")
     if cc.current_students > 0: raise HTTPException(status_code=400, detail=f"Không thể xóa lớp có sinh viên.")
-    db.delete(cc)
+    
+    if cc.parent_class_id:
+        parent_class = db.query(CreditClass).filter(CreditClass.class_id == cc.parent_class_id).first()
+        db.delete(cc)
+        db.flush()
+        if parent_class:
+            parent_class.max_students = max(0, parent_class.max_students - (cc.max_students or 0))
+            remaining_children = db.query(CreditClass).filter(CreditClass.parent_class_id == parent_class.class_id).count()
+            if remaining_children == 0 and parent_class.current_students == 0:
+                db.delete(parent_class)
+    else:
+        children_count = db.query(CreditClass).filter(CreditClass.parent_class_id == cc.class_id).count()
+        if children_count > 0:
+            raise HTTPException(status_code=400, detail="Lớp nhóm này đang có lớp tổ, vui lòng xóa các lớp tổ trước.")
+        db.delete(cc)
+        
     db.commit()
     return {"status": "success", "message": f"Đã xóa lớp tín chỉ {class_id} thành công."}
