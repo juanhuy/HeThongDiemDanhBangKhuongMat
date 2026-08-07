@@ -3,6 +3,7 @@ import { Search, Plus, X, BarChart2, CheckCircle, Users } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function AdminClassesTab({ API_BASE, showToast, majors, faculties }) {
+  const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,47 +21,98 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
   const [selectedClassDetails, setSelectedClassDetails] = useState(null);
 
   useEffect(() => {
-    fetchStudents();
+    fetchClassesAndStudents();
   }, []);
 
-  const fetchStudents = async () => {
+  const fetchClassesAndStudents = async () => {
     try {
       setLoading(true);
-      const stRes = await fetch(`${API_BASE}/api/admin/students/`);
+      const [clsRes, stRes] = await Promise.all([
+        fetch(`${API_BASE}/api/administrative-classes`),
+        fetch(`${API_BASE}/api/admin/students/`)
+      ]);
+      if (clsRes.ok) {
+        const resJson = await clsRes.json();
+        const listClasses = resJson.data || resJson.items || resJson || [];
+        setClasses(Array.isArray(listClasses) ? listClasses : []);
+      }
       if (stRes.ok) {
         const data = await stRes.json();
         setStudents(Array.isArray(data) ? data : (data.items || []));
       }
     } catch (err) {
-      showToast?.('Lỗi tải dữ liệu sinh viên', 'error');
+      showToast?.('Lỗi tải dữ liệu lớp biên chế', 'danger');
     } finally {
       setLoading(false);
     }
   };
 
-  // Tự động tổng hợp danh sách lớp biên chế từ dữ liệu sinh viên và các lớp đã tạo
+  // Tổng hợp danh sách lớp kết hợp mapping thông minh với Ngành và Khoa từ Sinh viên hoặc tên lớp
   const classesList = useMemo(() => {
-    const classMap = {};
-    
-    // 1. Quét từ danh sách sinh viên hiện có
+    const studentMapByClass = {};
     students.forEach(s => {
       const cId = s.administrative_class || s.lop_base;
       if (cId) {
-        if (!classMap[cId]) {
-          classMap[cId] = {
-            class_id: cId,
-            class_name: s.class_name || cId,
-            major_id: s.major_id || s.major || '—',
-            faculty_id: s.faculty_id || '—',
-            studentsCount: 0
-          };
-        }
-        classMap[cId].studentsCount += 1;
+        if (!studentMapByClass[cId]) studentMapByClass[cId] = [];
+        studentMapByClass[cId].push(s);
       }
     });
 
-    return Object.values(classMap);
-  }, [students]);
+    const baseList = classes.length > 0 ? classes : Object.keys(studentMapByClass).map(cId => ({ class_id: cId }));
+
+    return baseList.map(c => {
+      const cId = c.class_id || c.name;
+      const classStudents = studentMapByClass[cId] || [];
+      
+      // 1. Thử lấy major_id và faculty_id từ sinh viên đang thực tế ở trong lớp đó
+      let foundMajorId = c.major_id;
+      let foundFacultyId = c.faculty_id;
+
+      if (!foundMajorId && classStudents.length > 0) {
+        const sampleStudent = classStudents.find(s => s.major_id || s.major);
+        foundMajorId = sampleStudent?.major_id || sampleStudent?.major;
+      }
+
+      if (!foundFacultyId && classStudents.length > 0) {
+        const sampleStudent = classStudents.find(s => s.faculty_id);
+        foundFacultyId = sampleStudent?.faculty_id;
+      }
+
+      // 2. Nếu lớp trống (sĩ số = 0), tự động nhận diện dựa vào ký tự viết tắt trên mã lớp (AT, CN, VT, PT, QT...)
+      if (!foundMajorId) {
+        const upperCId = cId.toUpperCase();
+        const matchedMajor = majors.find(m => {
+          const mName = (m.major_name || '').toLowerCase();
+          const mId = (m.major_id || '').toLowerCase();
+          if (upperCId.includes('AT') && (mName.includes('an toàn') || mId.includes('at'))) return true;
+          if (upperCId.includes('CN') && (mName.includes('công nghệ thông tin') || mId.includes('cntt'))) return true;
+          if (upperCId.includes('VT') && mName.includes('viễn thông')) return true;
+          if (upperCId.includes('QT') && mName.includes('quản trị')) return true;
+          if (upperCId.includes('PT') && (mName.includes('đa phương tiện') || mName.includes('truyền thông'))) return true;
+          return false;
+        });
+        if (matchedMajor) {
+          foundMajorId = matchedMajor.major_id;
+          if (!foundFacultyId) foundFacultyId = matchedMajor.faculty_id;
+        }
+      }
+
+      // Map ra tên hiển thị chuẩn
+      const matchedMajor = majors.find(m => m.major_id === foundMajorId);
+      const majorDisplay = matchedMajor ? `${matchedMajor.major_id} - ${matchedMajor.major_name}` : (foundMajorId || '—');
+
+      const matchedFaculty = faculties.find(f => f.faculty_id === foundFacultyId || f.faculty_id === matchedMajor?.faculty_id);
+      const facultyDisplay = matchedFaculty ? matchedFaculty.faculty_name : (foundFacultyId || '—');
+
+      return {
+        class_id: cId,
+        class_name: c.class_name || c.name || cId,
+        major_display: majorDisplay,
+        faculty_display: facultyDisplay,
+        studentsCount: classStudents.length
+      };
+    });
+  }, [classes, students, majors, faculties]);
 
   // Sơ đồ trực quan: Số lượng sinh viên theo từng lớp biên chế
   const chartData = useMemo(() => {
@@ -73,27 +125,35 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
   const handleSaveClass = async (e) => {
     e.preventDefault();
     if (!form.class_id || !form.major_id) {
-      showToast?.('Vui lòng điền đủ thông tin bắt buộc', 'error');
+      showToast?.('Vui lòng điền đủ thông tin bắt buộc', 'danger');
       return;
     }
     try {
-      // Tạo lớp ảo bằng cách gắn lớp này cho một sinh viên hoặc lưu qua API nếu có
-      showToast?.('Tạo lớp biên chế thành công!');
-      setIsModalOpen(false);
-      setForm({ class_id: '', class_name: '', major_id: '', faculty_id: '', cohort: '2022-2027' });
-      fetchStudents();
+      const res = await fetch(`${API_BASE}/api/administrative-classes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      });
+      if (res.ok) {
+        showToast?.('Tạo lớp biên chế thành công');
+        setIsModalOpen(false);
+        setForm({ class_id: '', class_name: '', major_id: '', faculty_id: '', cohort: '2022-2027' });
+        fetchClassesAndStudents();
+      } else {
+        const err = await res.json();
+        showToast?.(err.detail || 'Lỗi khi tạo lớp', 'danger');
+      }
     } catch (err) {
-      showToast?.('Lỗi kết nối server', 'error');
+      showToast?.('Lỗi kết nối server', 'danger');
     }
   };
 
   const handleAddStudentsToClass = async () => {
     if (!selectedClassForAdd || selectedStudents.length === 0) {
-      showToast?.('Vui lòng chọn lớp và ít nhất 1 sinh viên', 'error');
+      showToast?.('Vui lòng chọn lớp và ít nhất 1 sinh viên', 'danger');
       return;
     }
     try {
-      // Cập nhật lớp biên chế cho từng sinh viên được chọn thông qua API sinh viên
       await Promise.all(
         selectedStudents.map(sId => 
           fetch(`${API_BASE}/api/admin/students/${sId}`, {
@@ -106,15 +166,15 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
       showToast?.('Đã thêm sinh viên vào lớp biên chế thành công!');
       setIsAddStudentModalOpen(false);
       setSelectedStudents([]);
-      fetchStudents();
+      fetchClassesAndStudents();
     } catch (err) {
-      showToast?.('Lỗi khi thêm sinh viên vào lớp', 'error');
+      showToast?.('Lỗi khi thêm sinh viên vào lớp', 'danger');
     }
   };
 
   const filteredClasses = classesList.filter(c => 
     (c.class_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.major_id || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (c.major_display || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -126,7 +186,7 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
           <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
           <input 
             type="text" 
-            placeholder="Tìm kiếm lớp biên chế, mã ngành..." 
+            placeholder="Tìm kiếm lớp biên chế, ngành..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', boxSizing: 'border-box' }}
@@ -180,15 +240,15 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
             {loading ? (
               <tr><td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>Đang tải dữ liệu...</td></tr>
             ) : filteredClasses.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>Chưa có lớp biên chế nào được tạo hoặc chưa có sinh viên thuộc lớp.</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>Chưa có lớp biên chế nào được tạo.</td></tr>
             ) : (
               filteredClasses.map((cls, index) => (
                 <tr key={cls.class_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600, color: '#64748b' }}>{index + 1}</td>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: '#106fa6' }}>{cls.class_id}</td>
                   <td style={{ padding: '12px 16px', fontWeight: 600, color: '#334155' }}>{cls.class_name}</td>
-                  <td style={{ padding: '12px 16px' }}>{cls.major_id}</td>
-                  <td style={{ padding: '12px 16px' }}>{cls.faculty_id}</td>
+                  <td style={{ padding: '12px 16px' }}>{cls.major_display}</td>
+                  <td style={{ padding: '12px 16px' }}>{cls.faculty_display}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px', fontWeight: 600, fontSize: '0.8rem' }}>
                       {cls.studentsCount} sinh viên
@@ -228,15 +288,28 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
             <form onSubmit={handleSaveClass} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '0.85rem' }}>Mã Lớp Biên Chế *</label>
-                <input required value={form.class_id} onChange={e => setForm({...form, class_id: e.target.value.toUpperCase()})} placeholder="VD: D22CQCNMT01-N" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                <input required value={form.class_id} onChange={e => setForm({...form, class_id: e.target.value.toUpperCase()})} placeholder="VD: D22CQCN02-N" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '0.85rem' }}>Tên Lớp *</label>
-                <input required value={form.class_name} onChange={e => setForm({...form, class_name: e.target.value})} placeholder="VD: Công nghệ mạng máy tính 01" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                <input required value={form.class_name} onChange={e => setForm({...form, class_name: e.target.value})} placeholder="VD: Công nghệ thông tin 02" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '0.85rem' }}>Thuộc Ngành *</label>
-                <select required value={form.major_id} onChange={e => setForm({...form, major_id: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
+                <select 
+                  required 
+                  value={form.major_id} 
+                  onChange={e => {
+                    const selectedMajorId = e.target.value;
+                    const matchedMajor = majors.find(m => m.major_id === selectedMajorId);
+                    setForm({
+                      ...form, 
+                      major_id: selectedMajorId,
+                      faculty_id: matchedMajor?.faculty_id || form.faculty_id
+                    });
+                  }} 
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                >
                   <option value="">-- Chọn Ngành --</option>
                   {majors.map(m => <option key={m.major_id} value={m.major_id}>{m.major_id} - {m.major_name}</option>)}
                 </select>
