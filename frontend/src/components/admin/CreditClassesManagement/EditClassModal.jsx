@@ -335,13 +335,13 @@ export default function EditClassModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }}>
       <div className="bg-white rounded-xl border border-gray-200 shadow-[0_8px_30px_rgba(0,0,0,0.12)] w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
         
         {/* HEADER */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 bg-gray-50/50">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-100 p-2 rounded-lg text-[#005bbf]">
+            <div className="bg-[#106fa6]/10 p-2 rounded-lg text-[#106fa6]">
               <BookOpen size={20} />
             </div>
             <div>
@@ -442,7 +442,8 @@ export default function EditClassModal({
               <button 
                 onClick={handleSaveAll}
                 disabled={isSavingAll}
-                className="mt-auto h-11 bg-[#005bbf] hover:bg-[#004a9e] text-white text-[14px] font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"
+                className="mt-auto h-11 text-white text-[14px] font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"
+                style={{ backgroundColor: '#106fa6' }}
               >
                 <Save size={18} /> 
                 {isSavingAll ? 'Đang lưu hệ thống...' : 'Lưu thông tin & Đồng bộ Lịch'}
@@ -550,7 +551,8 @@ export default function EditClassModal({
               <div className="flex gap-2">
                 <button 
                   onClick={handleSaveScheduleLocal}
-                  className="flex-1 h-11 bg-white border-2 border-[#005bbf] text-[#005bbf] text-[14px] font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-[#005bbf]/5 transition-colors"
+                  className="flex-1 h-11 bg-white border-2 text-[14px] font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  style={{ borderColor: '#106fa6', color: '#106fa6' }}
                 >
                   <Plus size={18} strokeWidth={2.5} /> 
                   {editingScheduleIndex !== null ? 'Cập nhật lịch (Tạm)' : 'Thêm vào danh sách tạm'}
@@ -602,7 +604,7 @@ export default function EditClassModal({
 
                          <div className="flex items-center gap-2 text-gray-600">
                            <MapPin size={15} className="text-gray-400"/> 
-                           Phòng: <span className="font-semibold text-[#005bbf]">{schedule.room_id}</span>
+                           Phòng: <span className="font-semibold text-[#106fa6]">{schedule.room_id}</span>
                            <span className={`ml-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                              schedule.loai_lich === 'Thực hành' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
                            }`}>

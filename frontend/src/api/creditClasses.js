@@ -86,6 +86,45 @@ export const unenrollStudent = (classId, studentId) =>
     method: "DELETE",
   });
 
+export const createCreditClass = async (classData) => {
+  const response = await fetch(`${API_BASE}/api/credit-classes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // Thêm token xác thực nếu hệ thống yêu cầu (vd: 'Authorization': `Bearer ${token}`)
+    },
+    body: JSON.stringify(classData)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || errorData.message || 'Lỗi khi tạo lớp tín chỉ mới trên hệ thống.');
+  }
+
+  return await response.json();
+};
+
+
+export const previewAutoGenerateClasses = async (payload) => {
+  const response = await fetch(`${API_BASE}/api/credit-classes/preview-groups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw new Error('Lỗi khi lấy dữ liệu xem trước.');
+  return await response.json(); 
+};
+
+export const saveGeneratedClasses = async (classesData) => {
+  const response = await fetch(`${API_BASE}/api/credit-classes/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(classesData)
+  });
+  if (!response.ok) throw new Error('Lỗi khi lưu danh sách lớp tự động.');
+  return await response.json();
+};
+
 // import { apiFetch, formBody } from "./client";
 
 // /** Danh sách lớp tín chỉ (filter optional) */

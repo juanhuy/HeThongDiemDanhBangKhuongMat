@@ -4,48 +4,55 @@ import { Search } from 'lucide-react';
 const FilterSection = ({ filters, onFilterChange, metaData }) => {
   const handleChange = (e) => onFilterChange(e.target.name, e.target.value);
 
+  const containerStyle = {
+    background: "#ffffff", padding: "15px 20px", borderRadius: "12px",
+    border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+    display: "flex", flexWrap: "wrap", gap: "15px", alignItems: "flex-end"
+  };
+
+  const labelStyle = { display: "block", fontSize: "0.8rem", fontWeight: "600", color: "#64748b", marginBottom: "6px", textTransform: "uppercase" };
+  const inputStyle = { width: "100%", background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 12px", fontSize: "0.9rem", color: "#334155", outline: "none", transition: "all 0.2s" };
+
   return (
-    <div className="bg-white p-4 rounded-xl shadow-sm mb-6 border border-slate-200 flex flex-wrap gap-4 items-end">
+    <div style={containerStyle}>
       {/* 1. Học kỳ */}
-      <div className="flex-1 min-w-[150px]">
-        <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Học kỳ</label>
-        <select name="semester_id" value={filters.semester_id} onChange={handleChange} className="w-full bg-slate-50 border-slate-300 rounded-lg p-2 text-sm border focus:ring-2 focus:ring-blue-500">
+      <div style={{ flex: "1 1 150px" }}>
+        <label style={labelStyle}>Học kỳ</label>
+        <select name="semester_id" value={filters.semester_id} onChange={handleChange} style={inputStyle}>
           <option value="">-- Tất cả học kỳ --</option>
           {metaData.semesters.map(s => (
-            <option key={s.semester_id} value={s.semester_id}>
-              Học kỳ {s.semester} ({s.academic_year})
-            </option>
+            <option key={s.semester_id} value={s.semester_id}>Học kỳ {s.semester} ({s.academic_year})</option>
           ))}
         </select>
       </div>
 
       {/* 2. Ngành học */}
-      <div className="flex-1 min-w-[150px]">
-        <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Lọc theo Ngành</label>
-        <select name="major_id" value={filters.major_id} onChange={handleChange} className="w-full bg-slate-50 border-slate-300 rounded-lg p-2 text-sm border focus:ring-2 focus:ring-blue-500">
+      <div style={{ flex: "1 1 150px" }}>
+        <label style={labelStyle}>Lọc theo Ngành</label>
+        <select name="major_id" value={filters.major_id} onChange={handleChange} style={inputStyle}>
           <option value="">-- Tất cả ngành --</option>
           {metaData.majors.map(m => <option key={m.major_id} value={m.major_id}>{m.major_name}</option>)}
         </select>
       </div>
 
       {/* 3. Lớp biên chế */}
-      <div className="flex-1 min-w-[150px]">
-        <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Lớp biên chế</label>
-        <select name="administrative_class_id" value={filters.administrative_class_id} onChange={handleChange} className="w-full bg-slate-50 border-slate-300 rounded-lg p-2 text-sm border focus:ring-2 focus:ring-blue-500">
+      <div style={{ flex: "1 1 150px" }}>
+        <label style={labelStyle}>Lớp biên chế</label>
+        <select name="administrative_class_id" value={filters.administrative_class_id} onChange={handleChange} style={inputStyle}>
           <option value="">-- Tất cả lớp --</option>
           {metaData.adminClasses.map(c => <option key={c.class_id} value={c.class_id}>{c.class_id}</option>)}
         </select>
       </div>
 
       {/* 4. Tìm kiếm tự do */}
-      <div className="flex-[1.5] min-w-[200px]">
-        <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Mã / Tên Môn học</label>
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+      <div style={{ flex: "1.5 1 200px", position: "relative" }}>
+        <label style={labelStyle}>Mã / Tên Môn học</label>
+        <div style={{ position: "relative" }}>
+          <Search size={16} color="#94a3b8" style={{ position: "absolute", left: "12px", top: "10px" }} />
           <input 
             type="text" name="subject_id" value={filters.subject_id} onChange={handleChange} 
             placeholder="Nhập mã môn..." 
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 text-sm rounded-lg focus:ring-2 focus:ring-blue-500"
+            style={{ ...inputStyle, paddingLeft: "36px" }}
           />
         </div>
       </div>

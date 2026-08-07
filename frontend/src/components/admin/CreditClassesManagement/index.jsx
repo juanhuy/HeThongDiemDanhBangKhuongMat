@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Settings, BookOpen, CheckSquare } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Settings, BookOpen, Users, CheckCircle, Clock, PieChart as PieChartIcon } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { 
   listCreditClasses, 
   deleteCreditClass, 
@@ -8,28 +9,38 @@ import {
   listSemesters, 
   listAdministrativeClasses, 
   listMajors, 
-  listLecturers
+  listLecturers 
 } from '../../../api/creditClasses';
 
 import FilterSection from './FilterSection';
 import DataTable from './DataTable';
 import EditClassModal from './EditClassModal';
+import CreateClassModal from './CreateClassModal'; 
+import AutoGenerateClassModal from './AutoGenerateClassModal';
+
+const styles = {
+  btn: { padding: "8px 16px", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600", fontSize: "0.9rem", color: "#fff", transition: "all 0.2s" },
+  statCard: { background: "#fff", padding: "15px 20px", borderRadius: "12px", border: "1px solid #e2e8f0", flex: 1, minWidth: "200px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" },
+  statValue: { fontSize: "1.8rem", fontWeight: "700", color: "#0f172a", margin: "8px 0 2px 0" },
+  statTitle: { color: "#64748b", fontSize: "0.9rem", fontWeight: "600", display: "flex", alignItems: "center", gap: "8px" },
+  chartBox: { background: "#fff", padding: "20px", borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", display: "flex", flexDirection: "column", position: "relative" }
+};
 
 const CreditClassesManagement = ({ showToast }) => {
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedIds, setSelectedIds] = useState([]); // Chứa danh sách lớp đang được tick
+  const [selectedIds, setSelectedIds] = useState([]); 
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editData, setEditData] = useState(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false); 
+  const [isAutoGenerateOpen, setIsAutoGenerateOpen] = useState(false);
   
-  // Dữ liệu cho bộ lọc
   const [metaData, setMetaData] = useState({ semesters: [], adminClasses: [], majors: [], lecturers: [] });
   const [filters, setFilters] = useState({
     semester_id: '', major_id: '', administrative_class_id: '', subject_id: '', status: ''
   });
 
-  // Tải dữ liệu Metadata lúc mới vào trang
   useEffect(() => {
     Promise.all([listSemesters(), listAdministrativeClasses(), listMajors(), listLecturers()]).then(([semRes, adminRes, majRes, lectRes]) => {
       const semesters = semRes?.data || [];
@@ -39,40 +50,18 @@ const CreditClassesManagement = ({ showToast }) => {
         majors: majRes?.data || [],
         lecturers: lectRes?.data?.map(l => ({ value: l.lecturer_id, label: l.full_name })) || []
       });
-      // Gán kỳ gần nhất làm mặc định
-      if (semesters.length > 0) setFilters(f => ({ ...f, semester_id: semesters[0].semester_id }));
     }).catch(err => console.error(err));
   }, []);
 
   const fetchClasses = async () => {
-    if (!filters.semester_id) return; // Chờ có học kỳ rồi mới gọi
     setLoading(true);
     try {
       const cleanFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
       const response = await listCreditClasses(cleanFilters);
-      const rawClasses = Array.isArray(response?.data) ? response.data : [];
       
-      const theoryClasses = rawClasses.filter(c => !c.parent_class_id);
-      const practiceClasses = rawClasses.filter(c => c.parent_class_id);
-      const displayClasses = [];
-
-      theoryClasses.forEach(tc => {
-        const children = practiceClasses.filter(pc => pc.parent_class_id === tc.class_id);
-        const gNum = String(tc.group_number || tc.class_group || '1').padStart(2, '0');
-        if (children.length > 0) {
-          children.forEach((pc, idx) => {
-            const sgNum = String(pc.sub_group_number || (idx + 1)).padStart(2, '0');
-            displayClasses.push({
-              ...pc, theory_class: tc, display_group: `${gNum}-${sgNum}`,
-              target_classes_display: (pc.target_classes?.length > 0) ? pc.target_classes : tc.target_classes
-            });
-          });
-        } else {
-          displayClasses.push({ ...tc, display_group: gNum, target_classes_display: tc.target_classes });
-        }
-      });
-      setClasses(displayClasses);
-      setSelectedIds([]); // Reset select khi load lại dữ liệu
+      const rawClasses = Array.isArray(response?.data) ? response.data : [];
+      setClasses(rawClasses);
+      setSelectedIds([]);
     } catch (error) {
       setClasses([]); 
     } finally {
@@ -84,37 +73,35 @@ const CreditClassesManagement = ({ showToast }) => {
 
   const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
 
-  // Cập nhật trạng thái 1 lớp trực tiếp trên bảng
   const handleStatusChange = async (classId, newStatus) => {
     try {
       await updateCreditClassStatus(classId, newStatus);
-      showToast('Cập nhật trạng thái thành công', 'success');
+      showToast?.('Cập nhật trạng thái thành công', 'success');
       fetchClasses();
     } catch (err) {
-      showToast('Lỗi cập nhật trạng thái', 'error');
+      showToast?.('Lỗi cập nhật trạng thái', 'error');
     }
   };
 
-  // Cập nhật hàng loạt các lớp đã chọn
   const handleBulkStatusUpdate = async (newStatus) => {
-    if (selectedIds.length === 0) return showToast('Vui lòng chọn ít nhất 1 lớp', 'error');
+    if (selectedIds.length === 0) return showToast?.('Vui lòng chọn ít nhất 1 lớp', 'error');
     try {
       await updateBulkCreditClassStatus(selectedIds, newStatus);
-      showToast(`Đã cập nhật ${selectedIds.length} lớp thành ${newStatus}`, 'success');
+      showToast?.(`Đã cập nhật ${selectedIds.length} lớp thành ${newStatus}`, 'success');
       fetchClasses();
     } catch (err) {
-      showToast('Lỗi cập nhật hàng loạt', 'error');
+      showToast?.('Lỗi cập nhật hàng loạt', 'error');
     }
   };
 
   const handleDelete = async (classId, currentStudents) => {
-    if (currentStudents > 0) return showToast(`Lớp đang có ${currentStudents} SV, không thể xóa!`, 'error');
+    if (currentStudents > 0) return showToast?.(`Lớp đang có ${currentStudents} SV, không thể xóa!`, 'error');
     if (window.confirm(`Bạn có chắc muốn xóa lớp ${classId}?`)) {
       try {
         await deleteCreditClass(classId);
-        showToast('Xóa thành công!', 'success');
+        showToast?.('Xóa thành công!', 'success');
         fetchClasses(); 
-      } catch (error) { showToast('Lỗi khi xóa lớp.', 'error'); }
+      } catch (error) { showToast?.('Lỗi khi xóa lớp.', 'error'); }
     }
   };
 
@@ -123,60 +110,138 @@ const CreditClassesManagement = ({ showToast }) => {
     setIsEditOpen(true);
   };
 
+  const stats = useMemo(() => {
+    const total = classes.length;
+    const active = classes.filter(c => c.status === 'Active').length;
+    const planning = classes.filter(c => c.status === 'Planning').length;
+    
+    const chartData = [
+      { name: 'Đang mở', value: active, color: '#10b981' },
+      { name: 'Kế hoạch', value: planning, color: '#f59e0b' },
+      { name: 'Đã đóng', value: total - active - planning, color: '#ef4444' }
+    ];
+    return { total, active, planning, chartData };
+  }, [classes]);
+
   return (
-    <div className="p-6 bg-slate-50 min-h-screen">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <BookOpen className="w-6 h-6 text-blue-600" />
-            Quản lý Lớp Tín Chỉ
-          </h1>
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px", padding: "20px" }}>
+      {/* 1. HEADER & ACTIONS */}
+      <div style={{ display: "flex", justifyItems: "space-between", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px 20px", borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <BookOpen size={26} color="#106fa6" />
+          <h2 style={{ fontSize: "1.3rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Lớp Tín Chỉ</h2>
         </div>
-        <div className="flex gap-3">
-          {/* Menu cập nhật hàng loạt */}
+        <div style={{ display: "flex", gap: "10px" }}>
           {selectedIds.length > 0 && (
-            <div className="flex items-center bg-white border border-slate-300 rounded-lg overflow-hidden mr-2">
-              <span className="px-3 text-sm font-medium text-slate-600 bg-slate-100 border-r border-slate-300">
+            <div style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "8px", overflow: "hidden" }}>
+              <span style={{ padding: "8px 12px", fontSize: "0.85rem", fontWeight: "600", color: "#475569", background: "#f8fafc", borderRight: "1px solid #cbd5e1" }}>
                 Đã chọn {selectedIds.length}
               </span>
               <select 
-                className="text-sm px-3 py-2 outline-none cursor-pointer"
+                style={{ fontSize: "0.85rem", padding: "8px 12px", border: "none", outline: "none", cursor: "pointer", background: "transparent" }}
                 onChange={(e) => { if(e.target.value) handleBulkStatusUpdate(e.target.value); e.target.value = ""; }}
               >
                 <option value="">-- Đổi trạng thái --</option>
-                <option value="Active">Mở đăng ký (Active)</option>
-                <option value="Planning">Kế hoạch (Planning)</option>
-                <option value="Closed">Đóng (Closed)</option>
+                <option value="Active">Mở đăng ký</option>
+                <option value="Planning">Kế hoạch</option>
+                <option value="Closed">Đóng</option>
               </select>
             </div>
           )}
-          <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
-            <Settings className="w-4 h-4" /> <span>Tạo tự động</span>
+          <button 
+            style={{ ...styles.btn, background: "#f59e0b", display: "flex", alignItems: "center", gap: "6px" }}
+            onClick={() => setIsAutoGenerateOpen(true)}
+          >
+            <Settings size={18} /> Tạo tự động
           </button>
-          <button className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-            <Plus className="w-4 h-4" /> <span>Tạo thủ công</span>
+          <button 
+            style={{ ...styles.btn, background: "#106fa6", display: "flex", alignItems: "center", gap: "6px" }}
+            onClick={() => setIsCreateOpen(true)} 
+          >
+            <Plus size={18} /> Thêm thủ công
           </button>
         </div>
       </div>
 
-      <FilterSection filters={filters} onFilterChange={handleFilterChange} metaData={metaData} />
-      <DataTable 
-        classes={classes} 
-        loading={loading} 
-        selectedIds={selectedIds}
-        setSelectedIds={setSelectedIds}
-        onStatusChange={handleStatusChange}
-        onDelete={handleDelete} 
-        onEdit={handleEditClick}
-      />
+      {/* 2. THẺ KPI (TOP CARDS) */}
+      <div style={{ display: "flex", gap: "15px", flexWrap: "wrap" }}>
+        <div style={styles.statCard}>
+          <div style={styles.statTitle}><BookOpen size={18} color="#3b82f6"/> Tổng số lớp</div>
+          <div style={styles.statValue}>{stats.total}</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={styles.statTitle}><CheckCircle size={18} color="#10b981"/> Đang mở đăng ký</div>
+          <div style={styles.statValue}>{stats.active} <span style={{fontSize:"1rem", color:"#94a3b8", fontWeight:"normal"}}>/ {stats.total}</span></div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={styles.statTitle}><Clock size={18} color="#f59e0b"/> Đang lên kế hoạch</div>
+          <div style={styles.statValue}>{stats.planning}</div>
+        </div>
+      </div>
+
+      {/* 3. CHARTS DASHBOARD (Tùy chọn) */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "20px" }}>
+        <div style={styles.chartBox}>
+          <h4 style={{ margin: "0 0 15px 0", color: "#334155", display: "flex", alignItems: "center", gap: "6px", fontSize: "1.05rem" }}>
+            <PieChartIcon size={18} color="#64748b"/> Tỷ lệ Trạng thái
+          </h4>
+          <div style={{ width: "100%", height: "260px" }}>
+            {stats.total > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={stats.chartData} cx="50%" cy="50%" innerRadius={60} outerRadius={95} paddingAngle={3} dataKey="value">
+                    {stats.chartData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [`${value} lớp`, 'Số lượng']} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }}/>
+                  <Legend verticalAlign="bottom" height={36} iconType="circle"/>
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (<div style={{height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8"}}>Chưa có dữ liệu</div>)}
+          </div>
+        </div>
+
+        {/* 4. DANH SÁCH BẢNG & BỘ LỌC */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <FilterSection filters={filters} onFilterChange={handleFilterChange} metaData={metaData} />
+          
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", position: "relative" }}>
+            <DataTable 
+              classes={classes} 
+              loading={loading} 
+              selectedIds={selectedIds}
+              setSelectedIds={setSelectedIds}
+              onStatusChange={handleStatusChange}
+              onDelete={handleDelete} 
+              onEdit={handleEditClick}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* CÁC MODALS */}
+      {isCreateOpen && (
+        <CreateClassModal 
+          onClose={() => setIsCreateOpen(false)}
+          onSuccess={fetchClasses}
+          metaData={metaData}
+          showToast={showToast}
+        />
+      )}
+
+      {isAutoGenerateOpen && (
+        <AutoGenerateClassModal 
+          onClose={() => setIsAutoGenerateOpen(false)}
+          onSuccess={fetchClasses}
+          metaData={metaData}
+          showToast={showToast}
+        />
+      )}
 
       {isEditOpen && editData && (
         <EditClassModal 
           editData={editData}
           onClose={() => setIsEditOpen(false)}
           onSuccess={fetchClasses}
-          lecturers={metaData.lecturers}
-          adminClasses={metaData.adminClasses}
           showToast={showToast}
         />
       )}
