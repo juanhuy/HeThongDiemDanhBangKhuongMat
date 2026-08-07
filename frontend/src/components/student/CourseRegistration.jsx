@@ -117,6 +117,11 @@ export default function CourseRegistration({ user, showToast }) {
     return cls.schedules.map((s, i) => (
       <div key={i} style={{ marginBottom: 4 }}>
         <b>{typeStr}:</b> Thứ {s.day_of_week}, tiết {s.start_shift}-{s.end_shift} (P.{s.room_id})
+        {cls.start_date && cls.end_date && (
+          <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 2 }}>
+            ({cls.start_date} - {cls.end_date})
+          </div>
+        )}
       </div>
     ));
   };

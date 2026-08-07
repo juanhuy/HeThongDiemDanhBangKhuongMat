@@ -43,7 +43,7 @@ const DataTable = ({ classes, loading, selectedIds, setSelectedIds, onStatusChan
     const disabledBtnStyle = { ...btnStyle, opacity: 0.5, cursor: "not-allowed", background: "#f8fafc" };
 
     return (
-      <div style={{ padding: "12px 20px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8fafc", borderBottomLeftRadius: "12px", borderBottomRightRadius: "12px" }}>
+      <div className="p-3 md:p-4 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3 bg-slate-50 rounded-b-xl">
         <div style={{ fontSize: "0.85rem", color: "#64748b" }}>
           Hiển thị <span style={{fontWeight: 600, color: "#334155"}}>{indexOfFirstItem + 1}</span> - <span style={{fontWeight: 600, color: "#334155"}}>{Math.min(indexOfLastItem, classes.length)}</span> trong tổng <span style={{fontWeight: 600, color: "#334155"}}>{classes.length}</span> lớp
         </div>

@@ -4,7 +4,7 @@ import {
   Clipboard, FileText, Camera, ShieldAlert, Building, Layers
 } from 'lucide-react';
 
-const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
+const Sidebar = ({ activeMenu, setActiveMenu, user, isOpen }) => {
   const rawRole = user?.role || 'sinh_vien';
   const role = rawRole.toLowerCase();
   const isAdmin = role === 'admin';
@@ -14,10 +14,14 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
     sidebar: {
       backgroundColor: "#ffffff",
       borderRight: "1px solid #d0e0eb",
-      display: "flex",
+      display: isOpen ? "flex" : "none",
       flexDirection: "column",
       justifyContent: "space-between",
-      paddingTop: "10px"
+      paddingTop: "10px",
+      width: "250px",
+      minWidth: "250px",
+      overflowY: "auto",
+      height: "100%",
     },
     sidebarMenu: {
       display: "flex",

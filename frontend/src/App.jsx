@@ -46,19 +46,22 @@ const styles = {
   appWrapper: {
     display: 'flex',
     flexDirection: 'column',
-    minHeight: '100vh',
+    height: '100vh',
+    overflow: 'hidden',
     backgroundColor: '#f4f8fa',
   },
   mainLayout: {
-    display: 'grid',
-    gridTemplateColumns: '250px 1fr',
+    display: 'flex',
     flexGrow: 1,
+    overflow: 'hidden',
   },
   contentArea: {
     padding: '1.5rem 2rem',
     display: 'flex',
     flexDirection: 'column',
     gap: '1.5rem',
+    flexGrow: 1,
+    overflowY: 'auto',
   },
   welcomeHeader: {
     display: 'flex',
@@ -89,6 +92,7 @@ function App() {
   const [activeMenu, setActiveMenu] = useState('home');
   const [studentProfile, setStudentProfile] = useState(null);
   const [lecturerProfile, setLecturerProfile] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const userRole = user?.role ? user.role.toLowerCase() : '';
   const isStudent = userRole === 'sinh_vien' || userRole === 'student';
@@ -332,9 +336,18 @@ function App() {
 
   return (
     <div style={styles.appWrapper}>
-      <Header studentProfile={profileToRender} onLogout={handleLogout} />
+      <Header 
+        studentProfile={profileToRender} 
+        onLogout={handleLogout} 
+        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+      />
       <div style={styles.mainLayout}>
-        <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} user={user} />
+        <Sidebar 
+          activeMenu={activeMenu} 
+          setActiveMenu={setActiveMenu} 
+          user={user} 
+          isOpen={isSidebarOpen}
+        />
         <main style={styles.contentArea}>
           <div style={styles.welcomeHeader}>
             <h2 style={styles.welcomeText}>

@@ -27,6 +27,20 @@ const timeToPeriod = (timeStr) => {
   return 15;
 };
 
+const getSoTiet = (startTime, endTime, fallback) => {
+  if (fallback && fallback > 1) return fallback;
+  if (!startTime || !endTime) return 1;
+  const startT = String(startTime).substring(11, 16) || String(startTime).substring(0, 5);
+  const endT = String(endTime).substring(11, 16) || String(endTime).substring(0, 5);
+  if (!startT || !endT) return 1;
+  const [sH, sM] = startT.split(':').map(Number);
+  const [eH, eM] = endT.split(':').map(Number);
+  const sMin = (sH || 0) * 60 + (sM || 0);
+  const eMin = (eH || 0) * 60 + (eM || 0);
+  if (eMin <= sMin) return 1;
+  return Math.ceil((eMin - sMin) / 60);
+};
+
 const getMonday = (d) => {
   const date = new Date(d);
   const day = date.getDay();
@@ -197,15 +211,35 @@ export default function LecturerTimetable({ user, showToast }) {
       const period = timeToPeriod(s.start_time) || Number(s.shift) || 1;
       const pIdx = Math.min(Math.max(period - 1, 0), 15);
       const cls = classMap[s.class_id] || {};
+
+      const so_tiet = getSoTiet(s.start_time, s.end_time, s.so_tiet || s.periods);
+      
+      const target_classes = cls.target_classes || cls.admin_classes || [];
+      const lopLabel = Array.isArray(target_classes)
+        ? target_classes.map((t) => (typeof t === 'string' ? t : t.label || t.id || t.class_id || '')).filter(Boolean).join(', ')
+        : target_classes || '—';
+
       grid[pIdx][dayIdx] = {
         ...s,
         subject_name: s.subject_name || cls.subject_name,
         subject_id: cls.subject_id || s.subject_id || s.class_id,
         class_group: cls.class_group || cls.group_number,
+        sub_group: cls.sub_group_number || '',
         class_id: s.class_id,
         room: s.room_id || s.room,
+        lecturer_name: cls.lecturer_name || s.lecturer_name || '—',
+        current_students: cls.current_students || 0,
+        max_students: cls.max_students || 0,
         student_count: cls.enrolled_count || cls.current_students || cls.max_students,
+        lopLabel,
+        rowSpan: so_tiet,
       };
+
+      for (let i = 1; i < so_tiet; i++) {
+        if (pIdx + i < 16) {
+          grid[pIdx + i][dayIdx] = 'skip';
+        }
+      }
     });
     return grid;
   }, [mySchedules, daysOfWeek, classMap]);
@@ -580,30 +614,33 @@ export default function LecturerTimetable({ user, showToast }) {
                     </td>
                     {daysOfWeek.map((d, dayIdx) => {
                       const cell = weekGrid[pIdx][dayIdx];
+                      if (cell === 'skip') return null;
                       return (
-                        <td key={d.dateStr} style={cellStyle(!!cell)}>
+                        <td key={d.dateStr} rowSpan={cell?.rowSpan || 1} style={{...cellStyle(!!cell), verticalAlign: 'top', padding: cell ? '6px' : '4px'}}>
                           {cell && (
-                            <div>
-                              <div style={{ fontWeight: 600, color: '#1e3a5f' }}>
-                                {cell.subject_name || 'N/A'}
-                                {cell.subject_id ? ` (${cell.subject_id})` : ''}
+                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                              <div style={{ fontWeight: 700, color: '#1e3a5f', fontSize: '0.8rem', marginBottom: 2 }}>
+                                {cell.subject_name || 'N/A'} {cell.subject_id ? `(${cell.subject_id})` : ''}
                               </div>
                               {!compact && (
                                 <>
-                                  <div style={{ color: '#475569' }}>
-                                    Lớp: {cell.class_id}
+                                  <div style={{ color: '#475569', fontSize: '0.75rem', marginBottom: 2 }}>
+                                    Lớp: {cell.lopLabel || '—'}
                                   </div>
-                                  <div style={{ color: '#475569' }}>
-                                    Nhóm: {cell.class_group || '—'}
+                                  <div style={{ color: '#475569', fontSize: '0.75rem', marginBottom: 2 }}>
+                                    Nhóm: {cell.class_group || '—'} {cell.sub_group ? `- Tổ: ${cell.sub_group}` : ''}
                                   </div>
-                                  <div style={{ color: '#0369a1' }}>
+                                  <div style={{ color: '#0369a1', fontSize: '0.75rem', fontWeight: 600, marginBottom: 2 }}>
                                     Phòng: {cell.room || '—'}
+                                  </div>
+                                  <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                                    Sĩ số: {cell.student_count || cell.current_students}/{cell.max_students}
                                   </div>
                                 </>
                               )}
                               {compact && (
-                                <div style={{ color: '#0369a1' }}>
-                                  {cell.class_id} · {cell.room || ''}
+                                <div style={{ color: '#0369a1', fontSize: '0.75rem' }}>
+                                  {cell.class_group || ''} · P.{cell.room || ''}
                                 </div>
                               )}
                             </div>

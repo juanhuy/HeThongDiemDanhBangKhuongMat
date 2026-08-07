@@ -125,6 +125,13 @@ export const saveGeneratedClasses = async (classesData) => {
   return await response.json();
 };
 
+export const advancedAutoSuggestSchedule = (payload) =>
+  apiFetch("/api/schedules/auto-suggest-advanced", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
 // import { apiFetch, formBody } from "./client";
 
 // /** Danh sách lớp tín chỉ (filter optional) */

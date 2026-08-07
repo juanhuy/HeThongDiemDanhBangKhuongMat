@@ -71,7 +71,7 @@ export default function AutoGenerateClassModal({ onClose, onSuccess, metaData, s
         </div>
 
         {/* BODY - BỘ LỌC PREVIEW */}
-        <div className="p-4 bg-white border-b border-slate-200 flex items-end gap-4">
+        <div className="p-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-end gap-4">
           <div className="flex-1">
             <label className="block text-xs font-semibold text-slate-700 mb-1">Học kỳ áp dụng (*)</label>
             <select 

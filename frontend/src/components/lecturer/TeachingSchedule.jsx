@@ -53,6 +53,98 @@ export default function TeachingSchedule({ user, showToast }) {
     days.some((d) => d.dateStr === (s.session_date || String(s.start_time || '').substring(0, 10)))
   );
 
+  const PERIODS = Array.from({ length: 16 }, (_, i) => i + 1);
+
+  const timeToPeriod = (timeStr) => {
+    if (!timeStr) return null;
+    const t = String(timeStr).substring(11, 16) || String(timeStr).substring(0, 5);
+    const [h, m] = t.split(':').map(Number);
+    const minutes = (h || 0) * 60 + (m || 0);
+    if (minutes <= 8 * 60) return 1;
+    if (minutes <= 9 * 60) return 2;
+    if (minutes <= 10 * 60) return 3;
+    if (minutes <= 11 * 60) return 4;
+    if (minutes <= 12 * 60) return 5;
+    if (minutes <= 13 * 60) return 6;
+    if (minutes <= 14 * 60) return 7;
+    if (minutes <= 15 * 60) return 8;
+    if (minutes <= 16 * 60) return 9;
+    if (minutes <= 17 * 60) return 10;
+    if (minutes <= 18 * 60) return 11;
+    if (minutes <= 19 * 60) return 12;
+    if (minutes <= 20 * 60) return 13;
+    if (minutes <= 21 * 60) return 14;
+    return 15;
+  };
+
+  const getSoTiet = (startTime, endTime, fallback) => {
+    if (fallback && fallback > 1) return fallback;
+    if (!startTime || !endTime) return 1;
+    const startT = String(startTime).substring(11, 16) || String(startTime).substring(0, 5);
+    const endT = String(endTime).substring(11, 16) || String(endTime).substring(0, 5);
+    if (!startT || !endT) return 1;
+    const [sH, sM] = startT.split(':').map(Number);
+    const [eH, eM] = endT.split(':').map(Number);
+    const sMin = (sH || 0) * 60 + (sM || 0);
+    const eMin = (eH || 0) * 60 + (eM || 0);
+    if (eMin <= sMin) return 1;
+    return Math.ceil((eMin - sMin) / 60);
+  };
+
+  const classMap = React.useMemo(() => {
+    return classes.reduce((acc, c) => ({ ...acc, [c.class_id]: c }), {});
+  }, [classes]);
+
+  const weekGrid = React.useMemo(() => {
+    const grid = PERIODS.map(() => Array(7).fill(null));
+    weekSchedules.forEach((s) => {
+      const dateStr = s.session_date || String(s.start_time || '').substring(0, 10);
+      const dayIdx = days.findIndex((d) => d.dateStr === dateStr);
+      if (dayIdx < 0) return;
+      
+      const period = timeToPeriod(s.start_time) || Number(s.shift) || 1;
+      const pIdx = Math.min(Math.max(period - 1, 0), 15);
+      const cls = classMap[s.class_id] || {};
+      
+      const so_tiet = getSoTiet(s.start_time, s.end_time, s.so_tiet || s.periods || s.shift_count);
+      
+      const target_classes = cls.target_classes || cls.admin_classes || [];
+      const lopLabel = Array.isArray(target_classes)
+        ? target_classes.map((t) => (typeof t === 'string' ? t : t.label || t.id || t.class_id || '')).filter(Boolean).join(', ')
+        : target_classes || '—';
+
+      grid[pIdx][dayIdx] = {
+        ...s,
+        subject_name: s.subject_name || cls.subject_name,
+        subject_id: cls.subject_id || s.subject_id || s.class_id,
+        class_group: cls.class_group || cls.group_number,
+        sub_group: cls.sub_group_number || '',
+        room: s.room_id || s.room,
+        current_students: cls.current_students || 0,
+        max_students: cls.max_students || 0,
+        lopLabel,
+        rowSpan: so_tiet,
+      };
+
+      for (let i = 1; i < so_tiet; i++) {
+        if (pIdx + i < 16) {
+          grid[pIdx + i][dayIdx] = 'skip';
+        }
+      }
+    });
+    return grid;
+  }, [weekSchedules, days, classMap]);
+
+  const cellStyle = (hasContent) => ({
+    border: '1px solid #b9d5e8',
+    padding: '6px 8px',
+    verticalAlign: 'top',
+    minHeight: 52,
+    background: hasContent ? '#d6eaf8' : '#fff',
+    fontSize: '0.75rem',
+    lineHeight: 1.35,
+  });
+
   const shiftWeek = (delta) => {
     const d = new Date(selectedWeekStart);
     d.setDate(d.getDate() + delta * 7);
@@ -77,38 +169,68 @@ export default function TeachingSchedule({ user, showToast }) {
         </div>
       </div>
 
-      {viewMode === 'grid' ? (
-        <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2edf5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#106fa6', fontWeight: 600 }}>Tuần</span>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button onClick={() => shiftWeek(-1)} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', background: '#fff' }}>‹</button>
-              <span style={{ fontSize: '0.85rem', color: '#475569' }}>{days[0].displayDate} – {days[6].displayDate}</span>
-              <button onClick={() => shiftWeek(1)} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', background: '#fff' }}>›</button>
+        {viewMode === 'grid' ? (
+          <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, overflow: 'auto' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2edf5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#106fa6', fontWeight: 600 }}>Tuần</span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={() => shiftWeek(-1)} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', background: '#fff' }}>‹</button>
+                <span style={{ fontSize: '0.85rem', color: '#475569' }}>{days[0].displayDate} – {days[6].displayDate}</span>
+                <button onClick={() => shiftWeek(1)} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', background: '#fff' }}>›</button>
+              </div>
             </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: '#e2edf5' }}>
-            {days.map((d) => {
-              const daySessions = weekSchedules.filter(
-                (s) => (s.session_date || String(s.start_time || '').substring(0, 10)) === d.dateStr
-              );
-              return (
-                <div key={d.dateStr} style={{ background: '#fff', minHeight: 140, padding: 8 }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#106fa6', marginBottom: 6 }}>
-                    {d.label}<br />{d.displayDate}
-                  </div>
-                  {daySessions.map((s, i) => (
-                    <div key={i} style={{ background: '#ede9fe', borderRadius: 6, padding: '6px 8px', marginBottom: 4, fontSize: '0.72rem' }}>
-                      <div style={{ fontWeight: 600, color: '#5b21b6' }}>{s.subject_name || s.class_id}</div>
-                      <div style={{ color: '#64748b' }}>{s.room_id || s.room || '—'} · {s.start_time ? String(s.start_time).substring(11, 16) : ''}</div>
-                    </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '0.75rem' }}>
+              <thead>
+                <tr style={{ background: '#e8f4fc' }}>
+                  <th style={{ ...cellStyle(false), width: 56, textAlign: 'center', background: '#d6eaf8', fontWeight: 700, color: '#0b6fa4' }}>
+                    →
+                  </th>
+                  {days.map((d) => (
+                    <th key={d.dateStr} style={{ ...cellStyle(false), textAlign: 'center', background: '#d6eaf8', fontWeight: 700, color: '#0b6fa4' }}>
+                      {d.label} ({d.displayDate})
+                    </th>
                   ))}
-                </div>
-              );
-            })}
+                </tr>
+              </thead>
+              <tbody>
+                {PERIODS.map((period, pIdx) => (
+                  <tr key={period}>
+                    <td style={{ ...cellStyle(false), textAlign: 'center', fontWeight: 600, color: '#0b6fa4', background: '#e8f4fc' }}>
+                      Tiết {period}
+                    </td>
+                    {days.map((d, dayIdx) => {
+                      const cell = weekGrid[pIdx][dayIdx];
+                      if (cell === 'skip') return null;
+                      return (
+                        <td key={d.dateStr} rowSpan={cell?.rowSpan || 1} style={{ ...cellStyle(!!cell), verticalAlign: 'top', padding: cell ? '6px' : '4px' }}>
+                          {cell && (
+                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                              <div style={{ fontWeight: 700, color: '#1e3a5f', fontSize: '0.8rem', marginBottom: 2 }}>
+                                {cell.subject_name || 'N/A'} {cell.subject_id ? `(${cell.subject_id})` : ''}
+                              </div>
+                              <div style={{ color: '#475569', fontSize: '0.75rem', marginBottom: 2 }}>
+                                Lớp: {cell.lopLabel || '—'}
+                              </div>
+                              <div style={{ color: '#475569', fontSize: '0.75rem', marginBottom: 2 }}>
+                                Nhóm: {cell.class_group || '—'} {cell.sub_group ? `- Tổ: ${cell.sub_group}` : ''}
+                              </div>
+                              <div style={{ color: '#0369a1', fontSize: '0.75rem', fontWeight: 600, marginBottom: 2 }}>
+                                Phòng: {cell.room || '—'}
+                              </div>
+                              <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                                Sĩ số: {cell.current_students || 0}/{cell.max_students || 0}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      ) : (
+        ) : (
         <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>

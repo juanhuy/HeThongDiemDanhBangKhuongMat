@@ -1,4 +1,4 @@
-# File: app/api/endpoints/schedules.py
+﻿# File: app/api/endpoints/schedules.py
 from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -143,4 +143,262 @@ def list_schedules(lecturer_id: Optional[str] = Query(None), db: Session = Depen
                 "subject_name": s.credit_class.subject.subject_name if (s.credit_class and s.credit_class.subject) else "N/A"
             } for s in schedules]
         }
-    except Exception as e: raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
+    except Exception as e: raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")# --- BATCH SCHEDULING ---
+import math
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from datetime import date, datetime, time, timedelta
+
+class ClassScheduleRequest(BaseModel):
+    credit_class_id: str
+    lecturer_id: str
+    theory_periods: int
+    practice_periods: int
+    max_students: int
+    subject_name: Optional[str] = ""
+
+class BatchAutoSuggestRequest(BaseModel):
+    start_date: str = Field(..., description="Ngày bắt đầu học kỳ")
+    classes: List[ClassScheduleRequest]
+    avoid_evening_shift: bool = True
+    allow_block_scheduling: bool = False
+
+@router.post("/schedules/auto-suggest-batch", summary="Thuật toán xếp lịch tự động Hàng Loạt")
+def batch_auto_suggest_schedule(req: BatchAutoSuggestRequest, db: Session = Depends(get_db)):
+    try:
+        semester_start = datetime.strptime(req.start_date.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Ngày bắt đầu không hợp lệ.")
+
+    shifts = [
+        {"shift": 1, "start": time(7, 0), "end": time(11, 0), "label": "Ca Sáng", "periods": 4},
+        {"shift": 7, "start": time(13, 0), "end": time(17, 0), "label": "Ca Chiều", "periods": 4}
+    ]
+    if not req.avoid_evening_shift:
+        shifts.append({"shift": 12, "start": time(18, 0), "end": time(22, 0), "label": "Ca Tối", "periods": 4})
+
+    sorted_classes = sorted(req.classes, key=lambda c: (c.theory_periods + c.practice_periods), reverse=True)
+    all_rooms = db.query(Classroom).all()
+    
+    temp_room_busy = set()
+    temp_lect_busy = set()
+
+    def is_slot_free(check_date, shift_info, room_id, lecturer_id):
+        if (room_id, check_date, shift_info["shift"]) in temp_room_busy: return False, "Phòng kẹt (Lớp xếp trước)"
+        if lecturer_id and (lecturer_id, check_date, shift_info["shift"]) in temp_lect_busy: return False, "GV kẹt (Lớp xếp trước)"
+            
+        if lecturer_id:
+            lect_conflict = db.query(ClassSession).join(CreditClass).filter(
+                CreditClass.lecturer_id == lecturer_id, ClassSession.session_date == check_date,
+                ClassSession.start_time < datetime.combine(check_date, shift_info["end"]),
+                ClassSession.end_time > datetime.combine(check_date, shift_info["start"])
+            ).first()
+            if lect_conflict: return False, "GV trùng lịch DB"
+        
+        room_conflict = db.query(ClassSession).filter(
+            ClassSession.room_id == room_id, ClassSession.session_date == check_date,
+            ClassSession.start_time < datetime.combine(check_date, shift_info["end"]),
+            ClassSession.end_time > datetime.combine(check_date, shift_info["start"])
+        ).first()
+        if room_conflict: return False, "Phòng trùng DB"
+            
+        return True, ""
+
+    def is_room_match(r, req_type):
+        rt = str(getattr(r, 'room_type', getattr(r, 'type', ''))).lower()
+        if req_type == "Theory":
+            return any(k in rt for k in ["theory", "lý thuyết", "lt", "phòng"]) or not rt
+        return any(k in rt for k in ["practice", "thực hành", "th", "lab", "máy"])
+
+    results = []
+    
+    for cls in sorted_classes:
+        db_cls = db.query(CreditClass).filter_by(class_id=cls.credit_class_id).first()
+        t_periods = 0
+        p_periods = 0
+        if db_cls and db_cls.subject:
+            if not db_cls.parent_class_id:
+                t_periods = db_cls.subject.theory_periods or 0
+                p_periods = 0
+            else:
+                t_periods = 0
+                p_periods = db_cls.subject.practical_periods or 0
+        else:
+            t_periods = cls.theory_periods
+            p_periods = cls.practice_periods
+        
+        theory_sessions = math.ceil(t_periods / 4.0)
+        practice_sessions = math.ceil(p_periods / 4.0)
+        
+        cls_suggestions = []
+        err_logs = []
+
+        def find_pattern(start_date, sessions_needed, req_type, sessions_per_week=1, exclude_wd=[]):
+            valid_rooms = [r for r in all_rooms if is_room_match(r, req_type) and (r.capacity or 0) >= cls.max_students]
+            valid_rooms.sort(key=lambda x: x.capacity or 0)
+            if not valid_rooms: return None, f"Không có phòng {req_type} >= {cls.max_students} chỗ."
+
+            weeks_needed = math.ceil(sessions_needed / sessions_per_week)
+            
+            for room in valid_rooms:
+                free_slots = []
+                for day_offset in range(7):
+                    first_date = start_date + timedelta(days=day_offset)
+                    if first_date.weekday() == 6 or first_date.weekday() in exclude_wd: continue
+                    
+                    for shift in shifts:
+                        can_schedule = True
+                        for w in range(weeks_needed):
+                            check_date = first_date + timedelta(weeks=w)
+                            ok, _ = is_slot_free(check_date, shift, room.room_id, cls.lecturer_id)
+                            if not ok:
+                                can_schedule = False
+                                break
+                        if can_schedule:
+                            free_slots.append({"room": room, "first_date": first_date, "shift": shift, "weekday": first_date.weekday()})
+                
+                if len(free_slots) >= sessions_per_week:
+                    if sessions_per_week == 1: return [free_slots[0]], ""
+                    s1 = free_slots[0]
+                    s2 = next((s for s in free_slots[1:] if abs(s["weekday"] - s1["weekday"]) >= 2), free_slots[1])
+                    return [s1, s2], ""
+            return None, "Không tìm được khe thời gian rảnh liên tục."
+
+        if theory_sessions > 0:
+            pat, err = find_pattern(semester_start, theory_sessions, "Theory", 1)
+            if not pat and req.allow_block_scheduling: 
+                pat, err = find_pattern(semester_start, theory_sessions, "Theory", 2)
+            if pat:
+                added = 0
+                for w in range(math.ceil(theory_sessions / len(pat))):
+                    for p in pat:
+                        if added >= theory_sessions: break
+                        s_date = p["first_date"] + timedelta(weeks=w)
+                        cls_suggestions.append({
+                            "room_id": p["room"].room_id, "session_date": str(s_date),
+                            "shift": p["shift"]["shift"], "start_time": p["shift"]["start"].strftime("%H:%M:%S"),
+                            "end_time": p["shift"]["end"].strftime("%H:%M:%S"), "weekday": s_date.weekday(), "room_type": "Theory"
+                        })
+                        temp_room_busy.add((p["room"].room_id, s_date, p["shift"]["shift"]))
+                        if cls.lecturer_id: temp_lect_busy.add((cls.lecturer_id, s_date, p["shift"]["shift"]))
+                        added += 1
+            else:
+                err_logs.append(f"Lý thuyết: {err}")
+
+        if practice_sessions > 0:
+            pat, err = find_pattern(semester_start, practice_sessions, "Practice", 1)
+            if pat:
+                added = 0
+                for w in range(math.ceil(practice_sessions / len(pat))):
+                    for p in pat:
+                        if added >= practice_sessions: break
+                        s_date = p["first_date"] + timedelta(weeks=w)
+                        cls_suggestions.append({
+                            "room_id": p["room"].room_id, "session_date": str(s_date),
+                            "shift": p["shift"]["shift"], "start_time": p["shift"]["start"].strftime("%H:%M:%S"),
+                            "end_time": p["shift"]["end"].strftime("%H:%M:%S"), "weekday": s_date.weekday(), "room_type": "Practice"
+                        })
+                        temp_room_busy.add((p["room"].room_id, s_date, p["shift"]["shift"]))
+                        if cls.lecturer_id: temp_lect_busy.add((cls.lecturer_id, s_date, p["shift"]["shift"]))
+                        added += 1
+            else:
+                err_logs.append(f"Thực hành: {err}")
+
+        results.append({
+            "class_id": cls.credit_class_id, "subject_name": cls.subject_name,
+            "lecturer_id": cls.lecturer_id, "schedules": cls_suggestions, "errors": err_logs
+        })
+
+    return {"status": "success", "data": results}
+
+class ScheduleSessionInput(BaseModel):
+    class_id: str
+    room_id: str
+    session_date: str
+    shift: int
+    start_time: str
+    end_time: str
+    room_type: str = "Theory"
+
+class BatchSaveRequest(BaseModel):
+    classes: List[str]
+    schedules: List[ScheduleSessionInput]
+
+@router.post("/schedules/batch-save", summary="Lưu hàng loạt lịch học")
+def batch_save_schedules(req: BatchSaveRequest, db: Session = Depends(get_db)):
+    try:
+        from app.models.class_schedule import ClassSchedule
+        db.query(ClassSession).filter(ClassSession.class_id.in_(req.classes)).delete(synchronize_session=False)
+        db.query(ClassSchedule).filter(ClassSchedule.class_id.in_(req.classes)).delete(synchronize_session=False)
+        
+        new_sessions = []
+        pattern_set = set()
+        
+        for s in req.schedules:
+            dt_date = datetime.strptime(s.session_date, "%Y-%m-%d").date()
+            dt_start = datetime.strptime(s.start_time, "%H:%M:%S").time()
+            dt_end = datetime.strptime(s.end_time, "%H:%M:%S").time()
+            day_of_week = dt_date.weekday() + 2
+            
+            pattern_set.add((s.class_id, day_of_week, s.shift, s.room_id))
+            
+            new_sessions.append(
+                ClassSession(
+                    class_id=s.class_id,
+                    room_id=s.room_id,
+                    session_date=dt_date,
+                    shift=s.shift,
+                    start_time=datetime.combine(dt_date, dt_start),
+                    end_time=datetime.combine(dt_date, dt_end),
+                    session_type=s.room_type,
+                    status='Scheduled'
+                )
+            )
+            
+        new_schedules = []
+        for class_id, day_of_week, shift, room_id in pattern_set:
+            new_schedules.append(
+                ClassSchedule(class_id=class_id, room_id=room_id, day_of_week=day_of_week, start_shift=shift, end_shift=shift+3) 
+            )
+        
+        if new_sessions: db.bulk_save_objects(new_sessions)
+        if new_schedules: db.bulk_save_objects(new_schedules)
+            
+        db.commit()
+        return {"status": "success", "message": f"Đã lưu thành công lịch cho {len(req.classes)} lớp."}
+    except Exception as e:
+        import traceback
+        with open('debug_error.log', 'w', encoding='utf-8') as f:
+            f.write(traceback.format_exc())
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ResetSchedulesRequest(BaseModel):
+    semester_id: str = Field(..., description="Mã học kỳ cần reset lịch")
+
+@router.post("/schedules/reset", summary="Reset toàn bộ lịch học của học kỳ")
+def reset_semester_schedules(req: ResetSchedulesRequest, db: Session = Depends(get_db)):
+    """Xóa toàn bộ lịch học (sessions và schedules) của các lớp trong một học kỳ cụ thể."""
+    try:
+        from app.models.class_schedule import ClassSchedule
+        
+        classes_in_semester = db.query(CreditClass.class_id).filter(CreditClass.semester_id == req.semester_id).all()
+        class_ids = [c[0] for c in classes_in_semester]
+        
+        if not class_ids:
+            return {"status": "success", "message": "Không có lớp nào trong học kỳ này để reset."}
+            
+        deleted_sessions = db.query(ClassSession).filter(ClassSession.class_id.in_(class_ids)).delete(synchronize_session=False)
+        deleted_schedules = db.query(ClassSchedule).filter(ClassSchedule.class_id.in_(class_ids)).delete(synchronize_session=False)
+        
+        db.commit()
+        return {
+            "status": "success", 
+            "message": f"Đã reset thành công! Xóa {deleted_sessions} buổi học và {deleted_schedules} cấu hình lịch tuần."
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống khi reset: {e}")
+
+
+

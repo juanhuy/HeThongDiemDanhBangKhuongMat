@@ -1,4 +1,4 @@
-# File: app/api/endpoints/credit_classes.py
+﻿# File: app/api/endpoints/credit_classes.py
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
@@ -147,7 +147,7 @@ def list_credit_classes(
 ):
     """Lấy danh sách các lớp học tín chỉ đa điều kiện lọc."""
     query = db.query(CreditClass).options(
-        joinedload(CreditClass.subject), joinedload(CreditClass.lecturer), joinedload(CreditClass.expected_mappings), joinedload(CreditClass.schedules)
+        joinedload(CreditClass.subject), joinedload(CreditClass.lecturer), joinedload(CreditClass.expected_mappings), joinedload(CreditClass.schedules), joinedload(CreditClass.sessions)
     )
     if semester_id: query = query.filter(CreditClass.semester_id == semester_id.strip())
     if subject_id: query = query.filter(CreditClass.subject_id == subject_id.strip())
@@ -208,10 +208,14 @@ def update_credit_class(class_id: str, data: CreditClassUpdate, db: Session = De
     """Cập nhật các thông số của một lớp học tín chỉ."""
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
     if not cc: raise HTTPException(status_code=404, detail="Không tìm thấy lớp học tín chỉ.")
-    if data.lecturer_id:
-        if not db.query(Lecturer).filter(Lecturer.lecturer_id == data.lecturer_id.strip()).first():
-            raise HTTPException(status_code=404, detail=f"Không tìm thấy giảng viên {data.lecturer_id}")
-        cc.lecturer_id = data.lecturer_id.strip()
+    update_data = data.model_dump(exclude_unset=True)
+    if "lecturer_id" in update_data:
+        if data.lecturer_id:
+            if not db.query(Lecturer).filter(Lecturer.lecturer_id == data.lecturer_id.strip()).first():
+                raise HTTPException(status_code=404, detail=f"Không tìm thấy giảng viên {data.lecturer_id}")
+            cc.lecturer_id = data.lecturer_id.strip()
+        else:
+            cc.lecturer_id = None
     if data.semester_id: cc.semester_id = data.semester_id.strip()
     if data.class_group is not None: cc.class_group = data.class_group.strip() if data.class_group.strip() else None
     if data.class_type is not None: cc.class_type = data.class_type.strip()

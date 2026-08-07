@@ -1,0 +1,169 @@
+Trigger: trg_auto_attendance_status Table: attendance_records Event: INSERT
+BEGIN
+    DECLARE v_start_time DATETIME;
+    DECLARE time_diff INT;
+
+    -- 1. Lấy thời gian bắt đầu (start_time) của buổi học từ bảng class_sessions
+    SELECT start_time INTO v_start_time
+    FROM class_sessions
+    WHERE session_id = NEW.session_id;
+
+    -- 2. Nếu bản ghi có thời gian điểm danh (recorded_at)
+    IF NEW.recorded_at IS NOT NULL AND v_start_time IS NOT NULL THEN
+        
+        -- Tính khoảng chênh lệch tính bằng giây (recorded_at - start_time)
+        SET time_diff = TIMESTAMPDIFF(SECOND, v_start_time, NEW.recorded_at);
+
+        -- 3. Logic phân loại trạng thái tự động
+        IF time_diff <= 0 THEN
+            -- Điểm danh trước hoặc đúng giờ bắt đầu
+            SET NEW.status = 'Present';
+            
+        -- Cho phép đi trễ trong vòng 15 phút (900 giây), sau 15 phút tính là Absent
+        ELSEIF time_diff > 0 AND time_diff <= 900 THEN
+            SET NEW.status = 'Late';
+            
+        ELSE
+            -- Quá 15 phút mà vẫn quét hoặc cập nhật muộn
+            SET NEW.status = 'Absent';
+        END IF;
+        
+    ELSE
+        -- Nếu không có thời gian recorded_at (ví dụ điểm danh thủ công hoặc mặc định mới tạo)
+        IF NEW.status IS NULL THEN
+            SET NEW.status = 'Absent';
+        END IF;
+    END IF;
+
+END
+---
+Trigger: trg_auto_attendance_status_update Table: attendance_records Event: UPDATE
+BEGIN
+    DECLARE v_start_time DATETIME;
+    DECLARE time_diff INT;
+
+    -- Lấy thời gian bắt đầu của buổi học
+    SELECT start_time INTO v_start_time
+    FROM class_sessions
+    WHERE session_id = NEW.session_id;
+
+    -- Nếu có thay đổi về thời gian recorded_at
+    IF NEW.recorded_at IS NOT NULL AND v_start_time IS NOT NULL THEN
+        SET time_diff = TIMESTAMPDIFF(SECOND, v_start_time, NEW.recorded_at);
+
+        IF time_diff <= 0 THEN
+            SET NEW.status = 'Present';
+        ELSEIF time_diff > 0 AND time_diff <= 900 THEN
+            SET NEW.status = 'Late';
+        ELSE
+            SET NEW.status = 'Absent';
+        END IF;
+    END IF;
+END
+---
+Trigger: trg_prevent_student_enrollment_conflict Table: class_enrollments Event: INSERT
+BEGIN
+    DECLARE conflict_count INT;
+
+    -- Chỉ kiểm tra nếu trạng thái là Enrolled
+    IF NEW.status = 'Enrolled' THEN
+        SELECT COUNT(*) INTO conflict_count
+        FROM class_schedules ns -- Lịch của lớp chuẩn bị đăng ký (New Schedule)
+        JOIN class_schedules es ON ns.day_of_week = es.day_of_week -- So khớp trùng Thứ với lịch đang học (Existing Schedule)
+        JOIN class_enrollments ce ON ce.class_id = es.class_id
+        WHERE ns.class_id = NEW.class_id                -- Điều kiện lịch mới
+          AND ce.student_id = NEW.student_id            -- Điều kiện sinh viên
+          AND ce.status = 'Enrolled'                    -- Chỉ check lớp SV đang học
+          -- Công thức bắt trùng lặp tiết học
+          AND ns.start_shift <= es.end_shift 
+          AND ns.end_shift >= es.start_shift;
+
+        IF conflict_count > 0 THEN
+            SIGNAL SQLSTATE '45000' 
+            SET MESSAGE_TEXT = 'ÄÄƒng kÃ½ tháº¥t báº¡i: Thá»i khÃ³a biá»ƒu cá»§a lá»›p nÃ y bá»‹ trÃ¹ng vá»›i lá»›p khÃ¡c báº¡n Ä‘Ã£ Ä‘Äƒng kÃ½!';
+        END IF;
+    END IF;
+END
+---
+Trigger: trg_enrollment_after_insert Table: class_enrollments Event: INSERT
+BEGIN
+    IF NEW.status = 'Enrolled' THEN
+        UPDATE credit_classes
+        SET current_students = current_students + 1
+        WHERE class_id = NEW.class_id;
+    END IF;
+END
+---
+Trigger: trg_enrollment_after_update Table: class_enrollments Event: UPDATE
+BEGIN
+    -- SV mới đăng ký (Từ trạng thái khác chuyển sang Enrolled)
+    IF NEW.status = 'Enrolled' AND OLD.status != 'Enrolled' THEN
+        UPDATE credit_classes SET current_students = current_students + 1 WHERE class_id = NEW.class_id;
+    -- SV rút môn (Từ Enrolled chuyển sang trạng thái khác)
+    ELSEIF NEW.status != 'Enrolled' AND OLD.status = 'Enrolled' THEN
+        UPDATE credit_classes SET current_students = GREATEST(0, current_students - 1) WHERE class_id = OLD.class_id;
+    END IF;
+END
+---
+Trigger: trg_enrollment_after_delete Table: class_enrollments Event: DELETE
+BEGIN
+    IF OLD.status = 'Enrolled' THEN
+        UPDATE credit_classes
+        SET current_students = GREATEST(0, current_students - 1)
+        WHERE class_id = OLD.class_id;
+    END IF;
+END
+---
+Trigger: trg_prevent_schedule_conflict Table: class_schedules Event: INSERT
+BEGIN
+    DECLARE conflict_count INT;
+    DECLARE v_lecturer_id VARCHAR(20);
+    DECLARE v_semester_id VARCHAR(20);
+
+    -- 1. Kiểm tra trùng lịch Phòng Học
+    SELECT COUNT(*) INTO conflict_count FROM class_schedules cs
+    JOIN credit_classes cc ON cs.class_id = cc.class_id
+    WHERE cs.room_id = NEW.room_id 
+      AND cs.day_of_week = NEW.day_of_week
+      AND NEW.start_shift <= cs.end_shift 
+      AND NEW.end_shift >= cs.start_shift
+      -- Phải check phòng này trong cùng 1 học kỳ
+      AND cc.semester_id = (SELECT semester_id FROM credit_classes WHERE class_id = NEW.class_id);
+
+    IF conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lá»—i Xáº¿p Lá»‹ch: PhÃ²ng há»c Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng trong khoáº£ng thá»i gian nÃ y!';
+    END IF;
+
+    -- Lấy thông tin Giảng viên và Học kỳ của lớp đang được xếp lịch
+    SELECT lecturer_id, semester_id INTO v_lecturer_id, v_semester_id
+    FROM credit_classes WHERE class_id = NEW.class_id;
+
+    -- 2. Kiểm tra trùng lịch Giảng Viên (Có dạy lớp khác không?)
+    SELECT COUNT(*) INTO conflict_count FROM class_schedules cs
+    JOIN credit_classes cc ON cs.class_id = cc.class_id
+    WHERE cc.lecturer_id = v_lecturer_id 
+      AND cc.semester_id = v_semester_id 
+      AND cs.day_of_week = NEW.day_of_week
+      AND NEW.start_shift <= cs.end_shift 
+      AND NEW.end_shift >= cs.start_shift;
+
+    IF conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lá»—i Xáº¿p Lá»‹ch: Giáº£ng viÃªn Ä‘Ã£ bá»‹ káº¹t lá»‹ch dáº¡y lá»›p khÃ¡c!';
+    END IF;
+
+    -- 3. KIỂM TRA LỊCH BẬN CÁ NHÂN CỦA GIẢNG VIÊN
+    SELECT COUNT(*) INTO conflict_count FROM lecturer_busy_times lbt
+    WHERE lbt.lecturer_id = v_lecturer_id 
+      AND lbt.semester_id = v_semester_id 
+      AND lbt.day_of_week = NEW.day_of_week
+      AND NEW.start_shift <= lbt.end_shift 
+      AND NEW.end_shift >= lbt.start_shift;
+
+    IF conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lá»—i Xáº¿p Lá»‹ch: Giáº£ng viÃªn Ä‘Ã£ Ä‘Äƒng kÃ½ Báº¬N vÃ o khung giá» nÃ y!';
+    END IF;
+END
+---

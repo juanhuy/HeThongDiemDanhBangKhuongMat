@@ -366,7 +366,7 @@ export default function EditClassModal({
               {loadingDetail ? (
                 <div className="p-4 text-center text-gray-400 text-[13px]">Đang tải thông tin môn học...</div>
               ) : (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-2 gap-y-3 gap-x-4">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4">
                   <div className="col-span-2 flex flex-col">
                     <span className="text-[11px] text-gray-500 font-semibold uppercase">Môn học</span>
                     <span className="text-[14px] text-gray-800 font-medium">
@@ -402,7 +402,7 @@ export default function EditClassModal({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12px] font-semibold text-gray-700">Sĩ số tối đa</label>
                   <input 
@@ -496,7 +496,7 @@ export default function EditClassModal({
                  </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12px] font-semibold text-gray-700">Ngày học</label>
                   <input 
@@ -517,7 +517,7 @@ export default function EditClassModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div className="flex flex-col gap-1.5 relative">
                   <label className="text-[12px] font-semibold text-gray-700">
                     Phòng {scheduleForm.type} <span className="text-xs font-normal text-gray-500">(Đã lọc tự động)</span>
