@@ -85,16 +85,19 @@ CREATE TABLE subjects (
     
     theory_credits INT DEFAULT 0,                         -- Số tín chỉ lý thuyết
     practical_credits INT DEFAULT 0,                      -- Số tín chỉ thực hành
-    credits INT GENERATED ALWAYS AS (theory_credits + practical_credits) STORED,                                -- Tổng tín chỉ (sẽ được trigger cập nhật)
+    credits INT GENERATED ALWAYS AS (theory_credits + practical_credits) STORED, -- Tổng tín chỉ
     
-
     -- TỰ ĐỘNG TÍNH SỐ TIẾT HỌC DỰA TRÊN TÍN CHỈ
     theory_periods INT GENERATED ALWAYS AS (theory_credits * 15) STORED,
     practical_periods INT GENERATED ALWAYS AS (practical_credits * 45) STORED,
     total_periods INT GENERATED ALWAYS AS ((theory_credits * 15) + (practical_credits * 45)) STORED,
 
-    faculty_id VARCHAR(20),                         -- Khoa/Bộ môn phụ trách
-    is_active BOOLEAN DEFAULT TRUE,                        -- Trạng thái môn học
+    faculty_id VARCHAR(20),                               -- Khoa/Bộ môn phụ trách
+    is_active BOOLEAN DEFAULT TRUE,                       -- Trạng thái môn học
+
+    -- BỔ SUNG TRƯỜNG LƯU VẾT THỜI GIAN
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,       -- Ngày giờ tạo
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, -- ĐÃ THÊM DẤU PHẨY TẠI ĐÂY
 
     FOREIGN KEY (faculty_id) REFERENCES faculties(faculty_id) ON DELETE SET NULL
 );

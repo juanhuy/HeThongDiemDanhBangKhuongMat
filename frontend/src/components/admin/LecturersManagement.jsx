@@ -61,7 +61,17 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
         showToast(`Import thành công ${result.success_count} dòng. Lỗi ${result.error_count} dòng.`);
         fetchAllLecturers();
       } else {
-        showToast(result.detail || 'Lỗi khi import', 'danger');
+        let errMsg = 'Lỗi khi import';
+        if (result.detail) {
+            if (Array.isArray(result.detail)) {
+                errMsg = result.detail.map(e => e.msg || JSON.stringify(e)).join(', ');
+            } else if (typeof result.detail === 'string') {
+                errMsg = result.detail;
+            } else {
+                errMsg = JSON.stringify(result.detail);
+            }
+        }
+        showToast(errMsg, 'danger');
       }
     } catch (err) {
       showToast('Lỗi kết nối API', 'danger');
@@ -178,7 +188,17 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
         });
         if (!response.ok) {
            const err = await response.json();
-           throw new Error(err.detail || 'Có lỗi xảy ra');
+           let errMsg = 'Có lỗi xảy ra';
+           if (err.detail) {
+               if (Array.isArray(err.detail)) {
+                   errMsg = err.detail.map(e => e.msg || JSON.stringify(e)).join(', ');
+               } else if (typeof err.detail === 'string') {
+                   errMsg = err.detail;
+               } else {
+                   errMsg = JSON.stringify(err.detail);
+               }
+           }
+           throw new Error(errMsg);
         }
         showToast('Đã cập nhật giảng viên!');
       } else {
@@ -189,7 +209,17 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
         });
         if (!response.ok) {
            const err = await response.json();
-           throw new Error(err.detail || 'Có lỗi xảy ra');
+           let errMsg = 'Có lỗi xảy ra';
+           if (err.detail) {
+               if (Array.isArray(err.detail)) {
+                   errMsg = err.detail.map(e => e.msg || JSON.stringify(e)).join(', ');
+               } else if (typeof err.detail === 'string') {
+                   errMsg = err.detail;
+               } else {
+                   errMsg = JSON.stringify(err.detail);
+               }
+           }
+           throw new Error(errMsg);
         }
         showToast('Đã thêm giảng viên!');
       }
@@ -207,7 +237,17 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
       const response = await fetch(`http://localhost:8000/api/admin/lecturers/${id}`, { method: 'DELETE' });
       if (!response.ok) {
          const err = await response.json();
-         throw new Error(err.detail || 'Lỗi khi xóa');
+         let errMsg = 'Lỗi khi xóa';
+         if (err.detail) {
+             if (Array.isArray(err.detail)) {
+                 errMsg = err.detail.map(e => e.msg || JSON.stringify(e)).join(', ');
+             } else if (typeof err.detail === 'string') {
+                 errMsg = err.detail;
+             } else {
+                 errMsg = JSON.stringify(err.detail);
+             }
+         }
+         throw new Error(errMsg);
       }
       showToast('Đã xóa giảng viên!');
       fetchAllLecturers();

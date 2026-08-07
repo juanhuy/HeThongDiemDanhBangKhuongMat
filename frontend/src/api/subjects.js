@@ -15,3 +15,9 @@ export const updateSubject = (id, body) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+
+export const importCsv = (formData) =>
+  apiFetch("/api/subjects/import/csv", {
+    method: "POST",
+    body: formData,
+  });

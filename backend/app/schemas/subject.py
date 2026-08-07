@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime
 
 class SubjectBase(BaseModel):
     subject_id: str = Field(..., example="IT101")
@@ -34,6 +35,8 @@ class SubjectResponse(BaseModel):
     credits: Optional[int] = 0
     faculty_id: Optional[str] = None
     is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     # fix API trả về json có thêm tên Khoa
     faculty: Optional[FacultyInfo] = None 

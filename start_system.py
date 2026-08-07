@@ -34,8 +34,29 @@ def run_in_new_terminal(command, cwd, title):
         except Exception:
             subprocess.Popen(command, shell=True, cwd=cwd)
 
+def ensure_docker_running():
+    """Kiểm tra và yêu cầu người dùng bật Docker nếu chưa bật."""
+    print("⏳ Đang kiểm tra trạng thái Docker...")
+    while True:
+        try:
+            # Chạy lệnh docker info để kiểm tra xem daemon có phản hồi không
+            subprocess.run(['docker', 'info'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            print("✅ Docker đang hoạt động!")
+            return True
+        except FileNotFoundError:
+            print("❌ LỖI: Không tìm thấy lệnh 'docker' trên máy. Vui lòng cài đặt Docker trước!")
+            return False
+        except subprocess.CalledProcessError:
+            print("\n❌ LỖI: Docker chưa được khởi động (Docker daemon không phản hồi)!")
+            print("👉 HƯỚNG DẪN: Hãy mở Docker Desktop lên (hoặc start service docker).")
+            input("🔄 Sau khi Docker đã chạy, hãy nhấn [Enter] để hệ thống kiểm tra lại và đi tiếp...")
+            print("⏳ Đang kiểm tra lại...")
+
 def docker_control(action):
     """Thực thi các lệnh điều khiển Docker Compose cho Database."""
+    if not ensure_docker_running():
+        return
+
     if not os.path.exists(DB_DIR):
         print(f"⚠️ Không tìm thấy thư mục database tại {DB_DIR}")
         return
@@ -55,9 +76,7 @@ def docker_control(action):
             subprocess.run(cmd, cwd=DB_DIR, check=True)
             print("✅ Thực thi thành công!")
         except subprocess.CalledProcessError:
-            print("❌ LỖI: Lệnh Docker thất bại. Hãy đảm bảo Docker Desktop đang chạy.")
-        except FileNotFoundError:
-            print("❌ LỖI: Không tìm thấy 'docker'.")
+            print("❌ LỖI: Lệnh Docker thất bại.")
 
 def start_backend():
     """Kiểm tra môi trường và khởi động Backend."""
@@ -97,6 +116,11 @@ def start_frontend():
 
 def start_all():
     """Khởi động toàn bộ hệ thống."""
+    print("\n--- BƯỚC 0: KIỂM TRA DOCKER ---")
+    if not ensure_docker_running():
+        print("⚠️ Hủy khởi động hệ thống vì không có Docker.")
+        return False
+
     print("\n--- BƯỚC 1: KHỞI ĐỘNG DATABASE ---")
     docker_control("up")
     time.sleep(2)
@@ -104,13 +128,14 @@ def start_all():
     start_backend()
     print("\n--- BƯỚC 3: KHỞI ĐỘNG FRONTEND ---")
     start_frontend()
+    return True
 
 def show_menu():
     """Hiển thị menu tương tác."""
     while True:
         clear_screen()
         print("="*60)
-        print("   ⚙️  BẢNG ĐIỀU KHIỂN HỆ THỐNG ĐIỂM DANH")
+        print("    ⚙️  BẢNG ĐIỀU KHIỂN HỆ THỐNG ĐIỂM DANH")
         print("="*60)
         print("[1]. 🚀 Khởi động lại toàn bộ hệ thống (DB, Backend, Frontend)")
         print("-" * 60)
@@ -158,16 +183,21 @@ if __name__ == "__main__":
     try:
         clear_screen()
         print("="*60)
-        print("   🚀 ĐANG TỰ ĐỘNG KHỞI ĐỘNG HỆ THỐNG LẦN ĐẦU...")
+        print("    🚀 ĐANG TỰ ĐỘNG KHỞI ĐỘNG HỆ THỐNG LẦN ĐẦU...")
         print("="*60)
         
         # Mặc định gọi khởi động toàn bộ khi chạy file
-        start_all()
+        is_success = start_all()
         
-        print("\n" + "="*60)
-        print("🎉 QUÁ TRÌNH KHỞI ĐỘNG TỰ ĐỘNG HOÀN TẤT!")
-        print("👉 Swagger API Docs (Backend): http://localhost:8000/docs")
-        print("="*60)
+        if is_success:
+            print("\n" + "="*60)
+            print("🎉 QUÁ TRÌNH KHỞI ĐỘNG TỰ ĐỘNG HOÀN TẤT!")
+            print("👉 Swagger API Docs (Backend): http://localhost:8000/docs")
+            print("="*60)
+        else:
+            print("\n" + "="*60)
+            print("⚠️ HỆ THỐNG CHƯA ĐƯỢC KHỞI ĐỘNG HOÀN TOÀN.")
+            print("="*60)
         
         input("\n👉 Nhấn Enter để mở Bảng Điều Khiển (Menu)...")
         

@@ -1,3 +1,11 @@
 lecturer_id,full_name,email,phone_number,date_of_birth,gender,citizen_id,ethnicity,religion,nationality,address,place_of_birth,faculty_id,academic_title,position,employment_type,teaching_status
 ,Nguyễn Văn A,nva@ptit.edu.vn,0901234567,1980-05-15,Nam,079080123456,Kinh,Không,Việt Nam,TP.HCM,TP.HCM,FIT2,ThS,Giảng viên,Cơ hữu,Active
-,Trần Thị B,ttb@ptit.edu.vn,0912345678,1985-10-20,Nữ,079085123457,Kinh,Không,Việt Nam,Hà Nội,Hà Nội,FIT2,TS,Trưởng bộ môn,Cơ hữu,Active
+,Trần Thị B,ttb@ptit.edu.vn,0912345678,1985-10-20,Nữ,079085123457,Kinh,Không,Việt Nam,Hà Nội,Hà Nội,FBA2,TS,Trưởng bộ môn,Cơ hữu,Active
+,Đỗ Đăng Khang,ddk@ptit.edu.vn,0912345679,1990-03-12,Nam,079085123458,Kinh,Không,Việt Nam,Hà Nội,Hà Nội,FCB,ThS,Giảng viên,Cơ hữu,Active
+,Phạm Thị Cúc,ptc@ptit.edu.vn,0912345680,1992-07-21,Nữ,079085123459,Kinh,Không,Việt Nam,Hà Nội,Hà Nội,FEE2,TS,Giảng viên,Cơ hữu,Active
+,Lê Viết Cường,lvcuong@ptit.edu.vn,0912345681,1990-07-12,Nam,079085123460,Kinh,Không,Việt Nam,Đà Nẵng,Đà Nẵng,FMM2,ThS,Giảng viên,Cơ hữu,Active
+,Ngô Thị Hạnh,nthanh@ptit.edu.vn,0912345682,1988-11-05,Nữ,079085123461,Kinh,Không,Việt Nam,Hải Phòng,Hải Phòng,FTE2,TS,Giảng viên,Cơ hữu,Active
+,Phan Văn Dũng,pvdung@ptit.edu.vn,0912345683,1983-04-18,Nam,079085123462,Kinh,Không,Việt Nam,Huế,Huế,FIT2,ThS,Giảng viên,Cơ hữu,Active
+,Nguyễn Thị Mai,ntmai@ptit.edu.vn,0912345684,1987-09-09,Nữ,079085123463,Kinh,Không,Việt Nam,Nghệ An,Nghệ An,FBA2,TS,Trưởng bộ môn,Cơ hữu,Active
+,Hoàng Văn Sơn,hvson@ptit.edu.vn,0912345685,1981-02-14,Nam,079085123464,Kinh,Không,Việt Nam,Quảng Nam,Quảng Nam,FCB,ThS,Giảng viên,Cơ hữu,Active
+,Đặng Thị Thu,dtthu@ptit.edu.vn,0912345686,1993-06-30,Nữ,079085123465,Kinh,Không,Việt Nam,Bình Định,Bình Định,FEE2,ThS,Giảng viên,Cơ hữu,Active

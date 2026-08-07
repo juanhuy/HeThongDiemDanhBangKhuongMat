@@ -7,6 +7,9 @@ from typing import Optional, List
 import math
 import uuid
 
+from pydantic import BaseModel
+from app.models import Subject
+
 from app.db.session import get_db
 from app.schemas.credit_class import CreditClassCreate, CreditClassUpdate, CreditClassResponse, AutoGenerateRequest, SaveDraftRequest
 from app.models import (
@@ -18,6 +21,11 @@ from app.models.semester import Semester
 from app.models.classroom import Classroom
 
 router = APIRouter()
+
+class BulkStatusUpdate(BaseModel):
+    class_ids: List[str]
+    status: str
+
 
 def format_class_group(c: CreditClass) -> str:
     if c.sub_group_number is not None:
@@ -191,6 +199,7 @@ def list_credit_classes(
     lecturer_id: Optional[str] = None,
     status: Optional[str] = None,
     administrative_class_id: Optional[str] = None, 
+    major_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(CreditClass).options(
@@ -210,6 +219,9 @@ def list_credit_classes(
         
     if administrative_class_id:
         query = query.join(ExpectedClassMapping).filter(ExpectedClassMapping.admin_class_id == administrative_class_id.strip())
+    # Lọc theo Ngành (Bắt cầu qua bảng Subject)
+    if major_id:
+        query = query.join(Subject).filter(Subject.major_id == major_id.strip())
 
     classes = list(dict.fromkeys(query.all()))
 
@@ -228,6 +240,7 @@ def list_credit_classes(
             "subject_name": subject_name,
             "credits": total_credits,
             "lecturer_id": c.lecturer_id,
+            "lecturer_name": c.lecturer.full_name if c.lecturer else None,
             "semester_id": c.semester_id,
             "class_group": format_class_group(c),
             "group_number": c.group_number,           
@@ -242,6 +255,26 @@ def list_credit_classes(
         })
     
     return {"status": "success", "total": len(result), "data": result}
+
+
+# 3. Thêm API Cập nhật trạng thái hàng loạt
+@router.put("/credit-classes/bulk-status")
+def update_bulk_status(req: BulkStatusUpdate, db: Session = Depends(get_db)):
+    if not req.class_ids:
+        raise HTTPException(status_code=400, detail="Không có lớp nào được chọn")
+        
+    db.query(CreditClass).filter(CreditClass.class_id.in_(req.class_ids)).update(
+        {"status": req.status}, synchronize_session=False
+    )
+    db.commit()
+    return {"status": "success", "message": f"Đã cập nhật trạng thái {req.status} cho {len(req.class_ids)} lớp."}
+
+# 4. Thêm API lấy danh sách Ngành (Nếu chưa có)
+@router.get("/majors-list")
+def get_majors_list(db: Session = Depends(get_db)):
+    from app.models.major import Major # Khai báo class Major của bạn
+    majors = db.query(Major).all()
+    return {"status": "success", "data": [{"major_id": m.major_id, "major_name": m.major_name} for m in majors]}
 
 # ==========================================
 # CÁC TRUY VẤN TIỆN ÍCH (Lớp biên chế, Học kỳ)
@@ -259,6 +292,11 @@ def get_semesters(db: Session = Depends(get_db)):
 
 # ==========================================
 # LẤY CHI TIẾT MỘT LỚP TÍN CHỈ
+# ==========================================
+
+
+# ==========================================
+# MÔN HỌC SINH VIÊN ĐÃ ĐĂNG KÝ
 # ==========================================
 @router.get("/credit-classes/{class_id}")
 def get_credit_class_detail(class_id: str, db: Session = Depends(get_db)):
@@ -287,8 +325,8 @@ def get_credit_class_detail(class_id: str, db: Session = Depends(get_db)):
         "lecturer_name": cc.lecturer.full_name if cc.lecturer else None,
         "semester_id": cc.semester_id,
         "class_group": format_class_group(cc),
-        "group_number": c.group_number,          
-        "sub_group_number": c.sub_group_number,
+        "group_number": cc.group_number,          # <-- ĐÃ SỬA: c thành cc
+        "sub_group_number": cc.sub_group_number,  # <-- ĐÃ SỬA: c thành cc
         "class_type": cc.class_type,
         "start_week": cc.start_week,
         "end_week": cc.end_week,
@@ -298,46 +336,6 @@ def get_credit_class_detail(class_id: str, db: Session = Depends(get_db)):
         "target_classes": target_classes
     }
     return {"status": "success", "data": c_dict}
-
-# ==========================================
-# MÔN HỌC SINH VIÊN ĐÃ ĐĂNG KÝ
-# ==========================================
-@router.get("/students/{student_id}/credit-classes")
-def get_student_classes(student_id: str, db: Session = Depends(get_db)):
-    enrollments = db.query(ClassEnrollment).options(
-        joinedload(ClassEnrollment.credit_class).joinedload(CreditClass.subject)
-    ).filter(ClassEnrollment.student_id == student_id.strip().upper()).all()
-    
-    if not enrollments:
-        return {"status": "success", "classes": []}
-        
-    result = []
-    for e in enrollments:
-        c = e.credit_class
-        if not c: continue
-        subj = c.subject
-        total_credits = subj.credits or (subj.theory_credits + subj.practical_credits) or 0 if subj else 0
-        target_classes = [t.admin_class_id for t in c.expected_mappings] if hasattr(c, 'expected_mappings') and c.expected_mappings else []
-        result.append({
-            "class_id": c.class_id,
-            "subject_id": c.subject_id,
-            "subject_name": subj.subject_name if subj else None,
-            "lecturer_id": c.lecturer_id,
-            "semester_id": c.semester_id,
-            "class_group": format_class_group(c),
-            "group_number": c.group_number,
-            "sub_group_number": c.sub_group_number,
-            "class_type": c.class_type,
-            "max_students": c.max_students,
-            "current_students": c.current_students,
-            "status": e.status, 
-            "class_status": c.status,
-            "credits": total_credits,
-            "target_classes": target_classes,
-            "enrollment_date": (e.updated_at or e.enrollment_date).isoformat() if (e.updated_at or e.enrollment_date) else None,
-        })
-        
-    return {"status": "success", "classes": result}
 
 
 # ==========================================
@@ -565,7 +563,8 @@ def add_schedule(
 @router.get("/schedules")
 def list_schedules(lecturer_id: Optional[str] = None, db: Session = Depends(get_db)):
     try:
-        query = db.query(ClassSchedule)
+        # Sửa ClassSchedule thành ClassSession cho khớp với lúc POST
+        query = db.query(ClassSession)
         if lecturer_id:
             query = query.join(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip())
         schedules = query.all()
@@ -577,8 +576,10 @@ def list_schedules(lecturer_id: Optional[str] = None, db: Session = Depends(get_
                     "class_id": s.class_id,
                     "session_date": str(s.session_date),
                     "room_id": s.room_id,
-                    "start_time": str(s.start_time),
+                    "start_time": str(s.start_time.strftime("%H:%M") if hasattr(s.start_time, 'strftime') else s.start_time),
                     "end_time": str(s.end_time),
+                    "shift": getattr(s, 'shift', 1),
+                    "loai_lich": getattr(s, 'loai_lich', 'Lý thuyết'), # Đảm bảo model ClassSession có cột này hoặc lấy giá trị mặc định
                     "subject_name": s.credit_class.subject.subject_name if (s.credit_class and s.credit_class.subject) else "N/A"
                 }
                 for s in schedules

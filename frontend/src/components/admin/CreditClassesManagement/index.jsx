@@ -1,214 +1,187 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Settings, BookOpen, CheckSquare } from 'lucide-react';
+import { 
+  listCreditClasses, 
+  deleteCreditClass, 
+  updateCreditClassStatus, 
+  updateBulkCreditClassStatus,
+  listSemesters, 
+  listAdministrativeClasses, 
+  listMajors, 
+  listLecturers
+} from '../../../api/creditClasses';
+
 import FilterSection from './FilterSection';
 import DataTable from './DataTable';
-import CreateWizardModal from './CreateWizardModal';
 import EditClassModal from './EditClassModal';
 
-export default function CreditClassesManagement({ showToast }) {
-  // 1. Khai báo States cho dữ liệu tổng
+const CreditClassesManagement = ({ showToast }) => {
   const [classes, setClasses] = useState([]);
-  const [subjects, setSubjects] = useState([]);
-  const [lecturers, setLecturers] = useState([]);
-  const [semesters, setSemesters] = useState([]);
-  const [adminClasses, setAdminClasses] = useState([]);
-  const [faculties, setFaculties] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]); // Chứa danh sách lớp đang được tick
 
-  // 2. States cho Filter
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedSemester, setSelectedSemester] = useState("");
-  const [selectedFaculty, setSelectedFaculty] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("");
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editData, setEditData] = useState(null);
+  
+  // Dữ liệu cho bộ lọc
+  const [metaData, setMetaData] = useState({ semesters: [], adminClasses: [], majors: [], lecturers: [] });
+  const [filters, setFilters] = useState({
+    semester_id: '', major_id: '', administrative_class_id: '', subject_id: '', status: ''
+  });
 
-  // 3. States cho UI Toggles
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [editModalData, setEditModalData] = useState(null);
-
-  // 4. Data Fetching Logic
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [clsRes, subRes, lecRes, semRes, adminRes] = await Promise.all([
-        fetch('http://localhost:8000/api/credit-classes/').then(r => r.json()),
-        fetch('http://localhost:8000/api/subjects/').then(r => r.json()),
-        fetch('http://localhost:8000/api/admin/lecturers/').then(r => r.json()),
-        fetch('http://localhost:8000/api/semesters/').then(r => r.json()),
-        fetch('http://localhost:8000/api/administrative-classes/').then(r => r.json())
-      ]);
-
-      setClasses(clsRes.data || clsRes);
-
-      const subList = (subRes.data || subRes).map(s => ({
-        value: s.subject_id,
-        label: `${s.subject_id} - ${s.subject_name}`,
-        faculty_id: s.faculty_id || s.department_id || null
-      }));
-      setSubjects(subList);
-
-      setLecturers((lecRes.data || lecRes).map(l => ({
-        value: l.lecturer_id,
-        label: `${l.lecturer_id} - ${l.full_name}`
-      })));
-
-      const actualSemRes = semRes.data || semRes;
-      const semList = actualSemRes.map(s => ({
-        value: s.semester_id,
-        label: `Học kỳ ${s.semester} - ${s.academic_year}`
-      }));
-      setSemesters(semList);
-
-      const actualAdminRes = adminRes.data || adminRes;
-      setAdminClasses(actualAdminRes.map(c => ({
-        value: c.class_id,
-        label: c.class_id,
-        faculty_id: c.faculty_id || c.department_id || null
-      })));
-
-      const facultyMap = new Map();
-      actualAdminRes.forEach(c => {
-        const fid = c.faculty_id || c.department_id;
-        const fname = c.faculty_name || c.department_name;
-        if (fid && fname) facultyMap.set(fid, fname);
+  // Tải dữ liệu Metadata lúc mới vào trang
+  useEffect(() => {
+    Promise.all([listSemesters(), listAdministrativeClasses(), listMajors(), listLecturers()]).then(([semRes, adminRes, majRes, lectRes]) => {
+      const semesters = semRes?.data || [];
+      setMetaData({
+        semesters: semesters,
+        adminClasses: adminRes?.data || [],
+        majors: majRes?.data || [],
+        lecturers: lectRes?.data?.map(l => ({ value: l.lecturer_id, label: l.full_name })) || []
       });
-      if (facultyMap.size === 0) {
-        facultyMap.set('CNTT', 'Công nghệ thông tin');
-        facultyMap.set('KT', 'Kinh tế');
-        facultyMap.set('NN', 'Ngoại ngữ');
-      }
-      setFaculties(Array.from(facultyMap.entries()).map(([value, label]) => ({ value, label })));
+      // Gán kỳ gần nhất làm mặc định
+      if (semesters.length > 0) setFilters(f => ({ ...f, semester_id: semesters[0].semester_id }));
+    }).catch(err => console.error(err));
+  }, []);
+
+  const fetchClasses = async () => {
+    if (!filters.semester_id) return; // Chờ có học kỳ rồi mới gọi
+    setLoading(true);
+    try {
+      const cleanFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
+      const response = await listCreditClasses(cleanFilters);
+      const rawClasses = Array.isArray(response?.data) ? response.data : [];
+      
+      const theoryClasses = rawClasses.filter(c => !c.parent_class_id);
+      const practiceClasses = rawClasses.filter(c => c.parent_class_id);
+      const displayClasses = [];
+
+      theoryClasses.forEach(tc => {
+        const children = practiceClasses.filter(pc => pc.parent_class_id === tc.class_id);
+        const gNum = String(tc.group_number || tc.class_group || '1').padStart(2, '0');
+        if (children.length > 0) {
+          children.forEach((pc, idx) => {
+            const sgNum = String(pc.sub_group_number || (idx + 1)).padStart(2, '0');
+            displayClasses.push({
+              ...pc, theory_class: tc, display_group: `${gNum}-${sgNum}`,
+              target_classes_display: (pc.target_classes?.length > 0) ? pc.target_classes : tc.target_classes
+            });
+          });
+        } else {
+          displayClasses.push({ ...tc, display_group: gNum, target_classes_display: tc.target_classes });
+        }
+      });
+      setClasses(displayClasses);
+      setSelectedIds([]); // Reset select khi load lại dữ liệu
     } catch (error) {
-      console.error(error);
-      if (showToast) showToast('Lỗi khi tải dữ liệu!', 'error');
+      setClasses([]); 
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { fetchData(); }, []);
 
-  // 5. Helpers & Computed Data (useMemo cho flatData)
-  const getSubjectLabel = (id) => subjects.find(x => x.value === id)?.label || (id || 'Đang cập nhật');
-  const getLecturerName = (id) => lecturers.find(l => l.value === id)?.label.split(' - ')[1] || id || '—';
-  
-  // Logic lấy label Hierarchy & Format [Giữ nguyên như gốc]
-  const formatGroupNumber = (num) => {
-    if (num === null || num === undefined || num === '') return '01';
-    return String(num).padStart(2, '0');
-  };
-  const getHierarchyLabel = (item, parent) => {
-    if (item.parent_class_id && parent) {
-      return `Nhóm ${formatGroupNumber(parent.class_group || parent.group_number)} - Tổ ${formatGroupNumber(item.class_group || item.sub_group_number)}`;
+  useEffect(() => { fetchClasses(); }, [filters]);
+
+  const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
+
+  // Cập nhật trạng thái 1 lớp trực tiếp trên bảng
+  const handleStatusChange = async (classId, newStatus) => {
+    try {
+      await updateCreditClassStatus(classId, newStatus);
+      showToast('Cập nhật trạng thái thành công', 'success');
+      fetchClasses();
+    } catch (err) {
+      showToast('Lỗi cập nhật trạng thái', 'error');
     }
-    return `Nhóm ${formatGroupNumber(item.class_group || item.group_number)}`;
   };
-  const getTargetClassesLabel = (targetClasses) => {
-    if (!targetClasses || targetClasses.length === 0) return '—';
-    if (Array.isArray(targetClasses)) {
-      return targetClasses.length > 3
-        ? `${targetClasses.slice(0, 3).join(', ')} +${targetClasses.length - 3}`
-        : targetClasses.join(', ');
+
+  // Cập nhật hàng loạt các lớp đã chọn
+  const handleBulkStatusUpdate = async (newStatus) => {
+    if (selectedIds.length === 0) return showToast('Vui lòng chọn ít nhất 1 lớp', 'error');
+    try {
+      await updateBulkCreditClassStatus(selectedIds, newStatus);
+      showToast(`Đã cập nhật ${selectedIds.length} lớp thành ${newStatus}`, 'success');
+      fetchClasses();
+    } catch (err) {
+      showToast('Lỗi cập nhật hàng loạt', 'error');
     }
-    return String(targetClasses);
   };
 
-  const flatData = useMemo(() => {
-    let filtered = classes.filter(c => {
-      if (selectedSemester && c.semester_id !== selectedSemester) return false;
-      if (selectedSubject && c.subject_id !== selectedSubject) return false;
-      if (selectedFaculty) {
-        const subject = subjects.find(s => s.value === c.subject_id);
-        const hasFacultyFromSubject = subject?.faculty_id === selectedFaculty;
-        const targets = c.target_classes || [];
-        const hasFacultyFromTarget = targets.some(tc => {
-          const admin = adminClasses.find(a => a.value === tc);
-          return admin?.faculty_id === selectedFaculty;
-        });
-        if (!hasFacultyFromSubject && !hasFacultyFromTarget) return false;
-      }
-      if (searchTerm && !c.class_id.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-      return true;
-    });
+  const handleDelete = async (classId, currentStudents) => {
+    if (currentStudents > 0) return showToast(`Lớp đang có ${currentStudents} SV, không thể xóa!`, 'error');
+    if (window.confirm(`Bạn có chắc muốn xóa lớp ${classId}?`)) {
+      try {
+        await deleteCreditClass(classId);
+        showToast('Xóa thành công!', 'success');
+        fetchClasses(); 
+      } catch (error) { showToast('Lỗi khi xóa lớp.', 'error'); }
+    }
+  };
 
-    const parents = filtered.filter(c => !c.parent_class_id);
-    const children = filtered.filter(c => c.parent_class_id);
-
-    const result = [];
-    parents
-      .sort((a, b) => String(a.class_id).localeCompare(String(b.class_id)))
-      .forEach(p => {
-        result.push({ ...p, _parent: null });
-        children
-          .filter(ch => ch.parent_class_id === p.class_id)
-          .sort((a, b) => String(a.class_id).localeCompare(String(b.class_id)))
-          .forEach(ch => result.push({ ...ch, _parent: p }));
-      });
-
-    children
-      .filter(ch => !parents.find(p => p.class_id === ch.parent_class_id))
-      .forEach(ch => result.push({ ...ch, _parent: null }));
-
-    return result;
-  }, [classes, selectedSemester, selectedSubject, selectedFaculty, searchTerm, subjects, adminClasses]);
-
-  // 6. Action Handlers (Cập nhật trạng thái)
-  const handleChangeStatus = async (classItem, newStatus) => { /* ... fetch PUT status ... */ };
-
-  const handleEditClick = (classItem) => {
-    let subjId = classItem.subject_id || classes.find(c => c.class_id === classItem.parent_class_id)?.subject_id;
-    setEditModalData({ ...classItem, subject_id: subjId, target_classes: classItem.target_classes || [] });
+  const handleEditClick = (classData) => {
+    setEditData(classData);
+    setIsEditOpen(true);
   };
 
   return (
-    <div className="bg-slate-50 min-h-screen p-6 font-sans">
-      <div className="max-w-[1400px] mx-auto">
-        {/* Tiêu đề & Nút thêm mới */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-[22px] font-bold text-slate-800 tracking-tight">Quản lý Lớp Tín Chỉ</h1>
-          <button
-            onClick={() => setIsWizardOpen(true)}
-            className="flex items-center gap-2 bg-[#d32f2f] text-white px-5 py-2.5 rounded shadow-sm hover:bg-red-700 transition-colors text-sm font-semibold"
-          >
-            <Plus size={16} /> Tạo Lớp Mới
+    <div className="p-6 bg-slate-50 min-h-screen">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <BookOpen className="w-6 h-6 text-blue-600" />
+            Quản lý Lớp Tín Chỉ
+          </h1>
+        </div>
+        <div className="flex gap-3">
+          {/* Menu cập nhật hàng loạt */}
+          {selectedIds.length > 0 && (
+            <div className="flex items-center bg-white border border-slate-300 rounded-lg overflow-hidden mr-2">
+              <span className="px-3 text-sm font-medium text-slate-600 bg-slate-100 border-r border-slate-300">
+                Đã chọn {selectedIds.length}
+              </span>
+              <select 
+                className="text-sm px-3 py-2 outline-none cursor-pointer"
+                onChange={(e) => { if(e.target.value) handleBulkStatusUpdate(e.target.value); e.target.value = ""; }}
+              >
+                <option value="">-- Đổi trạng thái --</option>
+                <option value="Active">Mở đăng ký (Active)</option>
+                <option value="Planning">Kế hoạch (Planning)</option>
+                <option value="Closed">Đóng (Closed)</option>
+              </select>
+            </div>
+          )}
+          <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
+            <Settings className="w-4 h-4" /> <span>Tạo tự động</span>
+          </button>
+          <button className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+            <Plus className="w-4 h-4" /> <span>Tạo thủ công</span>
           </button>
         </div>
-
-        {/* Các Component Con */}
-        <FilterSection 
-          semesters={semesters} faculties={faculties} subjects={subjects} adminClasses={adminClasses}
-          selectedSemester={selectedSemester} setSelectedSemester={setSelectedSemester}
-          selectedFaculty={selectedFaculty} setSelectedFaculty={setSelectedFaculty}
-          selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject}
-          searchTerm={searchTerm} setSearchTerm={setSearchTerm}
-        />
-
-        <DataTable 
-          loading={loading} flatData={flatData}
-          getSubjectLabel={getSubjectLabel} getLecturerName={getLecturerName}
-          getTargetClassesLabel={getTargetClassesLabel} getHierarchyLabel={getHierarchyLabel}
-          handleEditClick={handleEditClick} handleChangeStatus={handleChangeStatus}
-        />
-
-        {/* Modals */}
-        {isWizardOpen && (
-          <CreateWizardModal
-            onClose={() => setIsWizardOpen(false)}
-            onSuccess={fetchData}
-            semesters={semesters} subjects={subjects} lecturers={lecturers} 
-            adminClasses={adminClasses} showToast={showToast}
-            defaultSemesterId={selectedSemester}
-          />
-        )}
-
-        {editModalData && (
-          <EditClassModal 
-            editData={editModalData}
-            onClose={() => setEditModalData(null)}
-            onSuccess={fetchData}
-            lecturers={lecturers} adminClasses={adminClasses}
-            getSubjectLabel={getSubjectLabel} showToast={showToast}
-          />
-        )}
       </div>
+
+      <FilterSection filters={filters} onFilterChange={handleFilterChange} metaData={metaData} />
+      <DataTable 
+        classes={classes} 
+        loading={loading} 
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+        onStatusChange={handleStatusChange}
+        onDelete={handleDelete} 
+        onEdit={handleEditClick}
+      />
+
+      {isEditOpen && editData && (
+        <EditClassModal 
+          editData={editData}
+          onClose={() => setIsEditOpen(false)}
+          onSuccess={fetchClasses}
+          lecturers={metaData.lecturers}
+          adminClasses={metaData.adminClasses}
+          showToast={showToast}
+        />
+      )}
     </div>
   );
-}
+};
+
+export default CreditClassesManagement;

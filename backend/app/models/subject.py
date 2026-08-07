@@ -1,6 +1,15 @@
-from sqlalchemy import Column, String, Integer, Boolean, Computed, ForeignKey
+from sqlalchemy import Column, String, Integer, Boolean, Computed, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from sqlalchemy.sql import func
+
+from datetime import datetime, timezone, timedelta
+
+VN_TZ = timezone(timedelta(hours=7))
+
+def get_vn_time():
+    """Hàm trả về thời gian hiện tại theo chuẩn UTC+7"""
+    return datetime.now(VN_TZ)
 
 class Subject(Base):
     __tablename__ = 'subjects'
@@ -20,3 +29,6 @@ class Subject(Base):
 
     classes = relationship("CreditClass", back_populates="subject")
     faculty = relationship("Faculty", backref="subjects")
+
+    created_at = Column(DateTime(timezone=True), default=get_vn_time)
+    updated_at = Column(DateTime(timezone=True), default=get_vn_time, onupdate=get_vn_time)

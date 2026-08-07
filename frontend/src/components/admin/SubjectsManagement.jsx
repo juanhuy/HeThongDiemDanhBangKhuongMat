@@ -1,13 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { subjectsApi, facultiesApi } from '../../api';
 
 export default function SubjectsManagement({ showToast }) {
   const [subjects, setSubjects] = useState([]);
   const [faculties, setFaculties] = useState([]);
+  
+  // States cho Lọc & Sắp xếp
   const [search, setSearch] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: 'updated_at', direction: 'desc' }); // Mặc định sắp xếp ngày cập nhật giảm dần (mới nhất lên đầu)
+  const [filters, setFilters] = useState({ faculty_id: '', is_active: '' });
+  
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef(null);
+
   const [form, setForm] = useState({
     subject_id: '',
     subject_name: '',
@@ -27,7 +36,7 @@ export default function SubjectsManagement({ showToast }) {
       setSubjects(subRes.data || subRes || []);
       setFaculties(Array.isArray(facRes) ? facRes : facRes.data || []);
     } catch (err) {
-      showToast?.(err.message || 'Lỗi tải môn học', 'danger');
+      showToast?.(err.message || 'Lỗi tải dữ liệu', 'danger');
     } finally {
       setLoading(false);
     }
@@ -64,17 +73,105 @@ export default function SubjectsManagement({ showToast }) {
         showToast?.('Thêm môn học thành công');
       }
       setIsOpen(false);
+      // Ưu tiên hiển thị dữ liệu mới/vừa cập nhật lên đầu
+      setSortConfig({ key: 'updated_at', direction: 'desc' });
       fetchAll();
     } catch (err) {
       showToast?.(err.message || 'Lỗi lưu môn học', 'danger');
     }
   };
 
-  const filtered = subjects.filter(
-    (s) =>
+  const handleImportCsv = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      setIsImporting(true);
+      
+      const prevCount = subjects.length;
+      const response = await subjectsApi.importCsv(formData);
+      
+      // Chờ API tải lại dữ liệu mới nhất
+      const subRes = await subjectsApi.listSubjects();
+      const newData = subRes.data || subRes || [];
+      setSubjects(newData);
+      
+      // Giả định API trả về số dòng thành công trong response.data.importedCount
+      // Nếu không, ta tự tính dựa trên sự chênh lệch (Lưu ý: Cách này chỉ đúng nếu data chỉ được thêm, không bị ghi đè)
+      const importedCount = response?.data?.importedCount || (newData.length - prevCount);
+      const countMsg = importedCount > 0 ? ` (${importedCount} dòng dữ liệu)` : '';
+
+      showToast?.(`Import thành công${countMsg}!`);
+      
+      // Ép Sort về ngày cập nhật giảm dần để những môn vừa Import trồi lên đầu
+      setSortConfig({ key: 'updated_at', direction: 'desc' });
+
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.message || 'Import thất bại. Vui lòng kiểm tra lại file CSV.';
+      showToast?.(errorMessage, 'danger');
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = ''; 
+    }
+  };
+
+  // --- LOGIC XỬ LÝ LỌC & SẮP XẾP TỔNG HỢP ---
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+    setSortConfig({ key, direction });
+  };
+
+  const processedData = useMemo(() => {
+    // 1. Lọc theo thanh tìm kiếm tổng quát
+    let filtered = subjects.filter(s =>
       (s.subject_id || '').toLowerCase().includes(search.toLowerCase()) ||
       (s.subject_name || '').toLowerCase().includes(search.toLowerCase())
-  );
+    );
+
+    // 2. Lọc theo các dropdown filters (Khoa, Trạng thái)
+    if (filters.faculty_id !== '') {
+      filtered = filtered.filter(s => s.faculty_id === filters.faculty_id);
+    }
+    if (filters.is_active !== '') {
+      const isActive = filters.is_active === 'true';
+      filtered = filtered.filter(s => s.is_active === isActive);
+    }
+
+    // 3. Sắp xếp
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        let valA = a[sortConfig.key] ?? '';
+        let valB = b[sortConfig.key] ?? '';
+
+        // Xử lý riêng cho ngày tháng (nếu dữ liệu trả về kiểu ISO chuỗi)
+        if (sortConfig.key === 'updated_at' || sortConfig.key === 'created_at') {
+           valA = new Date(valA).getTime() || 0;
+           valB = new Date(valB).getTime() || 0;
+        }
+
+        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [subjects, search, filters, sortConfig]);
+
+  // Hàm định dạng ngày
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('vi-VN', { 
+      hour: '2-digit', minute: '2-digit', 
+      day: '2-digit', month: '2-digit', year: 'numeric' 
+    });
+  };
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
@@ -87,6 +184,20 @@ export default function SubjectsManagement({ showToast }) {
             placeholder="Tìm mã / tên môn..."
             style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: 6, minWidth: 200 }}
           />
+          
+          <input type="file" accept=".csv" style={{ display: 'none' }} ref={fileInputRef} onChange={handleImportCsv} />
+          
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+            style={{ 
+              padding: '8px 16px', background: '#f59e0b', color: '#fff', border: 'none', 
+              borderRadius: 6, fontWeight: 600, cursor: isImporting ? 'not-allowed' : 'pointer', opacity: isImporting ? 0.7 : 1
+            }}
+          >
+            {isImporting ? 'Đang Import...' : 'Import CSV'}
+          </button>
+
           <button
             onClick={() => openModal()}
             style={{ padding: '8px 16px', background: '#106fa6', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, cursor: 'pointer' }}
@@ -99,20 +210,59 @@ export default function SubjectsManagement({ showToast }) {
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
-            <tr style={{ background: '#f8fafc' }}>
-              {['Mã môn', 'Tên môn', 'LT', 'TH', 'Khoa', 'Trạng thái', 'Thao tác'].map((h) => (
-                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#475569', fontWeight: 600 }}>{h}</th>
-              ))}
+            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+              <th style={{ padding: '10px 14px', textAlign: 'center', color: '#475569', width: '50px' }}>STT</th>
+              
+              <th style={{ padding: '10px 14px', textAlign: 'left', color: '#475569', cursor: 'pointer' }} onClick={() => handleSort('subject_id')}>
+                Mã môn {sortConfig.key === 'subject_id' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+              </th>
+              
+              <th style={{ padding: '10px 14px', textAlign: 'left', color: '#475569', cursor: 'pointer' }} onClick={() => handleSort('subject_name')}>
+                Tên môn {sortConfig.key === 'subject_name' && (sortConfig.direction === 'asc' ? ' (A-Z)' : ' (Z-A)')}
+              </th>
+
+              <th style={{ padding: '10px 14px', textAlign: 'center', color: '#475569' }}>LT</th>
+              <th style={{ padding: '10px 14px', textAlign: 'center', color: '#475569' }}>TH</th>
+              
+              <th style={{ padding: '10px 14px', textAlign: 'left', color: '#475569' }}>
+                <select 
+                  value={filters.faculty_id} 
+                  onChange={(e) => setFilters(prev => ({...prev, faculty_id: e.target.value}))}
+                  style={{ border: 'none', background: 'transparent', fontWeight: 600, color: '#475569', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="">Khoa (Tất cả)</option>
+                  {faculties.map(f => <option key={f.faculty_id} value={f.faculty_id}>{f.faculty_id}</option>)}
+                </select>
+              </th>
+              
+              <th style={{ padding: '10px 14px', textAlign: 'left', color: '#475569' }}>
+                <select 
+                  value={filters.is_active} 
+                  onChange={(e) => setFilters(prev => ({...prev, is_active: e.target.value}))}
+                  style={{ border: 'none', background: 'transparent', fontWeight: 600, color: '#475569', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="">Trạng thái (Tất cả)</option>
+                  <option value="true">Active</option>
+                  <option value="false">Ngưng</option>
+                </select>
+              </th>
+
+              <th style={{ padding: '10px 14px', textAlign: 'left', color: '#475569', cursor: 'pointer' }} onClick={() => handleSort('updated_at')}>
+                Ngày cập nhật {sortConfig.key === 'updated_at' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+              </th>
+
+              <th style={{ padding: '10px 14px', textAlign: 'left', color: '#475569' }}>Thao tác</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Đang tải...</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>Không có dữ liệu</td></tr>
+              <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Đang tải...</td></tr>
+            ) : processedData.length === 0 ? (
+              <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>Không có dữ liệu</td></tr>
             ) : (
-              filtered.map((s) => (
+              processedData.map((s, index) => (
                 <tr key={s.subject_id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', color: '#64748b' }}>{index + 1}</td>
                   <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0369a1' }}>{s.subject_id}</td>
                   <td style={{ padding: '10px 14px' }}>{s.subject_name}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'center' }}>{s.theory_credits ?? 0}</td>
@@ -126,6 +276,9 @@ export default function SubjectsManagement({ showToast }) {
                     }}>
                       {s.is_active !== false ? 'Active' : 'Ngưng'}
                     </span>
+                  </td>
+                  <td style={{ padding: '10px 14px', color: '#64748b', fontSize: '0.8rem' }}>
+                    {formatDate(s.updated_at || s.created_at)}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     <button onClick={() => openModal(s)} style={{ padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#f8fafc', cursor: 'pointer', fontSize: '0.75rem' }}>

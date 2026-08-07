@@ -229,7 +229,7 @@ def _build_slots_for_classes(
 @router.get("/timetable/student/{student_id}")
 def student_timetable(
     student_id: str,
-    mode: str = Query("week", regex="^(week|semester)$"),
+    mode: str = Query("week", pattern="^(week|semester)$"),
     week_start: Optional[str] = Query(None, description="YYYY-MM-DD (bất kỳ ngày trong tuần)"),
     db: Session = Depends(get_db),
 ):
@@ -264,7 +264,7 @@ def student_timetable(
 @router.get("/timetable/lecturer/{lecturer_id}")
 def lecturer_timetable(
     lecturer_id: str,
-    mode: str = Query("week", regex="^(week|semester)$"),
+    mode: str = Query("week", pattern="^(week|semester)$"),
     week_start: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
@@ -295,7 +295,7 @@ def lecturer_timetable(
 # =========================================================================
 @router.get("/timetable/admin")
 def admin_timetable(
-    mode: str = Query("week", regex="^(week|semester)$"),
+    mode: str = Query("week", pattern="^(week|semester)$"),
     week_start: Optional[str] = Query(None),
     semester_id: Optional[str] = None,
     lecturer_id: Optional[str] = None,
