@@ -146,7 +146,7 @@ def list_credit_classes(
 ):
     """Lấy danh sách các lớp học tín chỉ đa điều kiện lọc."""
     query = db.query(CreditClass).options(
-        joinedload(CreditClass.subject), joinedload(CreditClass.lecturer), joinedload(CreditClass.expected_mappings)
+        joinedload(CreditClass.subject), joinedload(CreditClass.lecturer), joinedload(CreditClass.expected_mappings), joinedload(CreditClass.schedules)
     )
     if semester_id: query = query.filter(CreditClass.semester_id == semester_id.strip())
     if subject_id: query = query.filter(CreditClass.subject_id == subject_id.strip())
@@ -161,6 +161,7 @@ def list_credit_classes(
         target_classes = [t.admin_class_id for t in c.expected_mappings]
         subj = c.subject
         total_credits = subj.credits or (subj.theory_credits + subj.practical_credits) or 0 if subj else 0
+        schedules = [{"day_of_week": s.day_of_week, "start_shift": s.start_shift, "end_shift": s.end_shift, "room_id": s.room_id} for s in c.schedules] if hasattr(c, 'schedules') and c.schedules else []
         result.append({
             "class_id": c.class_id, "parent_class_id": c.parent_class_id, "subject_id": c.subject_id,
             "subject_name": subj.subject_name if subj else None, "credits": total_credits,
@@ -169,7 +170,7 @@ def list_credit_classes(
             "group_number": c.group_number, "sub_group_number": c.sub_group_number,
             "class_type": c.class_type, "start_week": c.start_week, "end_week": c.end_week,
             "max_students": c.max_students, "current_students": c.current_students,
-            "status": c.status, "target_classes": target_classes
+            "status": c.status, "target_classes": target_classes, "schedules": schedules
         })
     return {"status": "success", "total": len(result), "data": result}
 

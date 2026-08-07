@@ -65,6 +65,27 @@ export const listAdministrativeClasses = () => apiFetch("/api/administrative-cla
 export const listMajors = () => apiFetch("/api/majors-list");
 
 
+// Lớp đang mở đăng ký (SV)
+export const listOpenCreditClasses = () =>
+  listCreditClasses({ status: "Active" });
+
+// Lớp SV đã đăng ký
+export const getStudentCreditClasses = (studentId) =>
+  apiFetch(`/api/students/${studentId}/credit-classes`);
+
+// Đăng ký học phần
+export const enrollStudent = (classId, studentId) =>
+  apiFetch(`/api/credit-classes/${classId}/enrollments`, {
+    method: "POST",
+    body: formBody({ student_id: studentId }),
+  });
+
+// Hủy đăng ký
+export const unenrollStudent = (classId, studentId) =>
+  apiFetch(`/api/credit-classes/${classId}/enrollments/${studentId}`, {
+    method: "DELETE",
+  });
+
 // import { apiFetch, formBody } from "./client";
 
 // /** Danh sách lớp tín chỉ (filter optional) */
