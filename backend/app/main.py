@@ -9,7 +9,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi import Request
 
-from app.api.endpoints import api_timetable, api_schedules
+# Đã bỏ api_schedules ở đây vì nó đã được gom vào api_router mới
+from app.api.endpoints import api_timetable 
 
 # Thêm đường dẫn gốc để import config
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -57,18 +58,20 @@ images_dir = os.path.join(project_root, settings.database.get("images_dir", "./d
 os.makedirs(images_dir, exist_ok=True)
 app.mount("/images", StaticFiles(directory=images_dir), name="images")
 
-# Import các endpoints
+# Import các endpoints (Đã xóa api_credit_classes cũ)
 from app.api.endpoints import (
     api_subject,
     api_admin_students,
     api_admin_lecturers,
     api_admin_classrooms,
     api_auth,
-    api_credit_classes,
     api_ai,
     api_faculty,
     api_major
 )
+
+# 🟢 IMPORT API ROUTER TỔNG (Bao gồm 5 file vừa tách)
+from app.api.endpoints.api_router import api_router as class_management_router
 
 def include_optional_router(module, prefix: str, tags: list[str]):
     router = getattr(module, "router", None)
@@ -77,11 +80,12 @@ def include_optional_router(module, prefix: str, tags: list[str]):
 
 # Đăng ký các Router từ các file API
 include_optional_router(api_auth, prefix="/api/auth", tags=["Xác thực"])
-include_optional_router(api_credit_classes, prefix="/api", tags=["Lớp học & Điểm danh"])
 include_optional_router(api_ai, prefix="/api", tags=["AI & Nhận diện"])
 include_optional_router(api_timetable, prefix="/api", tags=["Thời khóa biểu"])
 
-include_optional_router(api_schedules, prefix="/api/schedules", tags=["Schedules"])
+# 🟢 ĐĂNG KÝ ROUTER TỔNG 
+# Thêm prefix="/api" để các endpoint bên trong được map đúng (vd: /api/attendance)
+app.include_router(class_management_router, prefix="/api")
 
 # Các Router quản lý (Admin)
 include_optional_router(api_subject, prefix="/api/subjects", tags=["Quản lý Môn học"])

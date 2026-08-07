@@ -1,0 +1,78 @@
+# File: app/api/endpoints/attendance.py
+from fastapi import APIRouter, Depends, HTTPException, Form
+from sqlalchemy.orm import Session
+from datetime import datetime
+from typing import Optional
+
+from app.db.session import get_db
+from app.models import ClassSession, ClassEnrollment, AttendanceRecord
+
+router = APIRouter()
+
+@router.get("/credit-classes/{class_id}/attendance/report", summary="Get Class Attendance Report")
+def get_class_attendance_report(class_id: str, db: Session = Depends(get_db)):
+    """Xuất báo cáo điểm danh chi tiết cho một lớp tín chỉ."""
+    try:
+        schedules = db.query(ClassSession).filter(ClassSession.class_id == class_id.strip()).all()
+        session_ids = [s.session_id for s in schedules]
+        total_sessions = len(schedules)
+        
+        enrollments = db.query(ClassEnrollment).filter(ClassEnrollment.class_id == class_id.strip()).all()
+        report = []
+        for e in enrollments:
+            student = e.student
+            if not student: continue
+            di_muon = 0; vang_kp = 0; co_phep = 0
+            
+            if total_sessions > 0:
+                attendance_records = db.query(AttendanceRecord).filter(
+                    AttendanceRecord.student_id == student.student_id, AttendanceRecord.session_id.in_(session_ids)
+                ).all()
+                attended_session_ids = set()
+                for record in attendance_records:
+                    attended_session_ids.add(record.session_id)
+                    if record.status == "Late": di_muon += 1
+                    elif record.status == "Excused": co_phep += 1
+                    elif record.status == "Absent": vang_kp += 1
+                
+                now = datetime.now()
+                for s in schedules:
+                    if s.start_time < now and s.session_id not in attended_session_ids: vang_kp += 1
+            
+            score = max(0.0, round(10.0 - (di_muon * 0.5) - (vang_kp * 1.0), 1))
+            total_absent = vang_kp + co_phep
+            ty_le_vang = round((total_absent / total_sessions) * 100, 1) if total_sessions > 0 else 0.0
+            report.append({
+                "mssv": student.student_id, "ho_ten": student.profile.full_name if student.profile else "N/A",
+                "lop_base": student.administrative_class or "N/A", "di_muon": di_muon, "vang_kp": vang_kp, "co_phep": co_phep,
+                "score": score, "ty_le_vang": ty_le_vang, "trang_thai": "Cấm thi" if ty_le_vang > 20.0 else "Hợp lệ"
+            })
+        return {"status": "success", "report": report}
+    except Exception as err: raise HTTPException(status_code=500, detail=f"Lỗi: {err}")
+
+@router.post("/attendance/manual-checkin", summary="Teacher Manual Checkin")
+def teacher_manual_checkin(
+    mssv: str = Form(...), session_id: int = Form(...), trang_thai: str = Form(...),
+    nguoi_xac_nhan: Optional[str] = Form(None), db: Session = Depends(get_db)
+):
+    """Cho phép Giảng viên điểm danh thủ công (Update/Create)."""
+    try:
+        sched = db.query(ClassSession).filter(ClassSession.session_id == session_id).first()
+        if not sched: raise HTTPException(status_code=404, detail="Không tìm thấy buổi học.")
+        existing = db.query(AttendanceRecord).filter(AttendanceRecord.student_id == mssv.strip().upper(), AttendanceRecord.session_id == session_id).first()
+        if existing:
+            existing.status = trang_thai; existing.notes = f"Sửa bởi {nguoi_xac_nhan or 'GV'}"
+            existing.recorded_at = datetime.now()
+        else:
+            new_att = AttendanceRecord(student_id=mssv.strip().upper(), session_id=session_id, status=trang_thai, notes=f"ĐD bởi {nguoi_xac_nhan or 'GV'}", recorded_at=datetime.now())
+            db.add(new_att)
+        db.commit()
+        return {"status": "success", "message": "Thành công."}
+    except Exception as e: db.rollback(); raise HTTPException(status_code=500, detail=f"Lỗi: {e}")
+
+@router.get("/attendance", summary="Get Recent Attendance Logs")
+def get_recent_attendance_logs(db: Session = Depends(get_db)):
+    """Lấy danh sách 50 bản ghi điểm danh gần nhất."""
+    recent_logs = db.query(AttendanceRecord).order_by(AttendanceRecord.recorded_at.desc()).limit(50).all()
+    logs_data = [{"id": l.record_id, "mssv": l.student_id, "session_id": l.session_id, "trang_thai": l.status, "recorded_at": l.recorded_at} for l in recent_logs]
+    return {"status": "success", "logs": logs_data}

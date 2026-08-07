@@ -29,8 +29,7 @@ import {
   CreditClassesManagement,
   LecturersManagement,
   RoomsManagement,
-  FacultiesManagement,
-  MajorsManagement,
+  FacultyMajorManagement,
   SubjectsManagement,
   StudentsManagement,
   CameraDashboard,
@@ -302,10 +301,8 @@ function App() {
         return <LecturerTimetable user={user} showToast={showToast} />;
 
       // —— Admin ——
-      case 'faculties_management':
-        return <FacultiesManagement API_BASE={API_BASE} showToast={showToast} />;
-      case 'majors_management':
-        return <MajorsManagement API_BASE={API_BASE} showToast={showToast} />;
+      case 'faculty_major_management':
+        return <FacultyMajorManagement API_BASE={API_BASE} showToast={showToast} />;
       case 'class_management':
         return <CreditClassesManagement showToast={showToast} />;
       case 'lecturers_management':

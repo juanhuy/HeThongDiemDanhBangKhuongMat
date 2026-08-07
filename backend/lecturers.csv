@@ -9,3 +9,11 @@ lecturer_id,full_name,email,phone_number,date_of_birth,gender,citizen_id,ethnici
 ,Nguyễn Thị Mai,ntmai@ptit.edu.vn,0912345684,1987-09-09,Nữ,079085123463,Kinh,Không,Việt Nam,Nghệ An,Nghệ An,FBA2,TS,Trưởng bộ môn,Cơ hữu,Active
 ,Hoàng Văn Sơn,hvson@ptit.edu.vn,0912345685,1981-02-14,Nam,079085123464,Kinh,Không,Việt Nam,Quảng Nam,Quảng Nam,FCB,ThS,Giảng viên,Cơ hữu,Active
 ,Đặng Thị Thu,dtthu@ptit.edu.vn,0912345686,1993-06-30,Nữ,079085123465,Kinh,Không,Việt Nam,Bình Định,Bình Định,FEE2,ThS,Giảng viên,Cơ hữu,Active
+,Lý Chấn Quốc,lq@ptit.edu.vn,0912345687,1990-08-15,Nam,079085123466,Kinh,Không,Việt Nam,Hồ Chí Minh,Hồ Chí Minh,FCB,TS,Giảng viên,Cơ hữu,Active
+,Vũ Hoàng Anh,vha@ptit.edu.vn,0912345688,1995-01-10,Nam,079085123467,Kinh,Không,Việt Nam,Hồ Chí Minh,Hồ Chí Minh,FCB,TS,Giảng viên,Cơ hữu,Active
+,Phạm Thị Lan,ptlan@ptit.edu.vn,0912345689,1992-11-20,Nữ,079085123468,Kinh,Không,Việt Nam,Hồ Chí Minh,Hồ Chí Minh,FCB,TS,Giảng viên,Cơ hữu,Active
+,Trần Minh Đức,tmd@ptit.edu.vn,0912345690,1991-05-05,Nam,079085123469,Kinh,Không,Việt Nam,Hồ Chí Minh,Hồ Chí Minh,FCB,Kỹ sư,Giảng viên,Cơ hữu,Active
+,Hoàng Kim Sơn,hks@ptit.edu.vn,0912345691,1989-04-01,Nam,079085123470,Kinh,Không,Việt Nam,Hồ Chí Minh,Hồ Chí Minh,FCB,TS,Giảng viên,Cơ hữu,Active
+,Nguyễn Thu Phương,ntp@ptit.edu.vn,0912345692,1993-06-15,Nữ,079085123471,Kinh,Không,Việt Nam,Hồ Chí Minh,Hồ Chí Minh,FCB,Cử nhân,Giảng viên,Cơ hữu,Active
+,Lê Đức Anh,lda@ptit.edu.vn,0912345693,1988-02-14,Nam,079085123472,Kinh,Không,Việt Nam,Hồ Chí Minh,Hồ Chí Minh,FCB,TS,Giảng viên,Cơ hữu,Active
+,Phạm Hoàng Long,phl@ptit.edu.vn,0912345694,1994-12-20,Nam,079085123473,Kinh,Không,Việt Nam,Hồ Chí Minh,Hồ Chí Minh,FCB,TS,Giảng viên,Kỹ sư,Active
