@@ -25,7 +25,7 @@ __all__ = [
     "Lecturer",
     "Subject",
     "CreditClass",
-    "ClassTargetAudience",
+  #  "ClassTargetAudience",
     "ClassEnrollment",
     "Classroom",
     "ClassSchedule",
