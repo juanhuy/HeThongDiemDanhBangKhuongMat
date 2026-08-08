@@ -1,7 +1,7 @@
 import React from 'react';
-import { Bell, LogOut, Menu } from 'lucide-react';
+import { Bell, LogOut } from 'lucide-react';
 
-const Header = ({ studentProfile, onLogout, onToggleSidebar }) => {
+const Header = ({ studentProfile, onLogout }) => {
   const styles = {
     header: {
       backgroundColor: "#1d92d1",
@@ -68,15 +68,7 @@ const Header = ({ studentProfile, onLogout, onToggleSidebar }) => {
   return (
     <header style={styles.header}>
       <div style={styles.headerLeft}>
-        <button 
-          onClick={onToggleSidebar} 
-          style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px' }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          <Menu size={22} />
-        </button>
-        <div style={{...styles.headerLogoIcon, marginLeft: '8px'}}>🎓</div>
+        <div style={styles.headerLogoIcon}>🎓</div>
         <span style={{ fontWeight: 700, fontSize: "1rem" }}>CỔNG THÔNG TIN SINH VIÊN - PTIT</span>
       </div>
       <div style={styles.headerRight}>

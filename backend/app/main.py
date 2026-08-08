@@ -36,7 +36,7 @@ app = FastAPI(
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors(), "body": exc.body},
+        content={"detail": exc.errors()},
     )
     
 # Cấu hình CORS

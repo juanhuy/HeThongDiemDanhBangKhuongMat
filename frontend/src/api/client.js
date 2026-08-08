@@ -1,4 +1,8 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+const configuredApiBase = (import.meta.env.VITE_API_BASE || "").trim();
+const API_BASE = (configuredApiBase || "http://127.0.0.1:8000").replace(
+  /^https?:\/\/localhost(?=[:/]|$)/,
+  (match) => match.replace("localhost", "127.0.0.1")
+);
 
 export async function apiFetch(path, options = {}) {
   const url = path.startsWith("http") ? path : `${API_BASE}${path}`;

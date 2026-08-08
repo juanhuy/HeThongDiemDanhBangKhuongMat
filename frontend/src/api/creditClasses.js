@@ -20,6 +20,12 @@ export const batchCreateCreditClasses = (payload) =>
     body: JSON.stringify(payload),
   });
 
+export const importCreditClasses = (formData) =>
+  apiFetch("/api/credit-classes/import/csv", {
+    method: "POST",
+    body: formData,
+  });
+
 /** Cập nhật lớp */
 export const updateCreditClass = (classId, body) =>
   apiFetch(`/api/credit-classes/${classId}`, {
@@ -27,7 +33,6 @@ export const updateCreditClass = (classId, body) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-
 /** Xóa lớp */
 export const deleteCreditClass = (classId) =>
   apiFetch(`/api/credit-classes/${classId}`, { method: "DELETE" });
@@ -64,73 +69,6 @@ export const listSemesters = () => apiFetch("/api/semesters");
 export const listAdministrativeClasses = () => apiFetch("/api/administrative-classes");
 export const listMajors = () => apiFetch("/api/majors-list");
 
-
-// Lớp đang mở đăng ký (SV)
-export const listOpenCreditClasses = () =>
-  listCreditClasses({ status: "Active" });
-
-// Lớp SV đã đăng ký
-export const getStudentCreditClasses = (studentId) =>
-  apiFetch(`/api/students/${studentId}/credit-classes`);
-
-// Đăng ký học phần
-export const enrollStudent = (classId, studentId) =>
-  apiFetch(`/api/credit-classes/${classId}/enrollments`, {
-    method: "POST",
-    body: formBody({ student_id: studentId }),
-  });
-
-// Hủy đăng ký
-export const unenrollStudent = (classId, studentId) =>
-  apiFetch(`/api/credit-classes/${classId}/enrollments/${studentId}`, {
-    method: "DELETE",
-  });
-
-export const createCreditClass = async (classData) => {
-  const response = await fetch(`${API_BASE}/api/credit-classes`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      // Thêm token xác thực nếu hệ thống yêu cầu (vd: 'Authorization': `Bearer ${token}`)
-    },
-    body: JSON.stringify(classData)
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.detail || errorData.message || 'Lỗi khi tạo lớp tín chỉ mới trên hệ thống.');
-  }
-
-  return await response.json();
-};
-
-
-export const previewAutoGenerateClasses = async (payload) => {
-  const response = await fetch(`${API_BASE}/api/credit-classes/preview-groups`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) throw new Error('Lỗi khi lấy dữ liệu xem trước.');
-  return await response.json(); 
-};
-
-export const saveGeneratedClasses = async (classesData) => {
-  const response = await fetch(`${API_BASE}/api/credit-classes/batch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(classesData)
-  });
-  if (!response.ok) throw new Error('Lỗi khi lưu danh sách lớp tự động.');
-  return await response.json();
-};
-
-export const advancedAutoSuggestSchedule = (payload) =>
-  apiFetch("/api/schedules/auto-suggest-advanced", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
 
 // import { apiFetch, formBody } from "./client";
 

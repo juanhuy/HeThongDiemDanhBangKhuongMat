@@ -1,251 +1,388 @@
-import React, { useState } from 'react';
-import { Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle, X } from 'lucide-react';
+import React from 'react';
+import { Edit, Trash2, Users } from 'lucide-react';
 
-const styles = {
-  table: { width: "100%", borderCollapse: "collapse", background: "#fff", fontSize: "0.95rem" },
-  th: { padding: "12px 15px", textAlign: "left", borderBottom: "2px solid #e2e8f0", color: "#475569", fontWeight: "600", whiteSpace: "nowrap", position: "relative", background: "#f8fafc" },
-  td: { padding: "12px 15px", borderBottom: "1px solid #e2e8f0", verticalAlign: "middle" }
+const statusConfig = {
+  Active: {
+    label: 'Đang mở',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  Planning: {
+    label: 'Kế hoạch',
+    className: 'border-amber-200 bg-amber-50 text-amber-700',
+  },
+  Closed: {
+    label: 'Đã đóng',
+    className: 'border-slate-200 bg-slate-100 text-slate-600',
+  },
 };
 
-const DataTable = ({ classes, loading, selectedIds, setSelectedIds, onStatusChange, onDelete, onEdit }) => {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, students }
-  const itemsPerPage = 10;
+const DataTable = ({
+  classes = [],
+  loading,
+  selectedIds = [],
+  setSelectedIds,
+  onStatusChange,
+  onDelete,
+  onEdit,
+}) => {
+  const allSelected =
+    classes.length > 0 && selectedIds.length === classes.length;
 
-  if (loading) {
-    return <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>Đang tải dữ liệu...</div>;
-  }
-
-  const handleSelectAll = (e) => {
-    if (e.target.checked) setSelectedIds(classes.map(c => c.class_id));
-    else setSelectedIds([]);
+  const handleSelectAll = (event) => {
+    if (event.target.checked) {
+      setSelectedIds(classes.map((item) => item.class_id));
+    } else {
+      setSelectedIds([]);
+    }
   };
 
   const handleSelectOne = (classId) => {
-    setSelectedIds(prev => prev.includes(classId) ? prev.filter(id => id !== classId) : [...prev, classId]);
-  };
-
-  // PHÂN TRANG
-  const totalPages = Math.ceil((classes?.length || 0) / itemsPerPage);
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = classes?.slice(indexOfFirstItem, indexOfLastItem) || [];
-
-  const renderPagination = () => {
-    if (totalPages <= 1) return null;
-    let pages = [];
-    const startPage = Math.max(1, currentPage - 2);
-    const endPage = Math.min(totalPages, currentPage + 2);
-    for (let i = startPage; i <= endPage; i++) pages.push(i);
-
-    const btnStyle = { display: "flex", alignItems: "center", justifyContent: "center", minWidth: "32px", height: "32px", padding: "0 8px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer", color: "#475569", fontWeight: "500", transition: "all 0.2s", fontSize: "0.85rem" };
-    const activeBtnStyle = { ...btnStyle, background: "#106fa6", color: "#fff", borderColor: "#106fa6" };
-    const disabledBtnStyle = { ...btnStyle, opacity: 0.5, cursor: "not-allowed", background: "#f8fafc" };
-
-    return (
-      <div className="p-3 md:p-4 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3 bg-slate-50 rounded-b-xl">
-        <div style={{ fontSize: "0.85rem", color: "#64748b" }}>
-          Hiển thị <span style={{fontWeight: 600, color: "#334155"}}>{indexOfFirstItem + 1}</span> - <span style={{fontWeight: 600, color: "#334155"}}>{Math.min(indexOfLastItem, classes.length)}</span> trong tổng <span style={{fontWeight: 600, color: "#334155"}}>{classes.length}</span> lớp
-        </div>
-        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          <button disabled={currentPage === 1} onClick={() => setCurrentPage(1)} style={currentPage === 1 ? disabledBtnStyle : btnStyle} title="Trang đầu"><ChevronsLeft size={16}/></button>
-          <button disabled={currentPage === 1} onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} style={currentPage === 1 ? disabledBtnStyle : btnStyle} title="Trang trước"><ChevronLeft size={16}/></button>
-          {startPage > 1 && (<><button onClick={() => setCurrentPage(1)} style={btnStyle}>1</button>{startPage > 2 && <span style={{ color: "#94a3b8", padding: "0 4px" }}>...</span>}</>)}
-          {pages.map(page => (<button key={page} onClick={() => setCurrentPage(page)} style={currentPage === page ? activeBtnStyle : btnStyle}>{page}</button>))}
-          {endPage < totalPages && (<>{endPage < totalPages - 1 && <span style={{ color: "#94a3b8", padding: "0 4px" }}>...</span>}<button onClick={() => setCurrentPage(totalPages)} style={btnStyle}>{totalPages}</button></>)}
-          <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} style={currentPage === totalPages ? disabledBtnStyle : btnStyle} title="Trang sau"><ChevronRight size={16}/></button>
-          <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)} style={currentPage === totalPages ? disabledBtnStyle : btnStyle} title="Trang cuối"><ChevronsRight size={16}/></button>
-        </div>
-      </div>
+    setSelectedIds((previousIds) =>
+      previousIds.includes(classId)
+        ? previousIds.filter((id) => id !== classId)
+        : [...previousIds, classId]
     );
   };
 
-  return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={{...styles.th, width: "40px", textAlign: "center"}}>
-              <input type="checkbox" onChange={handleSelectAll} checked={classes.length > 0 && selectedIds.length === classes.length} style={{cursor: "pointer"}} />
-            </th>
-            <th style={{...styles.th, width: "60px", textAlign: "center"}}>STT</th>
-            <th style={styles.th}>Môn học</th>
-            <th style={{...styles.th, textAlign: "center"}}>N-T</th>
-            <th style={styles.th}>Lớp biên chế</th>
-            <th style={styles.th}>Giảng viên</th>
-            <th style={styles.th}>Phòng</th>
-            <th style={styles.th}>Lịch học</th>
-            <th style={{...styles.th, textAlign: "center", width: "120px"}}>Trạng thái</th>
-            <th style={{...styles.th, textAlign: "center", width: "80px"}}>Thao tác</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(!classes || classes.length === 0) ? (
-            <tr><td colSpan="10" style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>Không tìm thấy lớp học phù hợp.</td></tr>
-          ) : (
-            currentItems.map((cls, index) => {
-              const isSelected = selectedIds.includes(cls.class_id);
-              return (
-                <tr 
-                  key={cls.class_id} 
-                  style={{ background: isSelected ? "#eff6ff" : "#fff", transition: "background 0.2s" }} 
-                  onMouseOver={e => e.currentTarget.style.background = isSelected ? "#eff6ff" : "#f8fafc"} 
-                  onMouseOut={e => e.currentTarget.style.background = isSelected ? "#eff6ff" : "#fff"}
-                >
-                  <td style={{...styles.td, textAlign: "center"}}>
-                    <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(cls.class_id)} style={{cursor: "pointer"}} />
-                  </td>
-                  <td style={{...styles.td, textAlign: "center", fontWeight: "600", color: "#64748b"}}>
-                    {indexOfFirstItem + index + 1}
-                  </td>
-                  <td style={styles.td}>
-                    <div style={{ fontWeight: 700, color: '#0369a1' }}>{cls.subject_id}</div>
-                    <div style={{ color: '#334155', fontSize: '0.85rem', marginTop: '2px' }}>{cls.subject_name}</div>
-                    <div style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '2px' }}>TC: <b style={{color: '#475569'}}>{cls.credits}</b></div>
-                  </td>
-                  <td style={{...styles.td, textAlign: "center", fontWeight: "700", color: "#f59e0b"}}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                      <span>{cls.group_number ? String(cls.group_number).padStart(2, '0') : '01'}</span>
-                      {cls.class_type === 'Practice' && <span style={{fontSize: "0.8rem", color: "#7e22ce"}}>{cls.sub_group_number ? String(cls.sub_group_number).padStart(2, '0') : '01'}</span>}
-                    </div>
-                  </td>
-                  <td style={styles.td}>
-                    {cls.target_classes?.length > 0 ? (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", maxWidth: "160px" }}>
-                        {cls.target_classes.map((tc, idx) => (
-                          <span key={idx} style={{ padding: "2px 6px", background: "#f1f5f9", color: "#334155", borderRadius: "4px", fontSize: "0.75rem", fontWeight: "600", whiteSpace: "nowrap" }}>{tc}</span>
-                        ))}
-                      </div>
-                    ) : <span style={{ color: "#ef4444", fontWeight: "600", fontSize: "0.85rem" }}>Chưa cập nhật</span>}
-                  </td>
-                  
-                  {/* GIẢNG VIÊN */}
-                  <td style={styles.td}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {cls.class_type === 'Practice' && (
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "4px", borderBottom: "1px dashed #cbd5e1" }}>
-                          <span style={{ fontWeight: "800", color: "#1d4ed8", background: "#dbeafe", padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem" }}>LT</span>
-                          <span style={{ color: "#1e293b", fontWeight: "500", fontSize: "0.85rem" }} title={cls.theory_class?.lecturer_name}>{cls.theory_class?.lecturer_name || <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa cập nhật</span>}</span>
-                        </div>
-                      )}
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ fontWeight: "800", padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem", color: cls.class_type === 'Practice' ? "#7e22ce" : "#1d4ed8", background: cls.class_type === 'Practice' ? "#f3e8ff" : "#dbeafe" }}>
-                          {cls.class_type === 'Practice' ? 'TH' : 'LT'}
-                        </span>
-                        <span style={{ color: "#1e293b", fontWeight: "500", fontSize: "0.85rem" }} title={cls.lecturer_name}>{cls.lecturer_name || <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa cập nhật</span>}</span>
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* PHÒNG */}
-                  <td style={styles.td}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {cls.class_type === 'Practice' && (
-                        <div style={{ fontSize: "0.85rem", fontWeight: "700", color: "#1d4ed8", paddingBottom: "4px", borderBottom: "1px dashed #cbd5e1" }}>
-                          {cls.theory_class?.schedules && cls.theory_class.schedules.length > 0 ? cls.theory_class.schedules[0].room_id || <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa cập nhật</span> : <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa cập nhật</span>}
-                        </div>
-                      )}
-                      <div style={{ fontSize: "0.85rem", fontWeight: "700", color: cls.class_type === 'Practice' ? "#7e22ce" : "#1d4ed8" }}>
-                        {cls.schedules && cls.schedules.length > 0 ? cls.schedules[0].room_id || <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa xếp phòng</span> : <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa xếp phòng</span>}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* LỊCH HỌC */}
-                  <td style={styles.td}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", color: "#334155", fontSize: "0.85rem" }}>
-                      {cls.class_type === 'Practice' && (
-                        <div style={{ paddingBottom: "4px", borderBottom: "1px dashed #cbd5e1" }}>
-                          {cls.theory_class?.schedules && cls.theory_class.schedules.length > 0 ? (
-                            <><b>T{cls.theory_class.schedules[0].day_of_week}</b> (Ca {cls.theory_class.schedules[0].start_shift}-{cls.theory_class.schedules[0].end_shift})</>
-                          ) : <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa xếp lịch</span>}
-                        </div>
-                      )}
-                      <div>
-                        {cls.schedules && cls.schedules.length > 0 ? (
-                           <><b>T{cls.schedules[0].day_of_week}</b> (Ca {cls.schedules[0].start_shift}-{cls.schedules[0].end_shift})</>
-                        ) : <span style={{color: "#ef4444", fontWeight: "600"}}>Chưa xếp lịch</span>}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* TRẠNG THÁI */}
-                  <td style={{...styles.td, textAlign: "center"}}>
-                    <select
-                      value={cls.status || 'Active'}
-                      onChange={(e) => onStatusChange(cls.class_id, e.target.value)}
-                      style={{
-                        fontSize: "0.8rem", fontWeight: "600", padding: "6px 8px", borderRadius: "8px", border: "1px solid", outline: "none", cursor: "pointer", width: "100%", textAlign: "center",
-                        background: cls.status === 'Active' ? '#dcfce7' : cls.status === 'Planning' ? '#fef3c7' : '#f1f5f9',
-                        color: cls.status === 'Active' ? '#166534' : cls.status === 'Planning' ? '#92400e' : '#475569',
-                        borderColor: cls.status === 'Active' ? '#bbf7d0' : cls.status === 'Planning' ? '#fde68a' : '#cbd5e1'
-                      }}
-                    >
-                      <option value="Active">Đang mở</option>
-                      <option value="Planning">Kế hoạch</option>
-                      <option value="Closed">Đã đóng</option>
-                    </select>
-
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", background: "#f8fafc", borderRadius: "6px", padding: "4px", marginTop: "8px" }}>
-                      <Users size={14} color="#64748b" />
-                      <span style={{ fontSize: "0.8rem", fontWeight: cls.current_students >= cls.max_students ? "700" : "600", color: cls.current_students >= cls.max_students ? "#dc2626" : "#334155" }}>
-                        {cls.current_students || 0} / {cls.max_students}
-                      </span>
-                    </div>
-                  </td>
-
-                  {/* THAO TÁC */}
-                  <td style={{...styles.td, textAlign: "center"}}>
-                    <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
-                      <button onClick={() => onEdit(cls)} style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#106fa6' }} title="Sửa" onMouseOver={e=>e.currentTarget.style.background="#f1f5f9"} onMouseOut={e=>e.currentTarget.style.background="#fff"}>
-                         <Edit size={16} />
-                      </button>
-                      <button onClick={() => setDeleteConfirm({id: cls.class_id, students: cls.current_students})} style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#ef4444' }} title="Xóa" onMouseOver={e=>e.currentTarget.style.background="#fef2f2"} onMouseOut={e=>e.currentTarget.style.background="#fff"}>
-                         <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-      {renderPagination()}
-
-      {/* CUSTOM DELETE CONFIRM MODAL */}
-      {deleteConfirm && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(15, 23, 42, 0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "#fff", borderRadius: "12px", width: "400px", maxWidth: "90%", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)", overflow: "hidden" }}>
-            <div style={{ padding: "20px", display: "flex", gap: "15px" }}>
-              <div style={{ background: "#fee2e2", width: "48px", height: "48px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <AlertTriangle size={24} color="#ef4444" />
-              </div>
-              <div>
-                <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", color: "#0f172a" }}>Xác nhận xóa lớp</h3>
-                <p style={{ margin: 0, fontSize: "0.9rem", color: "#475569", lineHeight: "1.5" }}>
-                  {deleteConfirm.students > 0 
-                    ? `Lớp này đang có ${deleteConfirm.students} sinh viên đăng ký. Việc xóa lớp sẽ ảnh hưởng đến kết quả học tập của sinh viên. Bạn có chắc chắn muốn xóa lớp ${deleteConfirm.id} không?`
-                    : `Bạn có chắc chắn muốn xóa lớp tín chỉ ${deleteConfirm.id} không? Hành động này không thể hoàn tác.`
-                  }
-                </p>
-              </div>
-            </div>
-            <div style={{ padding: "12px 20px", background: "#f8fafc", display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #e2e8f0" }}>
-              <button onClick={() => setDeleteConfirm(null)} style={{ padding: "8px 16px", borderRadius: "6px", background: "#fff", border: "1px solid #cbd5e1", color: "#475569", fontWeight: "600", cursor: "pointer" }}>
-                Hủy
-              </button>
-              <button 
-                onClick={() => { onDelete(deleteConfirm.id, 0 /* pass 0 to bypass the block in onDelete */); setDeleteConfirm(null); }} 
-                style={{ padding: "8px 16px", borderRadius: "6px", background: "#ef4444", border: "none", color: "#fff", fontWeight: "600", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
-              >
-                <Trash2 size={16} /> Xóa lớp
-              </button>
-            </div>
-          </div>
+  if (loading) {
+    return (
+      <section className="overflow-hidden rounded-xl border border-[#d0e0eb] bg-white shadow-sm">
+        <div className="px-6 py-10 text-center text-sm text-slate-500">
+          Đang tải dữ liệu...
         </div>
-      )}
-    </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#d0e0eb] bg-white shadow-sm">
+      {/* Header bảng */}
+      <div className="flex flex-col gap-1 border-b border-[#e2edf5] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-bold text-[#106fa6]">
+            Danh sách lớp tín chỉ
+          </h2>
+
+          <p className="text-sm text-slate-500">
+            {classes.length} lớp được tìm thấy
+          </p>
+        </div>
+
+        {selectedIds.length > 0 && (
+          <span className="text-sm font-semibold text-sky-700">
+            Đã chọn {selectedIds.length} lớp
+          </span>
+        )}
+      </div>
+
+      <div className="w-full overflow-x-auto">
+        <table className="min-w-full border-collapse text-left text-sm">
+          <thead>
+            <tr className="border-b border-[#d0e0eb] bg-[#f8fafc] text-[13px] text-slate-600">
+              <th className="w-11 px-3 py-3 text-center">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={handleSelectAll}
+                  aria-label="Chọn tất cả lớp"
+                  className="h-4 w-4 cursor-pointer accent-[#106fa6]"
+                />
+              </th>
+
+              <th className="w-12 px-3 py-3 text-center font-semibold">
+                STT
+              </th>
+
+              <th className="min-w-[180px] px-3 py-3 font-semibold">
+                Môn học
+              </th>
+
+              <th className="w-16 px-3 py-3 text-center font-semibold">
+                N-T
+              </th>
+
+              <th className="min-w-[130px] px-3 py-3 font-semibold">
+                Biên chế
+              </th>
+
+              <th className="min-w-[190px] px-3 py-3 font-semibold">
+                Giảng viên
+              </th>
+
+              <th className="min-w-[110px] px-3 py-3 font-semibold">
+                Phòng
+              </th>
+
+              <th className="min-w-[170px] px-3 py-3 font-semibold">
+                Lịch học
+              </th>
+
+              <th className="w-32 px-3 py-3 text-center font-semibold">
+                Trạng thái
+              </th>
+
+              <th className="w-24 px-3 py-3 text-center font-semibold">
+                Thao tác
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {classes.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={10}
+                  className="px-6 py-10 text-center text-slate-500"
+                >
+                  Không tìm thấy dữ liệu.
+                </td>
+              </tr>
+            ) : (
+              classes.map((cls, index) => {
+                const isSelected = selectedIds.includes(cls.class_id);
+                const status = statusConfig[cls.status] || statusConfig.Closed;
+                const currentStudents = Number(cls.current_students || 0);
+                const maxStudents = Number(cls.max_students || 0);
+                const isFull =
+                  maxStudents > 0 && currentStudents >= maxStudents;
+
+                return (
+                  <tr
+                    key={cls.class_id}
+                    className={`border-b border-[#e2edf5] transition-colors last:border-b-0 ${
+                      isSelected
+                        ? 'bg-sky-50/70 hover:bg-sky-100/70'
+                        : 'bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    {/* Checkbox */}
+                    <td className="px-3 py-3 text-center align-top">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleSelectOne(cls.class_id)}
+                        aria-label={`Chọn lớp ${cls.class_id}`}
+                        className="mt-0.5 h-4 w-4 cursor-pointer accent-[#106fa6]"
+                      />
+                    </td>
+
+                    {/* STT */}
+                    <td className="px-3 py-3 text-center align-top font-semibold text-slate-500">
+                      {index + 1}
+                    </td>
+
+                    {/* Môn học */}
+                    <td className="px-3 py-3 align-top">
+                      <div className="font-bold text-[#0369a1]">
+                        {cls.subject_id || '—'}
+                      </div>
+
+                      <div className="mt-1 text-xs leading-5 text-slate-600">
+                        {cls.subject_name || 'Chưa có tên môn học'}
+                      </div>
+
+                      <div className="mt-1 text-xs text-slate-500">
+                        Số tín chỉ:{' '}
+                        <span className="font-semibold text-slate-700">
+                          {cls.credits || 0}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Nhóm */}
+                    <td className="px-3 py-3 text-center align-top">
+                      <span className="inline-flex rounded-md bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700">
+                        {cls.display_group || '—'}
+                      </span>
+                    </td>
+
+                    {/* Lớp biên chế */}
+                    <td className="px-3 py-3 align-top">
+                      {cls.target_classes_display?.length > 0 ? (
+                        <div className="flex flex-col items-start gap-1">
+                          {cls.target_classes_display.map((targetClass, idx) => (
+                            <span
+                              key={`${targetClass}-${idx}`}
+                              className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700"
+                            >
+                              {targetClass}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs italic text-slate-400">
+                          Chưa xếp
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Giảng viên */}
+                    <td className="px-3 py-3 align-top">
+                      <div className="flex flex-col gap-1">
+                        {cls.theory_class && (
+                          <div className="flex items-center gap-2 border-b border-dashed border-slate-200 pb-1">
+                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                              LT
+                            </span>
+
+                            <span
+                              className="max-w-[145px] truncate text-xs font-medium text-slate-700"
+                              title={cls.theory_class.lecturer_name}
+                            >
+                              {cls.theory_class.lecturer_name || (
+                                <span className="italic text-slate-400">
+                                  Chưa xếp GV
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              cls.theory_class
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {cls.class_type === 'Practice' ? 'TH' : 'LT'}
+                          </span>
+
+                          <span
+                            className="max-w-[145px] truncate text-xs font-medium text-slate-700"
+                            title={cls.lecturer_name}
+                          >
+                            {cls.lecturer_name || (
+                              <span className="italic text-slate-400">
+                                Chưa xếp GV
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Phòng */}
+                    <td className="px-3 py-3 align-top">
+                      <div className="flex flex-col gap-1 text-xs font-semibold">
+                        {cls.theory_class && (
+                          <div className="border-b border-dashed border-slate-200 pb-1 text-blue-700">
+                            {cls.theory_class.room_id || 'A2-101'}
+                          </div>
+                        )}
+
+                        <div
+                          className={
+                            cls.theory_class
+                              ? 'text-purple-700'
+                              : 'text-blue-700'
+                          }
+                        >
+                          {cls.room_id || 'PM-205'}
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Lịch học */}
+                    <td className="px-3 py-3 align-top">
+                      <div className="flex flex-col gap-1 text-xs text-slate-700">
+                        {cls.theory_class && (
+                          <div className="border-b border-dashed border-slate-200 pb-1">
+                            <span className="font-bold">T2</span>{' '}
+                            (07:00–09:30)
+                            <div className="text-[10px] text-slate-500">
+                              15/08 – 30/11
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <span className="font-bold">T4</span>{' '}
+                          (13:00–15:30)
+                          <div className="text-[10px] text-slate-500">
+                            15/08 – 30/11
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Trạng thái */}
+                    <td className="px-3 py-3 align-top text-center">
+                      <select
+                        value={cls.status || 'Active'}
+                        onChange={(event) =>
+                          onStatusChange(
+                            cls.class_id,
+                            event.target.value
+                          )
+                        }
+                        aria-label={`Trạng thái lớp ${cls.class_id}`}
+                        className={`h-9 w-full cursor-pointer rounded-md border px-2 text-center text-xs font-semibold outline-none focus:ring-2 focus:ring-sky-100 ${status.className}`}
+                      >
+                        <option value="Active">Đang mở</option>
+                        <option value="Planning">Kế hoạch</option>
+                        <option value="Closed">Đã đóng</option>
+                      </select>
+
+                      <div className="mt-2 flex items-center justify-center gap-1 rounded-md bg-slate-50 px-2 py-1.5">
+                        <Users className="h-3.5 w-3.5 text-slate-500" />
+
+                        <span
+                          className={`text-xs ${
+                            isFull
+                              ? 'font-bold text-red-600'
+                              : 'font-medium text-slate-700'
+                          }`}
+                        >
+                          {currentStudents} / {maxStudents || '—'}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Thao tác */}
+                    <td className="px-3 py-3 text-center align-top">
+                      <div className="flex justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onEdit(cls)}
+                          aria-label={`Sửa lớp ${cls.class_id}`}
+                          title="Sửa lớp"
+                          className="rounded-md p-2 text-[#106fa6] transition hover:bg-sky-50 hover:text-[#0d5d8a]"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onDelete(cls.class_id, currentStudents)
+                          }
+                          disabled={currentStudents > 0}
+                          aria-label={`Xóa lớp ${cls.class_id}`}
+                          title={
+                            currentStudents > 0
+                              ? 'Không thể xóa lớp đã có sinh viên'
+                              : 'Xóa lớp'
+                          }
+                          className={`rounded-md p-2 transition ${
+                            currentStudents > 0
+                              ? 'cursor-not-allowed text-slate-300'
+                              : 'text-red-600 hover:bg-red-50 hover:text-red-700'
+                          }`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 };
 

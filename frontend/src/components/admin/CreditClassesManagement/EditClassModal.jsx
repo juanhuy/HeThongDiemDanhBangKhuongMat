@@ -335,13 +335,13 @@ export default function EditClassModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
       <div className="bg-white rounded-xl border border-gray-200 shadow-[0_8px_30px_rgba(0,0,0,0.12)] w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
         
         {/* HEADER */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 bg-gray-50/50">
           <div className="flex items-center gap-3">
-            <div className="bg-[#106fa6]/10 p-2 rounded-lg text-[#106fa6]">
+            <div className="bg-blue-100 p-2 rounded-lg text-[#005bbf]">
               <BookOpen size={20} />
             </div>
             <div>
@@ -366,7 +366,7 @@ export default function EditClassModal({
               {loadingDetail ? (
                 <div className="p-4 text-center text-gray-400 text-[13px]">Đang tải thông tin môn học...</div>
               ) : (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-2 gap-y-3 gap-x-4">
                   <div className="col-span-2 flex flex-col">
                     <span className="text-[11px] text-gray-500 font-semibold uppercase">Môn học</span>
                     <span className="text-[14px] text-gray-800 font-medium">
@@ -402,7 +402,7 @@ export default function EditClassModal({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12px] font-semibold text-gray-700">Sĩ số tối đa</label>
                   <input 
@@ -442,8 +442,7 @@ export default function EditClassModal({
               <button 
                 onClick={handleSaveAll}
                 disabled={isSavingAll}
-                className="mt-auto h-11 text-white text-[14px] font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"
-                style={{ backgroundColor: '#106fa6' }}
+                className="mt-auto h-11 bg-[#005bbf] hover:bg-[#004a9e] text-white text-[14px] font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"
               >
                 <Save size={18} /> 
                 {isSavingAll ? 'Đang lưu hệ thống...' : 'Lưu thông tin & Đồng bộ Lịch'}
@@ -455,9 +454,9 @@ export default function EditClassModal({
           <div className="flex flex-col gap-5 border-l-0 lg:border-l border-gray-200 lg:pl-8">
             
             <div className={`p-4 rounded-xl border ${editingScheduleIndex !== null ? 'border-orange-300 bg-orange-50' : 'border-transparent'}`}>
-              <h3 className="text-[13px] font-bold text-[#1a73e8] uppercase tracking-wider mb-2 border-b border-gray-200 pb-1.5 flex items-center gap-2">
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>
                 {editingScheduleIndex !== null ? <><Edit2 size={16}/> Đang sửa Buổi {editingScheduleIndex + 1}</> : 'Thêm lịch học'}
-              </h3>
+              </h2>
 
               {/* Thông báo hướng dẫn nghiệp vụ tổ thực hành */}
               <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 p-2.5 rounded-lg mb-3 text-[12px] text-blue-800">
@@ -496,7 +495,7 @@ export default function EditClassModal({
                  </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+              <div className="grid grid-cols-2 gap-4 mb-3">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12px] font-semibold text-gray-700">Ngày học</label>
                   <input 
@@ -517,7 +516,7 @@ export default function EditClassModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="flex flex-col gap-1.5 relative">
                   <label className="text-[12px] font-semibold text-gray-700">
                     Phòng {scheduleForm.type} <span className="text-xs font-normal text-gray-500">(Đã lọc tự động)</span>
@@ -551,8 +550,7 @@ export default function EditClassModal({
               <div className="flex gap-2">
                 <button 
                   onClick={handleSaveScheduleLocal}
-                  className="flex-1 h-11 bg-white border-2 text-[14px] font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"
-                  style={{ borderColor: '#106fa6', color: '#106fa6' }}
+                  className="flex-1 h-11 bg-white border-2 border-[#005bbf] text-[#005bbf] text-[14px] font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-[#005bbf]/5 transition-colors"
                 >
                   <Plus size={18} strokeWidth={2.5} /> 
                   {editingScheduleIndex !== null ? 'Cập nhật lịch (Tạm)' : 'Thêm vào danh sách tạm'}
@@ -604,7 +602,7 @@ export default function EditClassModal({
 
                          <div className="flex items-center gap-2 text-gray-600">
                            <MapPin size={15} className="text-gray-400"/> 
-                           Phòng: <span className="font-semibold text-[#106fa6]">{schedule.room_id}</span>
+                           Phòng: <span className="font-semibold text-[#005bbf]">{schedule.room_id}</span>
                            <span className={`ml-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                              schedule.loai_lich === 'Thực hành' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
                            }`}>

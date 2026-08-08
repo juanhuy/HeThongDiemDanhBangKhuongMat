@@ -4,7 +4,7 @@ import {
   Clipboard, FileText, Camera, ShieldAlert, Building, Layers
 } from 'lucide-react';
 
-const Sidebar = ({ activeMenu, setActiveMenu, user, isOpen }) => {
+const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
   const rawRole = user?.role || 'sinh_vien';
   const role = rawRole.toLowerCase();
   const isAdmin = role === 'admin';
@@ -14,14 +14,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, user, isOpen }) => {
     sidebar: {
       backgroundColor: "#ffffff",
       borderRight: "1px solid #d0e0eb",
-      display: isOpen ? "flex" : "none",
+      display: "flex",
       flexDirection: "column",
       justifyContent: "space-between",
-      paddingTop: "10px",
-      width: "250px",
-      minWidth: "250px",
-      overflowY: "auto",
-      height: "100%",
+      paddingTop: "10px"
     },
     sidebarMenu: {
       display: "flex",
@@ -59,12 +55,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, user, isOpen }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'students_list' ? 'active' : ''}`} onClick={() => setActiveMenu('students_list')}>
             <User size={16} /> Quản lý Sinh viên
           </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'attendance' ? 'active' : ''}`} onClick={() => setActiveMenu('attendance')}>
+          {/* <div className={`ptit-sidebar-item ${activeMenu === 'attendance' ? 'active' : ''}`} onClick={() => setActiveMenu('attendance')}>
             <User size={16} /> Đăng ký SV mới
-          </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'faculty_major_management' ? 'active' : ''}`} onClick={() => setActiveMenu('faculty_major_management')}>
-            <Building size={16} /> Đơn vị & Chuyên ngành
-          </div>
+          </div> */}
           <div className={`ptit-sidebar-item ${activeMenu === 'faculties_management' ? 'active' : ''}`} onClick={() => setActiveMenu('faculties_management')}>
             <Building size={16} /> Quản lý Khoa
           </div>
@@ -77,7 +70,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, user, isOpen }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'subjects_management' ? 'active' : ''}`} onClick={() => setActiveMenu('subjects_management')}>
             <BookOpen size={16} /> Quản lý Môn học
           </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('class_management')}>
+          <div className={`ptit-sidebar-item ${activeMenu === 'admin_class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('admin_class_management')}>
             <BookOpen size={16} /> Quản lý Lớp tín chỉ
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'lecturers_management' ? 'active' : ''}`} onClick={() => setActiveMenu('lecturers_management')}>
@@ -96,8 +89,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, user, isOpen }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'home' ? 'active' : ''}`} onClick={() => setActiveMenu('home')}>
             <Home size={16} /> Trang chủ
           </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('class_management')}>
-            <BookOpen size={16} /> Quản lý Lớp học
+          <div className={`ptit-sidebar-item ${activeMenu === 'lecturer_class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('lecturer_class_management')}>
+            <BookOpen size={16} /> Quản lý lớp của tôi
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'teaching_schedule' ? 'active' : ''}`} onClick={() => setActiveMenu('teaching_schedule')}>
             <Calendar size={16} /> Xem Lịch dạy

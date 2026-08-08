@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, X } from 'lucide-react';
 
 const SearchableSelect = ({
@@ -12,12 +13,19 @@ const SearchableSelect = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [dropdownRect, setDropdownRect] = useState(null);
+  const wrapperRef = useRef(null);
   const dropdownRef = useRef(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target)
+      ) {
         setIsOpen(false);
         setSearchTerm("");
       }
@@ -25,6 +33,12 @@ const SearchableSelect = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen || !wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    setDropdownRect(rect);
+  }, [isOpen]);
 
   const filteredOptions = options.filter(opt => 
     opt.label?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -83,7 +97,7 @@ const SearchableSelect = ({
   };
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
+    <div className={`relative ${className}`} ref={wrapperRef}>
       <div 
         className={`w-full min-h-[42px] px-3 py-2 border rounded-lg flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-red-500 focus-within:border-red-500 bg-white transition-all
           ${disabled ? "bg-slate-50 cursor-not-allowed opacity-70" : "hover:border-slate-400"}
@@ -102,8 +116,18 @@ const SearchableSelect = ({
         </div>
       </div>
 
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto overflow-x-hidden animate-in fade-in zoom-in-95 duration-100">
+      {isOpen && dropdownRect && createPortal(
+        <div
+          ref={dropdownRef}
+          className="bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto overflow-x-hidden animate-in fade-in zoom-in-95 duration-100"
+          style={{
+            position: 'fixed',
+            top: dropdownRect.bottom + 8,
+            left: dropdownRect.left,
+            width: dropdownRect.width,
+            zIndex: 9999
+          }}
+        >
           <div className="sticky top-0 bg-white p-2 border-b border-slate-100">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
@@ -145,7 +169,8 @@ const SearchableSelect = ({
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

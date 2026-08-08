@@ -18,6 +18,7 @@ import {
 
 import {
   TeachingSchedule,
+  LecturerClassesManagement,
   ManualCheckin,
   SummaryReport,
   LeaveRequests,
@@ -29,7 +30,8 @@ import {
   CreditClassesManagement,
   LecturersManagement,
   RoomsManagement,
-  FacultyMajorManagement,
+  FacultiesManagement,
+  MajorsManagement,
   SubjectsManagement,
   StudentsManagement,
   CameraDashboard,
@@ -46,22 +48,19 @@ const styles = {
   appWrapper: {
     display: 'flex',
     flexDirection: 'column',
-    height: '100vh',
-    overflow: 'hidden',
+    minHeight: '100vh',
     backgroundColor: '#f4f8fa',
   },
   mainLayout: {
-    display: 'flex',
+    display: 'grid',
+    gridTemplateColumns: '250px 1fr',
     flexGrow: 1,
-    overflow: 'hidden',
   },
   contentArea: {
     padding: '1.5rem 2rem',
     display: 'flex',
     flexDirection: 'column',
     gap: '1.5rem',
-    flexGrow: 1,
-    overflowY: 'auto',
   },
   welcomeHeader: {
     display: 'flex',
@@ -92,7 +91,6 @@ function App() {
   const [activeMenu, setActiveMenu] = useState('home');
   const [studentProfile, setStudentProfile] = useState(null);
   const [lecturerProfile, setLecturerProfile] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const userRole = user?.role ? user.role.toLowerCase() : '';
   const isStudent = userRole === 'sinh_vien' || userRole === 'student';
@@ -293,6 +291,8 @@ function App() {
         return <StudentTimetable user={userForStudent} showToast={showToast} />;
 
       // —— Lecturer ——
+      case 'lecturer_class_management':
+        return <LecturerClassesManagement user={user} showToast={showToast} />;
       case 'teaching_schedule':
         return <TeachingSchedule user={user} showToast={showToast} />;
       case 'manual_checkin':
@@ -305,10 +305,13 @@ function App() {
         return <LecturerTimetable user={user} showToast={showToast} />;
 
       // —— Admin ——
-      case 'faculty_major_management':
-        return <FacultyMajorManagement API_BASE={API_BASE} showToast={showToast} />;
-      case 'class_management':
+      case 'admin_class_management':
         return <CreditClassesManagement showToast={showToast} />;
+      case 'faculties_management':
+        return <FacultiesManagement API_BASE={API_BASE} showToast={showToast} />;
+      case 'majors_management':
+        return <MajorsManagement API_BASE={API_BASE} showToast={showToast} />;
+
       case 'lecturers_management':
         return <LecturersManagement API_BASE={API_BASE} showToast={showToast} />;
       case 'rooms_management':
@@ -336,18 +339,9 @@ function App() {
 
   return (
     <div style={styles.appWrapper}>
-      <Header 
-        studentProfile={profileToRender} 
-        onLogout={handleLogout} 
-        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-      />
+      <Header studentProfile={profileToRender} onLogout={handleLogout} />
       <div style={styles.mainLayout}>
-        <Sidebar 
-          activeMenu={activeMenu} 
-          setActiveMenu={setActiveMenu} 
-          user={user} 
-          isOpen={isSidebarOpen}
-        />
+        <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} user={user} />
         <main style={styles.contentArea}>
           <div style={styles.welcomeHeader}>
             <h2 style={styles.welcomeText}>

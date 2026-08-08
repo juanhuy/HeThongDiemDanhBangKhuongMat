@@ -98,9 +98,9 @@ def start_backend():
             return
     
     if platform.system() == "Windows":
-        backend_cmd = ".\\.venv\\Scripts\\activate && uv run uvicorn app.main:app --reload --port 8000"
+        backend_cmd = ".\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000"
     else:
-        backend_cmd = "source .venv/bin/activate && uv run uvicorn app.main:app --reload --port 8000"
+        backend_cmd = "./.venv/bin/python -m uvicorn app.main:app --reload --port 8000"
     
     run_in_new_terminal(backend_cmd, BACKEND_DIR, "Backend Server - FastAPI")
     print("✅ Đã mở cửa sổ mới để chạy Backend.")

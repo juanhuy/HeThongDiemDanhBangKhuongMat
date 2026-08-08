@@ -1,11 +1,8 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, StopCircle, UploadCloud } from 'lucide-react';
-import { attendanceApi, roomsApi, creditClassesApi } from '../../api';
+import { attendanceApi } from '../../api';
 
 export default function CameraDashboard({ showToast, onAttendanceLogged }) {
-  const [rooms, setRooms] = useState([]);
-  const [creditClasses, setCreditClasses] = useState([]);
-  const [selectedClassId, setSelectedClassId] = useState('');
   const [cameraRoom, setCameraRoom] = useState('A2-301');
   const [useWebcam, setUseWebcam] = useState(false);
   const [webcamStream, setWebcamStream] = useState(null);
@@ -24,35 +21,6 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [webcamStream]);
-
-  useEffect(() => {
-    roomsApi.listRooms().then((res) => {
-      const data = res.data || res.rooms || res.classrooms || res;
-      if (Array.isArray(data)) {
-        setRooms(data);
-      }
-    }).catch(console.error);
-
-    creditClassesApi.listCreditClasses({ status: "Active" }).then(res => {
-      const data = res.data || res;
-      if (Array.isArray(data)) setCreditClasses(data);
-    }).catch(console.error);
-  }, []);
-
-  const filteredRooms = useMemo(() => {
-    if (!selectedClassId) return rooms;
-    const cls = creditClasses.find(c => c.class_id === selectedClassId);
-    if (!cls || !cls.schedules) return rooms;
-    const classRoomIds = cls.schedules.map(s => s.room_id).filter(Boolean);
-    if (classRoomIds.length === 0) return rooms;
-    return rooms.filter(r => classRoomIds.includes(r.room_id || r.room_number || r.id));
-  }, [rooms, creditClasses, selectedClassId]);
-
-  useEffect(() => {
-    if (filteredRooms.length > 0 && !filteredRooms.some(r => (r.room_id || r.room_number || r.id) === cameraRoom)) {
-      setCameraRoom(filteredRooms[0].room_id || filteredRooms[0].room_number || filteredRooms[0].id);
-    }
-  }, [filteredRooms, cameraRoom]);
 
   useEffect(() => {
     if (!useWebcam || !webcamStream) {
@@ -160,32 +128,14 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <h2 style={{ margin: 0, fontSize: '1.15rem', color: '#106fa6', fontWeight: 700 }}>Điểm danh Camera</h2>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Lớp TC:</label>
-          <select
-            value={selectedClassId}
-            onChange={(e) => setSelectedClassId(e.target.value)}
-            style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, minWidth: 150, background: '#fff' }}
-          >
-            <option value="">Tất cả phòng</option>
-            {creditClasses.map(c => (
-              <option key={c.class_id} value={c.class_id}>{c.class_id} - {c.subject_name}</option>
-            ))}
-          </select>
-
-          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginLeft: 10 }}>Phòng:</label>
-          <select
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Điểm danh Camera</h2>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Phòng:</label>
+          <input
             value={cameraRoom}
             onChange={(e) => setCameraRoom(e.target.value)}
-            style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, minWidth: 120, background: '#fff' }}
-          >
-            {filteredRooms.length === 0 && <option value={cameraRoom}>{cameraRoom}</option>}
-            {filteredRooms.map((r) => {
-              const roomId = r.room_id || r.room_number || r.id;
-              return <option key={roomId} value={roomId}>{roomId}</option>;
-            })}
-          </select>
+            style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, width: 120 }}
+          />
           {!useWebcam ? (
             <button onClick={startWebcam} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#106fa6', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, cursor: 'pointer' }}>
               <Camera size={16} /> Bật webcam
