@@ -18,6 +18,7 @@ import {
 
 import {
   TeachingSchedule,
+  LecturerClassesManagement,
   ManualCheckin,
   SummaryReport,
   LeaveRequests,
@@ -290,6 +291,8 @@ function App() {
         return <StudentTimetable user={userForStudent} showToast={showToast} />;
 
       // —— Lecturer ——
+      case 'lecturer_class_management':
+        return <LecturerClassesManagement user={user} showToast={showToast} />;
       case 'teaching_schedule':
         return <TeachingSchedule user={user} showToast={showToast} />;
       case 'manual_checkin':
@@ -302,12 +305,13 @@ function App() {
         return <LecturerTimetable user={user} showToast={showToast} />;
 
       // —— Admin ——
+      case 'admin_class_management':
+        return <CreditClassesManagement showToast={showToast} />;
       case 'faculties_management':
         return <FacultiesManagement API_BASE={API_BASE} showToast={showToast} />;
       case 'majors_management':
         return <MajorsManagement API_BASE={API_BASE} showToast={showToast} />;
-      case 'class_management':
-        return <CreditClassesManagement showToast={showToast} />;
+
       case 'lecturers_management':
         return <LecturersManagement API_BASE={API_BASE} showToast={showToast} />;
       case 'rooms_management':

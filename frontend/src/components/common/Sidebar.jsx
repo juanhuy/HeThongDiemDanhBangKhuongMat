@@ -70,7 +70,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'subjects_management' ? 'active' : ''}`} onClick={() => setActiveMenu('subjects_management')}>
             <BookOpen size={16} /> Quản lý Môn học
           </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('class_management')}>
+          <div className={`ptit-sidebar-item ${activeMenu === 'admin_class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('admin_class_management')}>
             <BookOpen size={16} /> Quản lý Lớp tín chỉ
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'lecturers_management' ? 'active' : ''}`} onClick={() => setActiveMenu('lecturers_management')}>
@@ -89,8 +89,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'home' ? 'active' : ''}`} onClick={() => setActiveMenu('home')}>
             <Home size={16} /> Trang chủ
           </div>
-          <div className={`ptit-sidebar-item ${activeMenu === 'class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('class_management')}>
-            <BookOpen size={16} /> Quản lý Lớp học
+          <div className={`ptit-sidebar-item ${activeMenu === 'lecturer_class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('lecturer_class_management')}>
+            <BookOpen size={16} /> Quản lý lớp của tôi
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'teaching_schedule' ? 'active' : ''}`} onClick={() => setActiveMenu('teaching_schedule')}>
             <Calendar size={16} /> Xem Lịch dạy
