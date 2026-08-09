@@ -28,4 +28,4 @@ server:
   port: 8000
 
 liveness:
-  enabled: false
+  enabled: true

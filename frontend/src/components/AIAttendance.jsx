@@ -67,6 +67,12 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const [useWebcam, setUseWebcam] = useState(false);
   const [webcamStream, setWebcamStream] = useState(null);
 
+  // --- Active Liveness States ---
+  const [activeChallenge, setActiveChallenge] = useState(null); // 'TURN_LEFT', 'TURN_RIGHT', 'LOOK_UP', 'LOOK_DOWN'
+  const [challengePassed, setChallengePassed] = useState(false);
+  const [challengePrompt, setChallengePrompt] = useState('');
+  const [currentFace, setCurrentFace] = useState(null);
+
   // --- New states for extended requirements ---
   const [creditClasses, setCreditClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
@@ -140,6 +146,9 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const recognitionIntervalRef = useRef(null);
+  const activeChallengeRef = useRef(null);
+  const challengePassedRef = useRef(false);
+  const challengeTimerRef = useRef(null);
 
   // Stop webcam stream when component unmounts
   useEffect(() => {
@@ -156,89 +165,176 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
     };
   }, [webcamStream, regWebcamStream]);
 
-  // Manage webcam recognition interval
+  // Manage webcam recognition loop (Adaptive requestAnimationFrame request-response loop)
   useEffect(() => {
-    if (useWebcam && webcamStream) {
-      recognitionIntervalRef.current = setInterval(async () => {
-        if (videoRef.current && canvasRef.current) {
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
+    let active = true;
+    let isProcessing = false;
 
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = video.videoWidth || 640;
-          tempCanvas.height = video.videoHeight || 480;
-          const tempCtx = tempCanvas.getContext("2d");
-          tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-
-          tempCanvas.toBlob(async (blob) => {
-            if (!blob) return;
-            const formData = new FormData();
-            formData.append("file", blob, "webcam_capture.jpg");
-
-            try {
-              const url = `${API_BASE}/api/recognize?phong_hoc=${encodeURIComponent(cameraRoom)}`;
-              const res = await fetch(url, {
-                method: "POST",
-                body: formData
-              });
-              if (res.ok) {
-                const data = await res.json();
-                setDetectionLogs(data.results || []);
-
-                if (canvas && video) {
-                  canvas.width = video.clientWidth;
-                  canvas.height = video.clientHeight;
-                  const ctx = canvas.getContext("2d");
-                  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                  const scaleX = canvas.width / tempCanvas.width;
-                  const scaleY = canvas.height / tempCanvas.height;
-
-                  (data.results || []).forEach(resItem => {
-                    const [x1, y1, x2, y2] = resItem.box;
-                    const bx = x1 * scaleX;
-                    const by = y1 * scaleY;
-                    const bw = (x2 - x1) * scaleX;
-                    const bh = (y2 - y1) * scaleY;
-
-                    const color = resItem.is_known ? "#10b981" : "#ef4444";
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(bx, by, bw, bh);
-
-                    ctx.fillStyle = color;
-                    ctx.font = "bold 13px 'Inter', sans-serif";
-                    const label = resItem.is_known ? `${resItem.fullname} - ${resItem.trang_thai}` : "Chưa đăng ký";
-                    const textWidth = ctx.measureText(label).width;
-
-                    ctx.fillRect(bx, by - 24, textWidth + 14, 24);
-                    ctx.fillStyle = "#ffffff";
-                    ctx.fillText(label, bx + 7, by - 7);
-                  });
-                }
-
-                if (onAttendanceLogged) {
-                  onAttendanceLogged();
-                }
-              }
-            } catch (err) {
-              console.error("Lỗi tự động quét khuôn mặt: ", err);
-            }
-          }, "image/jpeg");
-        }
-      }, 500);
-    } else {
-      if (recognitionIntervalRef.current) {
-        clearInterval(recognitionIntervalRef.current);
-        recognitionIntervalRef.current = null;
+    const processFrame = async () => {
+      if (!active) return;
+      if (!useWebcam || !webcamStream) return;
+      if (isProcessing) {
+        requestAnimationFrame(processFrame);
+        return;
       }
+
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      if (video && canvas && video.readyState >= 2) {
+        isProcessing = true;
+
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = video.videoWidth || 640;
+        tempCanvas.height = video.videoHeight || 480;
+        const tempCtx = tempCanvas.getContext("2d");
+        tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        tempCanvas.toBlob(async (blob) => {
+          if (!blob) {
+            isProcessing = false;
+            requestAnimationFrame(processFrame);
+            return;
+          }
+          const formData = new FormData();
+          formData.append("file", blob, "webcam_capture.jpg");
+
+          try {
+            const isChallengeActive = !challengePassedRef.current;
+            const url = `${API_BASE}/api/recognize?phong_hoc=${encodeURIComponent(cameraRoom)}${isChallengeActive ? '&challenge_only=true' : ''}`;
+            const res = await fetch(url, {
+              method: "POST",
+              body: formData
+            });
+            if (res.ok && active) {
+              const data = await res.json();
+              setDetectionLogs(data.results || []);
+
+              // Logic Active Challenge
+              if (data.results && data.results.length > 0) {
+                 const mainFace = data.results[0]; // Ưu tiên khuôn mặt đầu tiên
+                 if (mainFace.is_known && mainFace.is_real) {
+                    if (isChallengeActive) {
+                       // Nếu chưa có challenge nào, khởi tạo
+                       if (!activeChallengeRef.current) {
+                           const challenges = ['TURN_LEFT', 'TURN_RIGHT', 'LOOK_UP', 'LOOK_DOWN'];
+                           const prompts = {
+                               'TURN_LEFT': 'Vui lòng quay mặt sang TRÁI',
+                               'TURN_RIGHT': 'Vui lòng quay mặt sang PHẢI',
+                               'LOOK_UP': 'Vui lòng ngẩng mặt lên TRÊN',
+                               'LOOK_DOWN': 'Vui lòng cúi mặt XUỐNG'
+                           };
+                           const randomChallenge = challenges[Math.floor(Math.random() * challenges.length)];
+                           activeChallengeRef.current = randomChallenge;
+                           setActiveChallenge(randomChallenge);
+                           setChallengePrompt(prompts[randomChallenge]);
+                       } else {
+                           // Đã có challenge, kiểm tra xem vượt qua chưa
+                           const { yaw, pitch } = mainFace.active_state || {yaw: 0, pitch: 0};
+                           let passed = false;
+                           if (activeChallengeRef.current === 'TURN_LEFT' && yaw < -20) passed = true;
+                           else if (activeChallengeRef.current === 'TURN_RIGHT' && yaw > 20) passed = true;
+                           else if (activeChallengeRef.current === 'LOOK_UP' && pitch < -15) passed = true;
+                           else if (activeChallengeRef.current === 'LOOK_DOWN' && pitch > 15) passed = true;
+
+                           if (passed) {
+                               challengePassedRef.current = true;
+                               setChallengePassed(true);
+                               setChallengePrompt("Thử thách thành công! Đang điểm danh...");
+                               
+                               // Đặt hẹn giờ để reset trạng thái cho người tiếp theo sau 4 giây
+                               if (challengeTimerRef.current) clearTimeout(challengeTimerRef.current);
+                               challengeTimerRef.current = setTimeout(() => {
+                                   activeChallengeRef.current = null;
+                                   challengePassedRef.current = false;
+                                   setActiveChallenge(null);
+                                   setChallengePassed(false);
+                                   setChallengePrompt("");
+                               }, 4000);
+                           }
+                       }
+                    }
+                 }
+              } else {
+                 // Không thấy ai trong khung hình liên tục, có thể reset nhanh
+                 if (activeChallengeRef.current && !challengePassedRef.current) {
+                    // Tùy chọn: có thể đếm khung hình trống để reset
+                 }
+              }
+
+              if (canvas && video) {
+                canvas.width = video.clientWidth;
+                canvas.height = video.clientHeight;
+                const ctx = canvas.getContext("2d");
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                const scaleX = canvas.width / tempCanvas.width;
+                const scaleY = canvas.height / tempCanvas.height;
+
+                (data.results || []).forEach(resItem => {
+                  const [x1, y1, x2, y2] = resItem.box;
+                  const bx = x1 * scaleX;
+                  const by = y1 * scaleY;
+                  const bw = (x2 - x1) * scaleX;
+                  const bh = (y2 - y1) * scaleY;
+
+                  let color;
+                  let label;
+
+                  if (resItem.is_real === false) {
+                    color = "#f97316"; // Orange
+                    label = resItem.trang_thai || "Giả mạo khuôn mặt";
+                  } else if (resItem.is_known) {
+                    color = "#10b981"; // Green
+                    label = `${resItem.fullname} - ${resItem.trang_thai}`;
+                  } else {
+                    color = "#ef4444"; // Red
+                    label = resItem.trang_thai || "Chưa đăng ký";
+                  }
+
+                  ctx.strokeStyle = color;
+                  ctx.lineWidth = 3;
+                  ctx.strokeRect(bx, by, bw, bh);
+
+                  ctx.fillStyle = color;
+                  ctx.font = "bold 13px 'Inter', sans-serif";
+                  
+                  if (activeChallengeRef.current && !challengePassedRef.current && resItem.is_known && resItem.is_real !== false) {
+                      label = `[CHALLENGE] ${resItem.fullname}`;
+                  }
+                  const textWidth = ctx.measureText(label).width;
+
+                  ctx.fillRect(bx, by - 24, textWidth + 14, 24);
+                  ctx.fillStyle = "#ffffff";
+                  ctx.fillText(label, bx + 7, by - 7);
+                });
+              }
+
+              if (onAttendanceLogged && challengePassedRef.current) {
+                onAttendanceLogged();
+              }
+            }
+          } catch (err) {
+            console.error("Lỗi tự động quét khuôn mặt: ", err);
+          } finally {
+            isProcessing = false;
+            // Delay 60ms to prevent absolute CPU hogging but still keep it very fast (~15 FPS)
+            setTimeout(() => {
+              if (active) requestAnimationFrame(processFrame);
+            }, 60);
+          }
+        }, "image/jpeg", 0.7);
+      } else {
+        requestAnimationFrame(processFrame);
+      }
+    };
+
+    if (useWebcam && webcamStream) {
+      requestAnimationFrame(processFrame);
     }
 
     return () => {
-      if (recognitionIntervalRef.current) {
-        clearInterval(recognitionIntervalRef.current);
-        recognitionIntervalRef.current = null;
-      }
+      active = false;
     };
   }, [useWebcam, webcamStream, cameraRoom]);
 
@@ -1764,6 +1860,26 @@ const AIAttendance = ({ API_BASE, showToast, onAttendanceLogged, user, activeMen
                       height: "100%",
                       pointerEvents: "none"
                     }}></canvas>
+                    {challengePrompt && (
+                      <div style={{
+                        position: "absolute",
+                        bottom: "20px",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        backgroundColor: challengePassed ? "rgba(16, 185, 129, 0.9)" : "rgba(239, 68, 68, 0.9)",
+                        color: "white",
+                        padding: "12px 24px",
+                        borderRadius: "8px",
+                        fontSize: "1.1rem",
+                        fontWeight: "bold",
+                        boxShadow: "0 4px 6px rgba(0,0,0,0.3)",
+                        zIndex: 10,
+                        whiteSpace: "nowrap",
+                        animation: challengePassed ? "pulse 2s infinite" : "none"
+                      }}>
+                        {challengePrompt}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div style={{ ...styles.dropzonePrompt, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", height: "300px" }}>

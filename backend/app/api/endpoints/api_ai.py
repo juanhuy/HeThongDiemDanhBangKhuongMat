@@ -19,12 +19,16 @@ if project_root not in sys.path:
 
 from core.face_analysis import FaceAnalyzer
 from config.settings import settings
+from app.models.account import Account
+from app.models.lecturer import Lecturer
 from app.models.subject import Subject
-from app.models.student import Student
+from app.models.student import Student, UserProfile
 from app.models.credit_class import CreditClass
 from app.models.student_class import StudentClassEnrollment
 from app.models.class_schedule import ClassSchedule
 from app.models.attendance_history import AttendanceHistory
+from app.models.face_feature import FaceFeature
+from app.models.leave_request import LeaveRequest
 
 router = APIRouter()
 
@@ -284,6 +288,7 @@ async def recognize_uploaded_image(
     file: Optional[UploadFile] = File(None),
     ma_buoi_hoc: Optional[int] = Query(None, description="Mã buổi học muốn ghi nhận."),
     phong_hoc: Optional[str] = Query(None, description="Tên phòng học từ Camera gửi lên."),
+    challenge_only: bool = Query(False, description="Chỉ kiểm tra liveness và challenge, không ghi nhận điểm danh."),
     db: Session = Depends(get_db)
 ):
     if not file:
@@ -293,7 +298,7 @@ async def recognize_uploaded_image(
             "message": "Không nhận được file ảnh (Chế độ giả lập)"
         }
 
-    if not file.content_type.startswith("image/"):
+    if hasattr(file, "content_type") and file.content_type is not None and not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File gửi lên phải là file ảnh.")
 
     try:
@@ -313,6 +318,8 @@ async def recognize_uploaded_image(
         mssv = face["name"]
         score = face["score"]
         is_known = face["is_known"]
+        is_real = face.get("is_real", False)
+        active_state = face.get("active_state", None)
         ho_ten = "Unknown"
         lop_base = "Unknown"
         trang_thai = "Chưa xác định"
@@ -324,26 +331,34 @@ async def recognize_uploaded_image(
                 ho_ten = student_info.full_name
                 lop_base = student_info.administrative_class
 
-        success, msg, sv_info = record_attendance_sqlalchemy(
-            db, mssv, ma_buoi_hoc=ma_buoi_hoc, phong_hoc=phong_hoc, score=score
-        )
-        
-        if sv_info:
-            ho_ten = sv_info["ho_ten"]
-            lop_base = sv_info["lop_base"]
-            trang_thai = msg
+        if not challenge_only and is_real and is_known:
+            success, msg, sv_info = record_attendance_sqlalchemy(
+                db, mssv, ma_buoi_hoc=ma_buoi_hoc, phong_hoc=phong_hoc, score=score
+            )
+            
+            if sv_info:
+                ho_ten = sv_info["ho_ten"]
+                lop_base = sv_info["lop_base"]
+                trang_thai = msg
+            else:
+                trang_thai = msg if msg else "Chưa đăng ký"
         else:
-            trang_thai = msg if msg else "Chưa đăng ký"
-
-
+            if not is_real:
+                trang_thai = "Giả mạo khuôn mặt"
+            elif challenge_only:
+                trang_thai = "Đang thực hiện thử thách"
+            elif not is_known:
+                trang_thai = "Người lạ"
 
         recognized_faces.append({
             "box": face["box"],
             "mssv": mssv,
             "fullname": ho_ten,
             "lop_base": lop_base,
-            "score": score,
-            "is_known": is_known,
+            "score": float(score),
+            "is_known": bool(is_known),
+            "is_real": bool(is_real),
+            "active_state": active_state,
             "trang_thai": trang_thai
         })
 

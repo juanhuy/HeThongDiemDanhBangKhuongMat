@@ -1,3 +1,14 @@
+# Khởi chạy trợ giúp CUDA để preload thư viện trên Linux
+try:
+    from core.cuda_helper import preload_cuda
+    preload_cuda()
+except Exception:
+    try:
+        from cuda_helper import preload_cuda
+        preload_cuda()
+    except Exception:
+        pass
+
 import os
 import cv2 as cv
 import numpy as np
@@ -25,11 +36,13 @@ class LivenessDetector:
             print(f"-> [Liveness] Lỗi đọc config: {e}")
             self.enabled = True
         
-        # Thử tải mô hình ONNX
         if self.enabled and os.path.exists(self.model_path):
             try:
-                self.session = ort.InferenceSession(self.model_path, providers=["CPUExecutionProvider"])
-                print(f"-> [Liveness] Loaded anti-spoofing model successfully from {self.model_path}")
+                self.session = ort.InferenceSession(
+                    self.model_path, 
+                    providers=["CPUExecutionProvider"]
+                )
+                print(f"-> [Liveness] Loaded anti-spoofing model successfully on CPU from {self.model_path}")
             except Exception as e:
                 print(f"-> [Liveness] Error loading ONNX model: {e}. Falling back to heuristic mode.")
         elif self.enabled:
@@ -38,7 +51,7 @@ class LivenessDetector:
         else:
             print("-> [Liveness] Liveness detection is DISABLED by configuration.")
 
-    def is_real_face(self, frame, bbox, threshold=0.7) -> tuple:
+    def is_real_face(self, frame, bbox, threshold=0.35, pose=None) -> tuple:
         """
         Kiểm tra khuôn mặt có phải là người thật hay không.
         Trả về: (bool: True nếu là thật, float: score độ tin cậy)
@@ -67,17 +80,23 @@ class LivenessDetector:
         nx2 = nx1 + crop_size
         ny2 = ny1 + crop_size
         
-        # Clamping boundary
-        nx1 = max(0, nx1)
-        ny1 = max(0, ny1)
-        nx2 = min(w, nx2)
-        ny2 = min(h, ny2)
+        # Cắt vùng khuôn mặt 2.7x với Zero-Padding khi vượt biên để giữ khuôn mặt luôn vuông không bị méo
+        face_crop = np.zeros((crop_size, crop_size, 3), dtype=frame.dtype)
         
-        if (nx2 - nx1) <= 0 or (ny2 - ny1) <= 0:
+        src_y1 = max(0, ny1)
+        src_y2 = min(h, ny2)
+        src_x1 = max(0, nx1)
+        src_x2 = min(w, nx2)
+        
+        dst_y1 = src_y1 - ny1
+        dst_y2 = dst_y1 + (src_y2 - src_y1)
+        dst_x1 = src_x1 - nx1
+        dst_x2 = dst_x1 + (src_x2 - src_x1)
+        
+        if (src_y2 > src_y1) and (src_x2 > src_x1):
+            face_crop[dst_y1:dst_y2, dst_x1:dst_x2] = frame[src_y1:src_y2, src_x1:src_x2]
+        else:
             return False, 0.0
-
-        # Cắt vùng khuôn mặt 2.7x
-        face_crop = frame[ny1:ny2, nx1:nx2]
         
         # Nếu có mô hình ONNX, chạy suy luận
         if self.session is not None:
@@ -85,8 +104,10 @@ class LivenessDetector:
                 # Tiền xử lý ảnh cho Silent-Face-Anti-Spoofing (thường là scale về 80x80 hoặc 256x256)
                 # Dưới đây là chuẩn hóa đầu vào mẫu: resize về 80x80, chuẩn hóa về dạng float32 CHW
                 input_size = 80
+                # Mô hình Silent-Face-Anti-Spoofing yêu cầu đầu vào BGR, KHÔNG ĐƯỢC chuyển sang RGB!
                 resized = cv.resize(face_crop, (input_size, input_size))
-                img_data = resized.astype(np.float32) / 255.0
+                # Không chia 255.0 vì model Silent-Face-Anti-Spoofing yêu cầu pixel value gốc (0-255)
+                img_data = resized.astype(np.float32)
                 img_data = np.transpose(img_data, (2, 0, 1))  # HWC to CHW
                 img_data = np.expand_dims(img_data, axis=0)   # Batch dim
                 
@@ -97,14 +118,36 @@ class LivenessDetector:
                 # Phân tích kết quả đầu ra (ví dụ: softmax / logits)
                 # Silent-Face-Anti-Spoofing trả về phân phối xác suất cho 3 class: Real, Fake (photo), Fake (video)
                 # Phân tích kết quả đầu ra (áp dụng Softmax cho logits)
-                logits = outputs[0][0]
+                # Dùng flatten() để tránh lỗi list/array index khi ONNX model trả về shape khác nhau
+                logits = np.array(outputs[0]).flatten()
+                if len(logits) == 0:
+                    raise ValueError(f"Invalid ONNX output shape: {outputs}")
+                    
                 exp_logits = np.exp(logits - np.max(logits))
                 probs = exp_logits / np.sum(exp_logits)
-                real_score = float(probs[0])  # Xác suất lớp 0 là người thật (live)
                 
-                is_real = real_score >= threshold
+                print(f"-> [Liveness] RAW Probs: {probs}")
+                
+                # Theo chuẩn của mô hình Silent-Face-Anti-Spoofing: 
+                # Index 0: Fake (Print attack)
+                # Index 1: Real / Live Face (Người thật) -> Dùng probs[1]!
+                # Index 2: Fake (Replay attack)
+                real_score = float(probs[1])
+                
+                # Nếu người dùng đang quay đầu/ngẩng mặt để làm thử thách (yaw/pitch > 10 độ), 
+                # mô hình Silent-Face vốn chỉ được huấn luyện trên mặt nhìn thẳng sẽ giảm score.
+                # Hành động quay đầu chính là bằng chứng người thật đang tương tác.
+                effective_threshold = threshold
+                if pose is not None:
+                    pitch, yaw, roll = pose
+                    if abs(yaw) > 10 or abs(pitch) > 10:
+                        effective_threshold = 0.10 # Ngưỡng linh hoạt khi đang làm thử thách
+                
+                is_real = real_score >= effective_threshold
                 return is_real, real_score
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 print(f"-> [Liveness] Inference error: {e}. Falling back to heuristic.")
 
         # CHẾ ĐỘ FALLBACK: Phân tích kết cấu ảnh (Texture/Blur analysis)

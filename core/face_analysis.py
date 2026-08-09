@@ -1,5 +1,27 @@
 import os
 import sys
+
+# Khởi chạy trợ giúp CUDA để preload thư viện trên Linux
+try:
+    from core.cuda_helper import preload_cuda
+    preload_cuda()
+except Exception:
+    try:
+        from cuda_helper import preload_cuda
+        preload_cuda()
+    except Exception as e:
+        print(f"-> [CUDA Helper] Không thể preload thư viện: {e}")
+
+# Thiết lập PATH cho CUDA/CuDNN trong venv cho Windows
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for venv_name in ['.venv', 'venv']:
+    venv_path = os.path.join(project_root, venv_name, 'Lib', 'site-packages')
+    if os.path.exists(venv_path):
+        os.environ["PATH"] += os.pathsep + os.path.join(venv_path, 'nvidia', 'cublas', 'bin')
+        os.environ["PATH"] += os.pathsep + os.path.join(venv_path, 'nvidia', 'cudnn', 'bin')
+        os.environ["PATH"] += os.pathsep + os.path.join(venv_path, 'onnxruntime', 'capi')
+        break
+
 import time
 import threading
 import numpy as np
@@ -9,13 +31,6 @@ from insightface.app import FaceAnalysis
 from config.settings import settings
 from core.face_matcher import tinh_cosine_similarity
 from services.database_service import DatabaseService
-
-# Thiết lập PATH cho CUDA/CuDNN trong venv (chạy từ thư mục con core/)
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-venv_path = os.path.join(project_root, 'venv', 'Lib', 'site-packages')
-os.environ["PATH"] += os.pathsep + os.path.join(venv_path, 'nvidia', 'cublas', 'bin')
-os.environ["PATH"] += os.pathsep + os.path.join(venv_path, 'nvidia', 'cudnn', 'bin')
-os.environ["PATH"] += os.pathsep + os.path.join(venv_path, 'onnxruntime', 'capi')
 
 class FaceAnalyzer:
     def __init__(self):
@@ -27,10 +42,19 @@ class FaceAnalyzer:
         self.threshold = ai_config.get("threshold", 0.65)
         self.det_size = tuple(ai_config.get("det_size", [480, 480]))
         
-        # Khởi tạo mô hình InsightFace
+        # Khởi tạo mô hình InsightFace với cấu hình CUDA tối ưu hiệu năng tối đa (không bật CUDA Graph cho detector do kích thước động)
+        cuda_options = {
+            "device_id": "0",
+            "arena_extend_strategy": "kNextPowerOfTwo",
+            "cudnn_conv_algo_search": "EXHAUSTIVE",
+            "do_copy_in_default_stream": "1",
+            "cudnn_conv_use_max_workspace": "1",
+            "use_tf32": "1",
+            "enable_cuda_graph": "0"
+        }
         self.app = FaceAnalysis(
             name=ai_config.get("model_name", "buffalo_l"), 
-            providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+            providers=[("CUDAExecutionProvider", cuda_options), "CPUExecutionProvider"]
         )
         self.app.prepare(ctx_id=0, det_size=self.det_size)
         
@@ -370,8 +394,13 @@ class FaceAnalyzer:
             best_score = -1.0
             is_known = False
             
+            # Trích xuất góc quay đầu (pose: pitch, yaw, roll) trước để hỗ trợ kiểm tra Liveness khi đang nghiêng mặt
+            yaw, pitch, roll = 0.0, 0.0, 0.0
+            if hasattr(face, 'pose') and face.pose is not None:
+                pitch, yaw, roll = face.pose
+
             # Kiểm tra Liveness (chống giả mạo)
-            is_real, liveness_score = self.liveness_detector.is_real_face(img, bbox)
+            is_real, liveness_score = self.liveness_detector.is_real_face(img, bbox, pose=(pitch, yaw, roll))
             
             if not is_real:
                 print(f"   + [Spoof Alert] Phat hien khuon mat gia mao voi score {liveness_score:.2f}!")
@@ -390,13 +419,18 @@ class FaceAnalyzer:
                         raw_name = self.known_names[best_idx]
                         best_name = raw_name.split("_")[0] if "_" in raw_name else raw_name
                         is_known = True
-            
+
             print(f"   + Mat quet duoc: {best_name} (Score so khop: {best_score:.2f}, Nguong: {self.threshold})")
             results.append({
                 "box": (x1, y1, x2, y2),
                 "name": best_name,
                 "score": float(best_score),
                 "is_known": is_known,
-                "is_real": is_real
+                "is_real": is_real,
+                "active_state": {
+                    "yaw": float(yaw),
+                    "pitch": float(pitch),
+                    "roll": float(roll)
+                }
             })
         return results
