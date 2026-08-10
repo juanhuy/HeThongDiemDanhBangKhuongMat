@@ -6,8 +6,27 @@ import {
   CheckSquare, 
   Layers3, 
   Users,
-  UploadCloud
+  UploadCloud,
+  CalendarClock,
+  X,
+  PieChart as PieChartIcon,
+  BarChart2,
+  Activity,
+  Layers
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+} from 'recharts';
 
 import { 
   listCreditClasses, 
@@ -31,7 +50,9 @@ import FilterSection from './FilterSection';
 import TestTable from './test';
 import EditClassModal from './EditClassModal';
 import CreateWizardModal from '../CreditClassesManagement/CreateWizardModal';
+import AutoScheduleTab from './AutoScheduleTab';
 import styles from './Styles';
+import Pagination from '../../common/Pagination';
 
 const initialFilters = {
   semester_id: '',
@@ -46,8 +67,11 @@ const CreditClassesManagement = ({ showToast }) => {
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkStatus, setBulkStatus] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
   const [isCreating, setIsCreating] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [subjects, setSubjects] = useState([]);
   const [rooms, setRooms] = useState([]);
 
@@ -56,6 +80,8 @@ const CreditClassesManagement = ({ showToast }) => {
 
   const fileInputRef = useRef(null);
   const allSelected = classes.length > 0 && selectedIds.length === classes.length;
+  const hasSelectedClasses = selectedIds.length > 0;
+  const selectedClasses = classes.filter((item) => selectedIds.includes(item.class_id));
 
   const handleSelectAll = (event) => {
     if (event.target.checked) {
@@ -107,7 +133,7 @@ const CreditClassesManagement = ({ showToast }) => {
       title: 'STT',
       width: '60px',
       align: 'center',
-      render: (_row, index) => index + 1,
+      render: (_row, index) => (currentPage - 1) * PAGE_SIZE + index + 1,
     },
     {
       title: 'Môn học',
@@ -252,6 +278,12 @@ const CreditClassesManagement = ({ showToast }) => {
     fetchClasses(); 
   }, [fetchClasses]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, classes]);
+
+  const paginatedClasses = classes.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
   
   const handleResetFilters = () => {
@@ -262,9 +294,47 @@ const CreditClassesManagement = ({ showToast }) => {
   const summary = useMemo(() => {
     const total = classes.length;
     const active = classes.filter(c => c.status === 'Active').length;
+    const planning = classes.filter(c => c.status === 'Planning').length;
     const full = classes.filter(c => Number(c.current_students || 0) >= Number(c.max_students || 0) && c.max_students).length;
-    return { total, active, full };
+    const assigned = classes.filter(c => c.lecturer_name || c.theory_class?.lecturer_name).length;
+    const registeredStudents = classes.reduce((sum, c) => sum + Number(c.current_students || 0), 0);
+
+    return { total, active, planning, full, assigned, registeredStudents };
   }, [classes]);
+
+  const chartData = useMemo(() => {
+    const statusCounts = {
+      'Đang mở': 0,
+      'Kế hoạch': 0,
+      'Đã đóng': 0,
+    };
+    const subjectMap = {};
+
+    classes.forEach((c) => {
+      const statusLabel = statusLabels[c.status] || 'Đã đóng';
+      statusCounts[statusLabel] += 1;
+
+      const subjectKey = c.subject_name || c.subject_id || 'Không rõ';
+      if (!subjectMap[subjectKey]) {
+        subjectMap[subjectKey] = { name: subjectKey, count: 0 };
+      }
+      subjectMap[subjectKey].count += 1;
+    });
+
+    const statusList = Object.entries(statusCounts)
+      .filter(([, value]) => value > 0)
+      .map(([name, value], index) => ({
+        name,
+        value,
+        color: index === 0 ? '#10b981' : index === 1 ? '#f59e0b' : '#64748b',
+      }));
+
+    const subjectsList = Object.values(subjectMap)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
+    return { statusList, subjectsList };
+  }, [classes, statusLabels]);
 
   const handleStatusChange = async (classId, newStatus) => {
     try {
@@ -285,6 +355,14 @@ const CreditClassesManagement = ({ showToast }) => {
     } catch (err) {
       showToast?.('Lỗi cập nhật hàng loạt', 'error');
     }
+  };
+
+  const handleScheduleSelected = () => {
+    if (!hasSelectedClasses) {
+      showToast?.('Vui lòng chọn ít nhất 1 lớp để xếp lịch', 'error');
+      return;
+    }
+    setIsScheduleOpen(true);
   };
 
   const handleDelete = async (classId, currentStudents) => {
@@ -354,6 +432,8 @@ const CreditClassesManagement = ({ showToast }) => {
         value: subject.subject_id,
         label: `${subject.subject_id} - ${subject.subject_name || ''}`,
         code: subject.subject_id,
+        theory_credits: Number(subject.theory_credits || 0),
+        practical_credits: Number(subject.practical_credits || 0),
         credits: (Number(subject.theory_credits || 0) + Number(subject.practical_credits || 0)) || 0,
         department: subject.faculty_name || subject.department || '',
       })),
@@ -395,7 +475,7 @@ const CreditClassesManagement = ({ showToast }) => {
             onClose={() => setIsEditOpen(false)}
             onSuccess={fetchClasses}
             semesters={semesters}
-            subjects={subjects}
+            subjects={subjectOptions}
             lecturers={lecturers}
             adminClasses={adminClasses}
             rooms={rooms}
@@ -424,33 +504,51 @@ const CreditClassesManagement = ({ showToast }) => {
 
           {/* Nhóm thao tác */}
           <div style={styles.actionGroup}>
-            {selectedIds.length > 0 && (
-              <div style={styles.selectedBox}>
-                <span style={styles.selectedText}>
-                  Đã chọn {selectedIds.length}
-                </span>
+            <div style={styles.selectedBox}>
+              <span style={styles.selectedText}>
+                {hasSelectedClasses ? `Đã chọn ${selectedIds.length}` : 'Chưa chọn lớp'}
+              </span>
 
-                <select
-                  value={bulkStatus}
-                  onChange={async (event) => {
-                    const value = event.target.value;
+              <select
+                value={bulkStatus}
+                disabled={!hasSelectedClasses}
+                onChange={async (event) => {
+                  const value = event.target.value;
 
-                    setBulkStatus(value);
+                  setBulkStatus(value);
 
-                    if (value) {
-                      await handleBulkStatusUpdate(value);
-                      setBulkStatus('');
-                    }
-                  }}
-                  style={styles.bulkSelect}
-                >
-                  <option value="">-- Đổi trạng thái --</option>
-                  <option value="Active">Mở đăng ký</option>
-                  <option value="Planning">Kế hoạch</option>
-                  <option value="Closed">Đóng lớp</option>
-                </select>
-              </div>
-            )}
+                  if (value) {
+                    await handleBulkStatusUpdate(value);
+                    setBulkStatus('');
+                  }
+                }}
+                style={{ ...styles.bulkSelect, opacity: hasSelectedClasses ? 1 : 0.6 }}
+              >
+                <option value="">-- Đổi trạng thái --</option>
+                <option value="Active">Mở đăng ký</option>
+                <option value="Planning">Kế hoạch</option>
+                <option value="Closed">Đóng lớp</option>
+              </select>
+              <button
+                type="button"
+                onClick={handleScheduleSelected}
+                disabled={!hasSelectedClasses}
+                style={{
+                  ...styles.secondaryButton,
+                  height: 32,
+                  padding: '0 10px',
+                  borderColor: '#106fa6',
+                  color: '#106fa6',
+                  whiteSpace: 'nowrap',
+                  opacity: hasSelectedClasses ? 1 : 0.6,
+                  cursor: hasSelectedClasses ? 'pointer' : 'not-allowed'
+                }}
+                title="Xếp lịch cho lớp đã chọn"
+              >
+                <CalendarClock size={16} />
+                Xếp lịch tự động
+              </button>
+            </div>
 
             <input
               type="file"
@@ -494,6 +592,100 @@ const CreditClassesManagement = ({ showToast }) => {
         </div>
       </section>
 
+      <section style={{ ...styles.card, padding: 0 }}>
+        <div style={styles.summaryGrid}>
+          <div style={{ ...styles.summaryCard, background: '#f8fbff', border: '1px solid #dbeafe' }}>
+            <div style={styles.summaryContent}>
+              <p style={styles.summaryLabel}>Tổng lớp tín chỉ</p>
+              <p style={styles.summaryValue}>{summary.total}</p>
+            </div>
+            <div style={{ ...styles.summaryIcon, background: '#dbeafe' }}>
+              <BookOpen size={22} color="#2563eb" />
+            </div>
+          </div>
+
+          <div style={{ ...styles.summaryCard, background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+            <div style={styles.summaryContent}>
+              <p style={styles.summaryLabel}>Đang mở đăng ký</p>
+              <p style={styles.summaryValue}>{summary.active}</p>
+            </div>
+            <div style={{ ...styles.summaryIcon, background: '#dcfce7' }}>
+              <Activity size={22} color="#16a34a" />
+            </div>
+          </div>
+
+          <div style={{ ...styles.summaryCard, background: '#fff7ed', border: '1px solid #fed7aa' }}>
+            <div style={styles.summaryContent}>
+              <p style={styles.summaryLabel}>Kế hoạch / chuẩn bị</p>
+              <p style={styles.summaryValue}>{summary.planning}</p>
+            </div>
+            <div style={{ ...styles.summaryIcon, background: '#ffedd5' }}>
+              <Layers size={22} color="#ea580c" />
+            </div>
+          </div>
+
+          <div style={{ ...styles.summaryCard, background: '#fdf4ff', border: '1px solid #f5d0fe' }}>
+            <div style={styles.summaryContent}>
+              <p style={styles.summaryLabel}>Sinh viên đã đăng ký</p>
+              <p style={styles.summaryValue}>{summary.registeredStudents}</p>
+            </div>
+            <div style={{ ...styles.summaryIcon, background: '#fae8ff' }}>
+              <Users size={22} color="#a855f7" />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, padding: '0 16px 16px' }}>
+          <div style={styles.chartBox}>
+            <h4 style={{ margin: '0 0 12px 0', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '1rem' }}>
+              <PieChartIcon size={18} color="#64748b" /> Tỷ lệ trạng thái lớp
+            </h4>
+            <div style={{ width: '100%', height: 250 }}>
+              {chartData.statusList.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={chartData.statusList} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value">
+                      {chartData.statusList.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value} lớp`, 'Số lượng']} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                  Chưa có dữ liệu
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.chartBox}>
+            <h4 style={{ margin: '0 0 12px 0', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '1rem' }}>
+              <BarChart2 size={18} color="#64748b" /> Môn có nhiều lớp nhất
+            </h4>
+            <div style={{ width: '100%', height: 250 }}>
+              {chartData.subjectsList.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData.subjectsList} margin={{ top: 10, right: 10, left: -20, bottom: 45 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 11 }} interval={0} angle={-25} textAnchor="end" />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} formatter={(value) => [`${value} lớp`, 'Số lượng']} />
+                    <Bar dataKey="count" name="Số lớp" fill="#106fa6" radius={[4, 4, 0, 0]} barSize={30} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                  Chưa có dữ liệu
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Bộ lọc */}
       <FilterSection
         filters={filters}
@@ -505,10 +697,65 @@ const CreditClassesManagement = ({ showToast }) => {
       {/* Bảng dữ liệu */}
       <TestTable
         columns={columns}
-        data={classes}
+        data={paginatedClasses}
         loading={loading}
         rowKey="class_id"
       />
+
+      {classes.length > PAGE_SIZE && (
+        <Pagination total={classes.length} pageSize={PAGE_SIZE} currentPage={currentPage} onChange={(p) => setCurrentPage(p)} />
+      )}
+
+      {isScheduleOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1000,
+          overflowY: 'auto',
+          padding: 24,
+          background: 'rgba(15, 23, 42, 0.45)'
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: 1440,
+            margin: '0 auto',
+            background: '#fff',
+            borderRadius: 12,
+            padding: 16,
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#1e293b', fontSize: '1.1rem' }}>
+                  Xếp lịch tự động cho {selectedClasses.length} lớp đã chọn
+                </h2>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.8rem' }}>
+                  Hệ thống sẽ đề xuất lịch và phòng, sau đó lưu ClassSession và ClassSchedule.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsScheduleOpen(false)}
+                style={{ ...styles.secondaryButton, width: 36, padding: 0 }}
+                aria-label="Đóng xếp lịch"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <AutoScheduleTab
+              classes={selectedClasses}
+              lecturers={metaData.lecturers}
+              semesters={metaData.semesters}
+              faculties={[]}
+              showToast={showToast}
+              onSuccess={() => {
+                setIsScheduleOpen(false);
+                fetchClasses();
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Modal tạo thủ công */}
       {isWizardOpen && (

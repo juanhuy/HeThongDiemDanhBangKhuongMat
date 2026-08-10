@@ -179,6 +179,17 @@ const styles = {
     borderRadius: 8,
   },
 
+  chartBox: {
+    background: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)',
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 280,
+  },
+
   modalOverlay: {
     position: 'fixed',
     inset: 0,

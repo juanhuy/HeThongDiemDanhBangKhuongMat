@@ -11,8 +11,8 @@ export default function CreateWizardModal({
     semesters, 
     subjects, 
     lecturers,
-    adminClasses, 
-    rooms, 
+    adminClasses,
+    rooms,
     showToast, 
     defaultSemesterId,
     // --- Bổ sung props hỗ trợ Chỉnh sửa ---
@@ -36,23 +36,6 @@ export default function CreateWizardModal({
         return [];
     }, [localSemesters]);
 
-    const resolvedRooms = useMemo(() => {
-        if (Array.isArray(rooms) && rooms.length > 0) {
-            return rooms.map((room) => ({
-                value: room.room_id || room.id || room.value || room.room_name || "",
-                label: room.room_name || room.room_id || room.name || room.label || "Phòng học",
-                subtitle: [room.building, room.room_type].filter(Boolean).join(" • ")
-            })).filter((item) => item.value);
-        }
-
-        return [
-            { value: "A101", label: "A101", subtitle: "Phòng lý thuyết" },
-            { value: "A102", label: "A102", subtitle: "Phòng lý thuyết" },
-            { value: "P.301", label: "P.301", subtitle: "Phòng thực hành" },
-            { value: "LAB-1", label: "LAB-1", subtitle: "Phòng lab" },
-        ];
-    }, [rooms]);
-
     // Khởi tạo State wizardData
     const [wizardData, setWizardData] = useState({
         semester_id: "",
@@ -66,19 +49,14 @@ export default function CreateWizardModal({
             lecturer_id: "",
             max_students: 60,
             target_classes: [],
-            schedule_day: "Thứ 2",
-            schedule_room: "301-A2",
-            start_date: "2024-08-15",
-            end_date: "2024-12-30",
-            sub_groups: [
-                { id: Date.now() + 1, sub_group_number: 1, lecturer_id: "", max_students: 30, schedule_day: "Thứ 3", schedule_room: "P.301", start_date: "2024-08-15", end_date: "2024-12-15" }
-            ]
+            sub_groups: []
         }]
     });
 
     const [selectedSubject, setSelectedSubject] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [loadingSemesters, setLoadingSemesters] = useState(false);
+    const hasPracticalCredits = Number(selectedSubject?.practical_credits || 0) > 0;
 
     const formatGroupNumber = (num) => String(num || 1).padStart(2, '0');
 
@@ -93,24 +71,18 @@ export default function CreateWizardModal({
                 note: initialData.note || "",
                 groups: Array.isArray(initialData.groups) && initialData.groups.length > 0
                     ? initialData.groups.map((g, idx) => ({
+                        class_id: g.class_id,
                         id: g.id || Date.now() + idx,
                         group_number: g.group_number || g.class_group || idx + 1,
                         lecturer_id: g.lecturer_id || "",
                         max_students: g.max_students || 60,
-                        target_classes: g.target_classes || [],
-                        schedule_day: g.schedule_day || "Thứ 2",
-                        schedule_room: g.schedule_room || "",
-                        start_date: g.start_date || "2024-08-15",
-                        end_date: g.end_date || "2024-12-30",
+                        target_classes: Array.isArray(g.target_classes) ? g.target_classes : [],
                         sub_groups: Array.isArray(g.sub_groups) ? g.sub_groups.map((sg, sgIdx) => ({
+                            class_id: sg.class_id,
                             id: sg.id || Date.now() + sgIdx + 100,
                             sub_group_number: sg.sub_group_number || sgIdx + 1,
                             lecturer_id: sg.lecturer_id || g.lecturer_id || "",
                             max_students: sg.max_students || 30,
-                            schedule_day: sg.schedule_day || "",
-                            schedule_room: sg.schedule_room || "",
-                            start_date: sg.start_date || g.start_date || "2024-08-15",
-                            end_date: sg.end_date || g.end_date || "2024-12-30"
                         })) : []
                     }))
                     : []
@@ -158,10 +130,6 @@ export default function CreateWizardModal({
         lecturer_id: "",
         max_students: 60,
         target_classes: [],
-        schedule_day: "Thứ 2",
-        schedule_room: "",
-        start_date: "2024-08-15",
-        end_date: "2024-12-30",
         sub_groups: []
     });
 
@@ -170,11 +138,22 @@ export default function CreateWizardModal({
         sub_group_number: parentGroup.sub_groups.length + 1,
         lecturer_id: parentGroup.lecturer_id,
         max_students: 30,
-        schedule_day: "",
-        schedule_room: "",
-        start_date: parentGroup.start_date,
-        end_date: parentGroup.end_date
     });
+
+    const handleSubjectChange = (value) => {
+        const subject = subjects.find((item) => item.value === value || item.id === value);
+        setWizardData((previous) => ({
+            ...previous,
+            subject_id: value,
+            groups: previous.groups.map((group) => ({
+                ...group,
+                sub_groups: Number(subject?.practical_credits || 0) > 0
+                    ? group.sub_groups
+                    : []
+            }))
+        }));
+        setSelectedSubject(subject || null);
+    };
 
     // --- Các hàm thao tác state ---
     const addGroup = () => setWizardData(p => ({ 
@@ -197,10 +176,13 @@ export default function CreateWizardModal({
         return { ...p, groups: [...p.groups, newGroup] };
     });
 
-    const addSubGroup = (groupId) => setWizardData(p => ({
-        ...p, 
-        groups: p.groups.map(g => g.id === groupId ? { ...g, sub_groups: [...g.sub_groups, generateEmptySubGroup(g)] } : g)
-    }));
+    const addSubGroup = (groupId) => {
+        if (!hasPracticalCredits) return;
+        setWizardData(p => ({
+            ...p,
+            groups: p.groups.map(g => g.id === groupId ? { ...g, sub_groups: [...g.sub_groups, generateEmptySubGroup(g)] } : g)
+        }));
+    };
 
     const removeSubGroup = (groupId, subId) => setWizardData(p => ({
         ...p, 
@@ -224,6 +206,7 @@ export default function CreateWizardModal({
     }));
 
     const handleAutoSplitSubGroups = (groupId) => {
+        if (!hasPracticalCredits) return;
         setWizardData(p => ({
             ...p,
             groups: p.groups.map(g => {
@@ -240,10 +223,6 @@ export default function CreateWizardModal({
                         sub_group_number: i + 1,
                         lecturer_id: g.lecturer_id,
                         max_students: cap,
-                        schedule_day: g.schedule_day,
-                        schedule_room: g.schedule_room,
-                        start_date: g.start_date,
-                        end_date: g.end_date
                     });
                 }
                 return { ...g, sub_groups: newSubGroups };
@@ -253,7 +232,9 @@ export default function CreateWizardModal({
     };
 
     const buildBatchPayload = (data) => ({
-        ...(isEditMode && initialData?.id ? { id: initialData.id } : {}),
+        ...(isEditMode && (initialData?.class_id || initialData?.id)
+            ? { class_id: initialData.class_id || initialData.id }
+            : {}),
         subject_id: data.subject_id,
         semester_id: data.semester_id,
         lecturer_id: data.groups?.[0]?.lecturer_id || data.lecturer_id || null,
@@ -262,15 +243,20 @@ export default function CreateWizardModal({
         note: data.note,
         groups: Array.isArray(data.groups)
             ? data.groups.map((group) => ({
+                ...(isEditMode && group.class_id ? { class_id: group.class_id } : {}),
                 class_group: formatGroupNumber(group.group_number || group.class_group || 1),
                 class_type: "Theory",
+                lecturer_id: group.lecturer_id || null,
                 max_students: Number(group.max_students || 0),
                 target_classes: Array.isArray(group.target_classes) ? group.target_classes : [],
-                sub_groups: Array.isArray(group.sub_groups)
+                sub_groups: hasPracticalCredits && Array.isArray(group.sub_groups)
                     ? group.sub_groups.map((sub) => ({
+                        ...(isEditMode && sub.class_id ? { class_id: sub.class_id } : {}),
+                        sub_group_number: Number(sub.sub_group_number || 1),
+                        lecturer_id: sub.lecturer_id || null,
                         class_group: `Tổ ${sub.sub_group_number || sub.class_group || "1"}`,
                         max_students: Number(sub.max_students || 0),
-                        class_type: sub.class_type || "Practice"
+                        class_type: sub.class_type || "Practice",
                     }))
                     : []
             }))
@@ -309,10 +295,9 @@ export default function CreateWizardModal({
             if (isEditMode) {
                 if (typeof onUpdate === 'function') {
                     await onUpdate(payload);
-                } else {
-                    await onSuccess?.(payload);
                 }
                 showToast?.("Cập nhật lớp tín chỉ thành công!", "success");
+                await onSuccess?.();
             } else {
                 await batchCreateCreditClasses(payload);
                 showToast?.("Tạo lớp tín chỉ thành công!", "success");
@@ -392,11 +377,9 @@ export default function CreateWizardModal({
                                         options={subjects}
                                         value={wizardData.subject_id}
                                         onChange={(val) => {
-                                            setWizardData(p => ({ ...p, subject_id: val }));
-                                            const sub = subjects.find(s => s.value === val);
-                                            setSelectedSubject(sub);
+                                            handleSubjectChange(val);
                                         }}
-                                        placeholder="Nhập mã hoặc tên môn học..."
+                                        placeholder="Chọn môn học"
                                     />
                                 </div>
                                 <div>
@@ -488,7 +471,7 @@ export default function CreateWizardModal({
                                         onRemoveSubGroup={(subId) => removeSubGroup(group.id, subId)}
                                         onUpdateSubGroup={(subId, field, value) => updateSubGroup(group.id, subId, field, value)}
                                         onAutoSplitSubGroups={() => handleAutoSplitSubGroups(group.id)}
-                                        rooms={resolvedRooms}
+                                        hasPracticalCredits={hasPracticalCredits}
                                     />
                                 ))}
                             </div>

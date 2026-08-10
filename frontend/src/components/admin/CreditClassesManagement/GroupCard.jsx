@@ -1,11 +1,11 @@
-import React from 'react';
-import { Group, Copy, Trash2, Sparkles, X, Plus } from 'lucide-react';
+import React, { useState } from 'react';
+import { Group, Copy, Trash2, Sparkles, X, Plus, CheckSquare, Square } from 'lucide-react';
 import styles from './styles';
 
 export default function GroupCard({
     group,
     lecturers,
-    adminClasses,
+    adminClasses = [],
     canRemoveGroup,
     formatGroupNumber,
     onUpdateGroup,
@@ -15,8 +15,10 @@ export default function GroupCard({
     onRemoveSubGroup,
     onUpdateSubGroup,
     onAutoSplitSubGroups,
-    rooms = []
+    hasPracticalCredits = false
 }) {
+    const [isAdminDropdownOpen, setAdminDropdownOpen] = useState(false);
+
     const inputStyle = {
         height: 42,
         padding: '0 12px',
@@ -34,13 +36,6 @@ export default function GroupCard({
         ? lecturers.map((l) => ({
             value: String(l.value ?? l.lecturer_id ?? l.id ?? ""),
             label: l.label ?? l.full_name ?? l.name ?? l.value ?? l.lecturer_id ?? "Không xác định",
-        }))
-        : [];
-
-    const adminClassOptions = Array.isArray(adminClasses)
-        ? adminClasses.map((ac) => ({
-            value: String(ac.value ?? ac.class_id ?? ac.id ?? ac.administrative_class ?? ""),
-            label: ac.label ?? ac.name ?? ac.class_id ?? ac.administrative_class ?? ac.value ?? "Không xác định",
         }))
         : [];
 
@@ -98,6 +93,87 @@ export default function GroupCard({
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 10 }}>
+                            <div style={{ gridColumn: 'span 4' }}>
+                            <label style={{ ...styles.description, fontSize: '0.75rem', display: 'block', marginBottom: 4 }}>Lớp biên chế</label>
+                            <div style={{ position: 'relative' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setAdminDropdownOpen((prev) => !prev)}
+                                    style={{
+                                        ...inputStyle,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis'
+                                    }}
+                                >
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {Array.isArray(group.target_classes) && group.target_classes.length > 0
+                                            ? group.target_classes.join(', ')
+                                            : '-- Chọn lớp biên chế --'}
+                                    </span>
+                                    <span style={{ marginLeft: 12, color: '#64748b' }}>▼</span>
+                                </button>
+                                {isAdminDropdownOpen && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: 'calc(100% + 6px)',
+                                        left: 0,
+                                        width: '100%',
+                                        maxHeight: 240,
+                                        overflowY: 'auto',
+                                        background: '#fff',
+                                        border: '1px solid #d0e0eb',
+                                        borderRadius: 8,
+                                        boxShadow: '0 10px 25px rgba(15, 23, 42, 0.08)',
+                                        zIndex: 10,
+                                    }}>
+                                        {Array.isArray(adminClasses) && adminClasses.length > 0 ? adminClasses.map((ac) => {
+                                            const adminClassId = ac.class_id || ac.value || ac.id || '';
+                                            const isSelected = Array.isArray(group.target_classes) && group.target_classes.includes(adminClassId);
+                                            return (
+                                                <button
+                                                    key={adminClassId}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newSelection = Array.isArray(group.target_classes) ? [...group.target_classes] : [];
+                                                        const index = newSelection.indexOf(adminClassId);
+                                                        if (index >= 0) {
+                                                            newSelection.splice(index, 1);
+                                                        } else {
+                                                            newSelection.push(adminClassId);
+                                                        }
+                                                        onUpdateGroup('target_classes', newSelection);
+                                                    }}
+                                                    style={{
+                                                        width: '100%',
+                                                        textAlign: 'left',
+                                                        padding: '10px 12px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 10,
+                                                        background: isSelected ? '#eff6ff' : '#fff',
+                                                        border: 'none',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    {isSelected ? <CheckSquare size={16} style={{ color: '#2563eb' }} /> : <Square size={16} style={{ color: '#94a3b8' }} />}
+                                                    <span style={{ fontSize: '0.875rem', color: '#1e293b' }}>{ac.class_name || adminClassId}</span>
+                                                </button>
+                                            );
+                                        }) : (
+                                            <div style={{ padding: 12, color: '#64748b', fontSize: '0.875rem' }}>
+                                                Chưa có lớp biên chế khả dụng.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                         <div style={{ gridColumn: 'span 4' }}>
                             <label style={{ ...styles.description, fontSize: '0.75rem', display: 'block', marginBottom: 4 }}>Giảng viên</label>
                             <select 
@@ -111,66 +187,12 @@ export default function GroupCard({
                                 ))}
                             </select>
                         </div>
-                        <div style={{ gridColumn: 'span 4' }}>
-                            <label style={{ ...styles.description, fontSize: '0.75rem', display: 'block', marginBottom: 4 }}>Lớp biên chế mục tiêu</label>
-                            <select
-                                value={group.target_classes?.[0] || ""}
-                                onChange={(e) => onUpdateGroup('target_classes', e.target.value ? [e.target.value] : [])}
-                                style={inputStyle}
-                            >
-                                <option value="">Tất cả / Tự do</option>
-                                {adminClassOptions.map((ac) => (
-                                    <option key={ac.value} value={ac.value}>{ac.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div style={{ gridColumn: 'span 4' }}>
-                            <label style={{ ...styles.description, fontSize: '0.75rem', display: 'block', marginBottom: 4 }}>Lịch học & Phòng</label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                                <select 
-                                    value={group.schedule_day}
-                                    onChange={(e) => onUpdateGroup('schedule_day', e.target.value)}
-                                    style={inputStyle}
-                                >
-                                    {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map(d => (
-                                        <option key={d} value={d}>{d}</option>
-                                    ))}
-                                </select>
-                                <select 
-                                    value={group.schedule_room}
-                                    onChange={(e) => onUpdateGroup('schedule_room', e.target.value)}
-                                    style={inputStyle}
-                                >
-                                    <option value="">-- Chọn phòng --</option>
-                                    {rooms.map((room) => (
-                                        <option key={room.value} value={room.value}>{room.label}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                        <div style={{ gridColumn: 'span 6' }}>
-                            <label style={{ ...styles.description, fontSize: '0.75rem', display: 'block', marginBottom: 4 }}>Ngày bắt đầu</label>
-                            <input 
-                                type="date" 
-                                value={group.start_date}
-                                onChange={(e) => onUpdateGroup('start_date', e.target.value)}
-                                style={inputStyle} 
-                            />
-                        </div>
-                        <div style={{ gridColumn: 'span 6' }}>
-                            <label style={{ ...styles.description, fontSize: '0.75rem', display: 'block', marginBottom: 4 }}>Ngày kết thúc</label>
-                            <input 
-                                type="date" 
-                                value={group.end_date}
-                                onChange={(e) => onUpdateGroup('end_date', e.target.value)}
-                                style={inputStyle} 
-                            />
-                        </div>
+                        <div style={{ gridColumn: 'span 4' }} />
                     </div>
                 </div>
 
                 {/* Tổ Thực Hành */}
-                <div style={{ borderTop: '1px solid #d0e0eb', paddingTop: 14 }}>
+                {hasPracticalCredits && <div style={{ borderTop: '1px solid #d0e0eb', paddingTop: 14 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#059669' }}></span>
@@ -223,28 +245,6 @@ export default function GroupCard({
                                     </select>
                                 </div>
 
-                                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                                    <select 
-                                        value={sg.schedule_day}
-                                        onChange={(e) => onUpdateSubGroup(sg.id, 'schedule_day', e.target.value)}
-                                        style={{ ...inputStyle, height: 36, fontSize: '0.75rem' }}
-                                    >
-                                        {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map(d => (
-                                            <option key={d} value={d}>{d}</option>
-                                        ))}
-                                    </select>
-                                    <select 
-                                        value={sg.schedule_room}
-                                        onChange={(e) => onUpdateSubGroup(sg.id, 'schedule_room', e.target.value)}
-                                        style={{ ...inputStyle, height: 36, fontSize: '0.75rem' }}
-                                    >
-                                        <option value="">-- Chọn phòng --</option>
-                                        {rooms.map((room) => (
-                                            <option key={room.value} value={room.value}>{room.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
                                 <button 
                                     onClick={() => onRemoveSubGroup(sg.id)}
                                     style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 4 }}
@@ -259,7 +259,7 @@ export default function GroupCard({
                             </div>
                         )}
                     </div>
-                </div>
+                </div>}
 
             </div>
         </div>

@@ -109,6 +109,10 @@ export default function EditClassModal({
     target_classes: ''
   });
 
+  const [semesters, setSemesters] = useState([]);
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
+  const [semesterRange, setSemesterRange] = useState({ start_date: '', end_date: '' });
+
   const [schedules, setSchedules] = useState([]);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
   
@@ -128,10 +132,11 @@ export default function EditClassModal({
     const fetchAllData = async () => {
       if (!classId) return;
       setLoadingDetail(true);
+      let detailData = null;
       try {
         const detailRes = await fetch(`${API_BASE}/api/credit-classes/${classId}`);
         if (detailRes.ok) {
-          const detailData = await detailRes.json();
+          detailData = await detailRes.json();
           if (detailData.status === 'success' && detailData.data) {
             const data = detailData.data;
             setClassDetail(data);
@@ -141,16 +146,19 @@ export default function EditClassModal({
               status: data.status || 'active',
               target_classes: data.target_classes ? data.target_classes.join(', ') : ''
             });
-            // Nếu là lớp tổ thực hành, mặc định form chọn loại lịch là Thực hành
             if (data.sub_group_number) {
               setScheduleForm(prev => ({ ...prev, type: 'Thực hành' }));
+            }
+            if (data.semester_id) {
+              setSelectedSemesterId(data.semester_id);
             }
           }
         }
 
-        const [lecRes, roomRes] = await Promise.all([
+        const [lecRes, roomRes, semRes] = await Promise.all([
           fetch(`${API_BASE}/api/admin/lecturers/`),
-          fetch(`${API_BASE}/api/admin/classrooms/`)
+          fetch(`${API_BASE}/api/admin/classrooms/`),
+          fetch(`${API_BASE}/api/semesters`)
         ]);
         
         if (lecRes.ok) {
@@ -169,6 +177,16 @@ export default function EditClassModal({
         if (roomRes.ok) {
           const roomData = await roomRes.json();
           setRawClassrooms(roomData);
+        }
+
+        if (semRes.ok) {
+          const semData = await semRes.json();
+          const semList = Array.isArray(semData?.data) ? semData.data : Array.isArray(semData) ? semData : [];
+          setSemesters(semList);
+          if (semList.length && !selectedSemesterId) {
+            const semesterId = detailData?.data?.semester_id || '';
+            if (semesterId) setSelectedSemesterId(semesterId);
+          }
         }
       } catch (err) {
         console.error("Lỗi tải dữ liệu:", err);
@@ -230,6 +248,15 @@ export default function EditClassModal({
     }
   }, [scheduleForm.type, formData.max_students]);
 
+  useEffect(() => {
+    const semester = semesters.find((item) => item.semester_id === selectedSemesterId);
+    if (semester) {
+      setSemesterRange({ start_date: semester.start_date || '', end_date: semester.end_date || '' });
+    } else {
+      setSemesterRange({ start_date: '', end_date: '' });
+    }
+  }, [selectedSemesterId, semesters]);
+
   const handleSelectScheduleToEdit = (idx, schedule) => {
     setScheduleForm({
       type: schedule.loai_lich || 'Lý thuyết',
@@ -248,8 +275,31 @@ export default function EditClassModal({
 
   const handleSaveScheduleLocal = (e) => {
     e.preventDefault();
+    if (!selectedSemesterId) {
+      showToast?.('Vui lòng chọn học kỳ trước khi thêm buổi học', 'warning');
+      return;
+    }
+
     if (!scheduleForm.session_date || !scheduleForm.room_id || !scheduleForm.start_time) {
       showToast?.('Vui lòng nhập đầy đủ thông tin lịch học', 'warning');
+      return;
+    }
+
+    const semester = semesters.find((item) => item.semester_id === selectedSemesterId);
+    if (!semester) {
+      showToast?.('Học kỳ không hợp lệ. Vui lòng chọn lại.', 'warning');
+      return;
+    }
+
+    const sessionDate = new Date(scheduleForm.session_date);
+    const semesterStart = new Date(semester.start_date);
+    const semesterEnd = new Date(semester.end_date);
+    if (Number.isNaN(sessionDate.getTime())) {
+      showToast?.('Ngày học không hợp lệ', 'warning');
+      return;
+    }
+    if (sessionDate < semesterStart || sessionDate > semesterEnd) {
+      showToast?.(`Ngày học phải nằm trong khoảng học kỳ ${semester.start_date} → ${semester.end_date}`, 'warning');
       return;
     }
 
@@ -257,6 +307,7 @@ export default function EditClassModal({
       ...scheduleForm,
       class_id: classId,
       loai_lich: scheduleForm.type,
+      semester_id: selectedSemesterId,
       isNew: true,
       isEdited: true
     };
@@ -496,6 +547,28 @@ export default function EditClassModal({
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-semibold text-gray-700">Học kỳ</label>
+                  <div className="relative">
+                    <select
+                      className="w-full h-11 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:border-[#005bbf] appearance-none text-[13px]"
+                      value={selectedSemesterId}
+                      onChange={(e) => setSelectedSemesterId(e.target.value)}
+                    >
+                      <option value="">-- Chọn học kỳ --</option>
+                      {semesters.map((sem) => (
+                        <option key={sem.semester_id} value={sem.semester_id}>
+                          {sem.semester ? `Học kỳ ${sem.semester}` : sem.semester_id} {sem.academic_year ? `(${sem.academic_year})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {semesterRange.start_date && semesterRange.end_date && (
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Khoảng {semesterRange.start_date} → {semesterRange.end_date}
+                    </p>
+                  )}
+                </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12px] font-semibold text-gray-700">Ngày học</label>
                   <input 

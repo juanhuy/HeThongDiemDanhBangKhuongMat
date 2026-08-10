@@ -56,6 +56,7 @@ class CreditClassCreate(CreditClassBase):
     parent_class_id: Optional[str] = Field(None, description="ID Nhóm cha (Nếu lớp này là Tổ TH)")
 
 class CreditClassUpdate(BaseModel):
+    class_id: Optional[str] = None
     lecturer_id: Optional[str] = None
     semester_id: Optional[str] = None
     class_group: Optional[str] = None
@@ -65,6 +66,24 @@ class CreditClassUpdate(BaseModel):
     max_students: Optional[int] = Field(None, gt=0)
     status: Optional[str] = None
     target_classes: Optional[List[str]] = None
+    groups: Optional[List["CreditClassGroupUpdate"]] = None
+
+
+class CreditClassSubGroupUpdate(BaseModel):
+    class_id: Optional[str] = None
+    sub_group_number: Optional[int] = None
+    lecturer_id: Optional[str] = None
+    max_students: Optional[int] = Field(None, gt=0)
+    target_classes: Optional[List[str]] = None
+
+
+class CreditClassGroupUpdate(BaseModel):
+    class_id: Optional[str] = None
+    group_number: Optional[int] = None
+    lecturer_id: Optional[str] = None
+    max_students: Optional[int] = Field(None, gt=0)
+    target_classes: Optional[List[str]] = None
+    sub_groups: List[CreditClassSubGroupUpdate] = []
 
 
 # =========================================================================

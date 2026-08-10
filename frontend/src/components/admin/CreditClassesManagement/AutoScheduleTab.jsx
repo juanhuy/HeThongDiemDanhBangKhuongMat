@@ -2,14 +2,36 @@ import React, { useState, useEffect } from 'react';
 import { Rocket, SlidersHorizontal, Building2, CalendarDays, FileDown, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../../api/client';
 import { listRooms } from '../../../api/rooms';
+import styles from './Styles';
 
 export default function AutoScheduleTab({ classes = [], lecturers = [], semesters = [], faculties = [], showToast, onSuccess }) {
+    const selectedSemesterId = classes[0]?.semester_id || '';
+  const selectedSemester = semesters.find((sem) => sem.semester_id === selectedSemesterId);
+  const selectedSemesterStart = selectedSemester?.start_date;
+  const selectedSemesterEnd = selectedSemester?.end_date;
+
+  const getClassPeriods = (classItem) => {
+    const theoryPeriods = Number(classItem.theory_periods);
+    const practicalPeriods = Number(classItem.practical_periods);
+    const isPracticeClass = classItem.class_type === 'Practice' || Boolean(classItem.parent_class_id);
+
+    if (Number.isFinite(theoryPeriods) || Number.isFinite(practicalPeriods)) {
+      return {
+        theory: !isPracticeClass && Number.isFinite(theoryPeriods) ? theoryPeriods : 0,
+        practice: isPracticeClass && Number.isFinite(practicalPeriods) ? practicalPeriods : 0
+      };
+    }
+
+    const credits = Number(classItem.credits || 0);
+    return {
+      theory: isPracticeClass ? 0 : credits * 15,
+      practice: isPracticeClass ? credits * 45 : 0
+    };
+  };
+
   const [params, setParams] = useState({
-    semester: semesters.length > 0 ? semesters[0].semester_id : '',
-    startDate: '2024-09-01',
-    faculty: 'all',
-    theoryPeriods: 30, practicePeriods: 15,
-    avoidSunday: true, avoidEvening: true, blockScheduling: true 
+    avoidEvening: true,
+    blockScheduling: true,
   });
 
   const [hasData, setHasData] = useState(false);
@@ -20,12 +42,9 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
   const [isResetting, setIsResetting] = useState(false);
   const [unsavedChanges, setUnsavedChanges] = useState(false);
 
-  useEffect(() => { if (semesters.length > 0 && !params.semester) setParams(prev => ({ ...prev, semester: semesters[0].semester_id })); }, [semesters]);
-
-  // Load existing schedules when changing semester
+  // Load existing schedules for the selected classes.
   useEffect(() => {
-    if (!params.semester) return;
-    const existingClasses = classes.filter(c => c.semester_id === params.semester && c.schedules && c.schedules.length > 0);
+    const existingClasses = classes.filter(c => c.schedules && c.schedules.length > 0);
     if (existingClasses.length > 0 && !unsavedChanges) {
       const formattedResults = existingClasses.map(cls => ({
         class_id: cls.class_id,
@@ -46,7 +65,7 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
       setScheduleResults([]);
       setHasData(false);
     }
-  }, [params.semester, classes, unsavedChanges]);
+  }, [classes, unsavedChanges]);
 
   useEffect(() => {
     listRooms().then(res => {
@@ -62,20 +81,24 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
   }, []);
 
   const handleGenerate = async () => {
-    if (!params.semester || !params.startDate) return showToast?.('Vui lòng chọn học kỳ và ngày khai giảng', 'error');
+    if (!selectedSemesterId || !selectedSemesterStart) return showToast?.('Thiếu học kỳ hoặc ngày bắt đầu học kỳ', 'error');
     setIsGenerating(true); setHasData(false); setScheduleResults([]);
 
     try {
-      const targetClasses = classes.filter(c => c.semester_id === params.semester && c.lecturer_id && (!c.schedules || c.schedules.length === 0));
+      const targetClasses = classes.filter(c => c.lecturer_id && (!c.schedules || c.schedules.length === 0));
       if (targetClasses.length === 0) { showToast?.('Không còn lớp nào cần xếp lịch!', 'warning'); setIsGenerating(false); return; }
 
-      const classRequests = targetClasses.map(cls => ({
+      const classRequests = targetClasses.map(cls => {
+        const periods = getClassPeriods(cls);
+        return {
         credit_class_id: cls.class_id, lecturer_id: cls.lecturer_id,
-        theory_periods: parseInt(params.theoryPeriods) || 0, practice_periods: parseInt(params.practicePeriods) || 0,
+        theory_periods: periods.theory,
+        practice_periods: periods.practice,
         max_students: cls.max_students || 40, subject_name: cls.subject_name
-      }));
+        };
+      });
 
-      const payload = { start_date: params.startDate, avoid_evening_shift: params.avoidEvening, allow_block_scheduling: params.blockScheduling, classes: classRequests };
+      const payload = { semester_id: selectedSemesterId, avoid_evening_shift: params.avoidEvening, allow_block_scheduling: params.blockScheduling, classes: classRequests };
       const response = await fetch(`${API_BASE}/api/schedules/auto-suggest-batch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json();
       
@@ -130,13 +153,13 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
   };
 
   const handleReset = async () => {
-    if (!params.semester) return showToast?.('Vui lòng chọn học kỳ', 'error');
+    if (!selectedSemesterId) return showToast?.('Không xác định được học kỳ của lớp đã chọn', 'error');
     if (!window.confirm('Bạn có chắc chắn muốn XÓA TOÀN BỘ lịch học của học kỳ này không? Hành động này không thể hoàn tác!')) return;
     
     setIsResetting(true);
     try {
       const response = await fetch(`${API_BASE}/api/schedules/reset`, { 
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semester_id: params.semester }) 
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semester_id: selectedSemesterId }) 
       });
       const data = await response.json();
       
@@ -154,28 +177,71 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full font-sans bg-white p-2">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div><h2 className="text-[22px] font-bold text-slate-800">Xếp lịch & Phòng học Tự động</h2><p className="text-[13px] text-slate-500 mt-1">Configure parameters and run the scheduling algorithm.</p></div>
+    <div style={{ ...styles.container, maxWidth: 'none', gap: 16 }}>
+      <div style={styles.header}>
+        <div>
+          <h2 style={styles.title}>Xếp lịch & Phòng học Tự động</h2>
+          <p style={styles.description}>Tự động phân bổ lịch học và phòng cho các lớp đã chọn.</p>
+        </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleReset} disabled={isGenerating || isSaving || isResetting} className="bg-red-500 hover:bg-red-600 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-70 shadow-sm transition-all"><Trash2 size={18} className={isResetting ? "animate-spin" : ""} /> {isResetting ? 'Đang xóa...' : 'Reset Lịch'}</button>
+          <button onClick={handleReset} disabled={isGenerating || isSaving || isResetting} style={{ ...styles.secondaryButton, color: '#b91c1c', borderColor: '#fecaca', opacity: isResetting ? 0.7 : 1 }}><Trash2 size={18} className={isResetting ? "animate-spin" : ""} /> {isResetting ? 'Đang xóa...' : 'Reset Lịch'}</button>
           {unsavedChanges && hasData && (
-             <button onClick={handleSave} disabled={isSaving || isGenerating || isResetting} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-70 shadow-sm transition-all"><FileDown size={18} className={isSaving ? "animate-bounce" : ""} /> {isSaving ? 'Đang lưu...' : 'Lưu & Áp dụng Lịch'}</button>
+             <button onClick={handleSave} disabled={isSaving || isGenerating || isResetting} style={{ ...styles.primaryButton, background: '#059669', opacity: isSaving ? 0.7 : 1 }}><FileDown size={18} className={isSaving ? "animate-bounce" : ""} /> {isSaving ? 'Đang lưu...' : 'Lưu & Áp dụng Lịch'}</button>
           )}
-          <button onClick={handleGenerate} disabled={isGenerating || isSaving || isResetting} className="bg-[#106fa6] hover:bg-[#0b5a96] text-white px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-70 shadow-sm"><Rocket size={18} className={isGenerating ? "animate-pulse" : ""} /> {isGenerating ? 'Đang chạy...' : 'Chạy thuật toán'}</button>
+          <button onClick={handleGenerate} disabled={isGenerating || isSaving || isResetting} style={{ ...styles.primaryButton, opacity: isGenerating ? 0.7 : 1 }}><Rocket size={18} className={isGenerating ? "animate-pulse" : ""} /> {isGenerating ? 'Đang chạy...' : 'Chạy thuật toán'}</button>
+        </div>
+      </div>
+
+      <div style={styles.card}>
+        <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
+          <h3 className="text-[15px] font-bold text-slate-800">Thông tin lớp tín chỉ đang xếp lịch</h3>
+          <p className="mt-1 text-[12px] text-slate-500">Các thông tin dưới đây chỉ để xem và không thể chỉnh sửa tại bước xếp lịch.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-left text-[13px]">
+            <thead className="border-b border-slate-200 text-[12px] text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Lớp tín chỉ</th>
+                <th className="px-5 py-3 font-semibold">Môn học</th>
+                <th className="px-5 py-3 text-center font-semibold">Tiết lý thuyết</th>
+                <th className="px-5 py-3 text-center font-semibold">Tiết thực hành</th>
+              </tr>
+            </thead>
+            <tbody>
+              {classes.map((classItem) => {
+                const periods = getClassPeriods(classItem);
+                return (
+                  <tr key={classItem.class_id} className="border-b border-slate-100 last:border-b-0">
+                    <td className="px-5 py-3 font-semibold text-[#106fa6]">{classItem.class_id || '—'}</td>
+                    <td className="px-5 py-3 text-slate-700">{classItem.subject_name || classItem.subject_id || '—'}</td>
+                    <td className="px-5 py-3 text-center font-semibold text-slate-700">{periods.theory}</td>
+                    <td className="px-5 py-3 text-center font-semibold text-slate-700">{periods.practice}</td>
+                  </tr>
+                );
+              })}
+              {classes.length === 0 && (
+                <tr>
+                  <td colSpan="4" className="px-5 py-6 text-center text-slate-400">Chưa có lớp tín chỉ được chọn.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-4 flex flex-col gap-6">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+          <div style={styles.card}>
             <div className="px-5 py-4 border-b border-slate-100"><h3 className="font-bold text-slate-800 flex items-center gap-2 text-[15px]"><SlidersHorizontal size={18} className="text-[#106fa6]" /> Tham số Đầu vào</h3></div>
             <div className="p-5 flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5"><label className="text-[12px] font-semibold text-slate-600">Học kỳ</label><select className="w-full h-10 px-3 border border-slate-300 rounded-lg text-[13px] outline-none" value={params.semester} onChange={(e) => setParams({...params, semester: e.target.value})}>{semesters.map(s => <option key={s.semester_id} value={s.semester_id}>Học kỳ {s.semester}</option>)}</select></div>
-              <div className="flex flex-col gap-1.5"><label className="text-[12px] font-semibold text-slate-600">Ngày khai giảng (Tính lịch từ tuần này)</label><input type="date" className="w-full h-10 px-3 border border-slate-300 rounded-lg text-[13px] outline-none" value={params.startDate} onChange={(e) => setParams({...params, startDate: e.target.value})} /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5"><label className="text-[12px] font-semibold text-slate-600">Tiết Lý thuyết/Lớp</label><input type="number" min="0" className="w-full h-10 px-3 border border-slate-300 rounded-lg text-[13px] outline-none" value={params.theoryPeriods} onChange={(e) => setParams({...params, theoryPeriods: e.target.value})} /></div>
-                <div className="flex flex-col gap-1.5"><label className="text-[12px] font-semibold text-slate-600">Tiết Thực hành/Lớp</label><input type="number" min="0" className="w-full h-10 px-3 border border-slate-300 rounded-lg text-[13px] outline-none" value={params.practicePeriods} onChange={(e) => setParams({...params, practicePeriods: e.target.value})} /></div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
+                <div>Học kỳ của lớp đã chọn: <strong>{selectedSemesterId || 'Chưa xác định'}</strong></div>
+                <div className="mt-1">Số tiết được tính theo loại lớp và số tín chỉ của từng môn.</div>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
+                <div>Học kỳ mở đăng ký: <strong>{selectedSemesterId || 'Chưa xác định'}</strong></div>
+                <div>Ngày bắt đầu: <strong>{selectedSemesterStart || 'Chưa có'}</strong></div>
+                <div>Ngày kết thúc: <strong>{selectedSemesterEnd || 'Chưa có'}</strong></div>
               </div>
               <div className="border-t border-slate-100 pt-4 mt-2 flex flex-col gap-3">
                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={params.avoidEvening} onChange={(e) => setParams({...params, avoidEvening: e.target.checked})} className="w-4 h-4 rounded text-[#106fa6]" /><span className="text-[13px] text-slate-700">Tránh xếp ca tối</span></label>
@@ -184,7 +250,7 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
             </div>
           </div>
           
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+          <div style={{ ...styles.card, padding: 20 }}>
             <h3 className="font-bold text-slate-800 flex items-center gap-2 text-[15px] mb-5"><Building2 size={18} className="text-[#b47a26]" /> Thống kê Phòng học</h3>
             <div className="flex justify-between items-end mb-3"><span className="text-[13px] text-slate-500 font-medium">Tổng số phòng</span><span className="text-2xl font-bold text-slate-900">{roomStats.total}</span></div>
             {roomStats.total > 0 && (
@@ -198,7 +264,7 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
         </div>
 
         <div className="lg:col-span-8">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm h-full flex flex-col min-h-[500px]">
+          <div style={{ ...styles.card, minHeight: 500, display: 'flex', flexDirection: 'column' }}>
             <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center"><h3 className="font-bold text-slate-800 flex items-center gap-2 text-[15px]"><CalendarDays size={18} className="text-[#106fa6]" /> Kết quả Xếp lịch (Preview)</h3></div>
             <div className="p-5 flex-1 flex flex-col">
               {hasData ? (

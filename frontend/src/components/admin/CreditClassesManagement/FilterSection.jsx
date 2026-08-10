@@ -12,6 +12,8 @@ const FilterSection = ({
   onFilterChange,
   onResetFilters,
   metaData,
+  variant = 'creditClasses',
+  rooms = [],
 }) => {
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -19,9 +21,60 @@ const FilterSection = ({
   };
 
   return (
+    variant === 'schedule' ? (
+      <section style={{ padding: '1rem', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', minHeight: 'fit-content' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <button
+            type="button"
+            onClick={onResetFilters}
+            className="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            <RotateCcw className="mr-2 h-4 w-4 text-slate-500" />
+            Đặt lại
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div>
+            <label className={labelClass}>Môn học</label>
+            <select name="subject_id" value={filters.subject_id} onChange={handleChange} className={controlClass}>
+              <option value="">-- Tất cả môn học --</option>
+              {metaData.subjects?.map((subject) => (
+                <option key={subject.subject_id} value={subject.subject_id}>
+                  {subject.subject_id} - {subject.subject_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Học kỳ</label>
+            <select name="semester_id" value={filters.semester_id} onChange={handleChange} className={controlClass}>
+              <option value="">-- Tất cả học kỳ --</option>
+              {metaData.semesters.map((semester) => (
+                <option key={semester.semester_id} value={semester.semester_id}>
+                    {semester.semester
+                      ? `Học kỳ ${semester.semester}${semester.academic_year ? ` (${semester.academic_year})` : ''}`
+                      : semester.semester_id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Phòng học</label>
+            <select name="room_id" value={filters.room_id} onChange={handleChange} className={controlClass}>
+              <option value="">-- Tất cả phòng --</option>
+              {rooms.map((room) => (
+                <option key={room.room_id} value={room.room_id}>
+                  {room.room_id}{room.room_name ? ` - ${room.room_name}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
+    ) : (
       <section style={{ padding: '1rem', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', minHeight: 'fit-content' }}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        {/* <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
             type="button"
             onClick={onResetFilters}
@@ -30,7 +83,7 @@ const FilterSection = ({
             <RotateCcw className="h-4 w-4 text-slate-500" />
             Đặt lại
           </button>
-        </div>
+        </div> */}
         {/* Các bộ lọc */}
         <div  style={{ display: 'flex', gap: '10px' }}>
             {/* Học kỳ */}
@@ -56,7 +109,9 @@ const FilterSection = ({
                     key={semester.semester_id}
                     value={semester.semester_id}
                   >
-                    Học kỳ {semester.semester} ({semester.academic_year})
+                    {semester.semester
+                      ? `Học kỳ ${semester.semester}${semester.academic_year ? ` (${semester.academic_year})` : ''}`
+                      : semester.semester_id}
                   </option>
                 ))}
               </select>
@@ -162,6 +217,7 @@ const FilterSection = ({
             </div>
         </div>
       </section>
+      )
   );
 };
 

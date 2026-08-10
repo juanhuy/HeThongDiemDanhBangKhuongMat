@@ -18,14 +18,13 @@ import {
 
 import {
   TeachingSchedule,
-  LecturerClassesManagement,
   ManualCheckin,
   SummaryReport,
   LeaveRequests,
   LecturerInfoCard,
   LecturerTimetable,
 } from './components/lecturer';
-
+import LecturerClassesManagement from './components/lecturer/LecturerClassesManagement';
 import {
   CreditClassesManagement,
   LecturersManagement,
@@ -37,6 +36,7 @@ import {
   CameraDashboard,
   PendingFaces,
   ScheduleAdmin,
+  AdminHomeDashboard,
 } from './components/admin';
 
 // import CreditClassesManagement from './components/admin/CreditClassesManagement/index.jsx';
@@ -88,7 +88,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [logs, setLogs] = useState([]);
   const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
-  const [activeMenu, setActiveMenu] = useState('home');
+  const [activeMenu, setActiveMenu] = useState(() => localStorage.getItem('ptit_active_menu') || 'home');
   const [studentProfile, setStudentProfile] = useState(null);
   const [lecturerProfile, setLecturerProfile] = useState(null);
 
@@ -232,8 +232,13 @@ function App() {
     setLecturerProfile(null);
     setActiveMenu('home');
     localStorage.removeItem('ptit_user');
+    localStorage.removeItem('ptit_active_menu');
     showToast('Đã đăng xuất khỏi hệ thống.');
   };
+
+  useEffect(() => {
+    localStorage.setItem('ptit_active_menu', activeMenu);
+  }, [activeMenu]);
 
   // Chưa đăng nhập
   if (!user) {
@@ -268,6 +273,7 @@ function App() {
           <>
             {isStudent && <CourseInfoCard studentProfile={profileToRender} />}
             {isLecturer && <LecturerInfoCard lecturerProfile={lecturerProfileToRender} />}
+            {!isStudent && !isLecturer && <AdminHomeDashboard />}
             <AttendanceLogs
               logs={
                 isStudent && studentMssv
@@ -343,7 +349,7 @@ function App() {
       <div style={styles.mainLayout}>
         <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} user={user} />
         <main style={styles.contentArea}>
-          <div style={styles.welcomeHeader}>
+          {/* <div style={styles.welcomeHeader}>
             <h2 style={styles.welcomeText}>
               👋 Chào mừng{' '}
               {isStudent
@@ -355,7 +361,7 @@ function App() {
             <div style={styles.dateText}>
               <Calendar size={14} /> {getVietnameseDate()}
             </div>
-          </div>
+          </div> */}
           {renderContent()}
         </main>
       </div>

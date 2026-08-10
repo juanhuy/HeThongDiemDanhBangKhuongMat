@@ -6,6 +6,7 @@ export { default as MajorsManagement } from './MajorsManagement';
 export { default as SubjectsManagement } from './SubjectsManagement';
 export { default as StudentsManagement } from './StudentsManagement';
 export { default as CameraDashboard } from './CameraDashboard';
+export { default as AdminHomeDashboard } from './AdminHomeDashboard';
 
 export { default as PendingFaces } from './PendingFaces';
 export { default as ScheduleAdmin } from './ScheduleAdmin';

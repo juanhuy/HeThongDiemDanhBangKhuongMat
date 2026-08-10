@@ -6,7 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from app.db.session import get_db
-from app.models import ClassSession, Classroom, CreditClass
+from app.models import ClassSession, Classroom, CreditClass, Semester
 
 router = APIRouter()
 
@@ -103,16 +103,29 @@ def add_schedule(
 ):
     """Thêm một buổi học thủ công vào danh sách lịch học của lớp."""
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
-    if not cc: raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp tín chỉ {class_id}")
+    if not cc:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp tín chỉ {class_id}")
+    semester = db.query(Semester).filter(Semester.semester_id == cc.semester_id).first()
+    if not semester:
+        raise HTTPException(status_code=400, detail=f"Không tìm thấy học kỳ cho lớp {class_id}.")
     room = db.query(Classroom).filter(Classroom.room_id == room_id.strip()).first()
-    if not room: raise HTTPException(status_code=400, detail=f"Không tìm thấy phòng học {room_id}.")
+    if not room:
+        raise HTTPException(status_code=400, detail=f"Không tìm thấy phòng học {room_id}.")
     try:
         dt_date = datetime.strptime(session_date.strip(), "%Y-%m-%d").date()
+        if dt_date < semester.start_date or dt_date > semester.end_date:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ngày học {session_date.strip()} phải nằm trong học kỳ {semester.semester_id} ({semester.start_date} → {semester.end_date})."
+            )
         time_str = start_time.strip() if len(start_time.strip()) == 8 else start_time.strip() + ":00"
         dt_time = datetime.strptime(time_str, "%H:%M:%S").time()
         dt_start = datetime.combine(dt_date, dt_time)
         dt_end = dt_start + timedelta(hours=3)
-    except Exception as e: raise HTTPException(status_code=400, detail=f"Định dạng không hợp lệ.")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Định dạng không hợp lệ.")
 
     room_conflicts = db.query(ClassSession).filter(ClassSession.room_id == room_id.strip()).all()
     for c in room_conflicts:
@@ -158,17 +171,17 @@ class ClassScheduleRequest(BaseModel):
     subject_name: Optional[str] = ""
 
 class BatchAutoSuggestRequest(BaseModel):
-    start_date: str = Field(..., description="Ngày bắt đầu học kỳ")
+    semester_id: str = Field(..., description="Mã học kỳ")
     classes: List[ClassScheduleRequest]
     avoid_evening_shift: bool = True
     allow_block_scheduling: bool = False
 
 @router.post("/schedules/auto-suggest-batch", summary="Thuật toán xếp lịch tự động Hàng Loạt")
 def batch_auto_suggest_schedule(req: BatchAutoSuggestRequest, db: Session = Depends(get_db)):
-    try:
-        semester_start = datetime.strptime(req.start_date.strip(), "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Ngày bắt đầu không hợp lệ.")
+    semester = db.query(Semester).filter(Semester.semester_id == req.semester_id.strip()).first()
+    if not semester:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy học kỳ {req.semester_id}")
+    semester_start = semester.start_date
 
     shifts = [
         {"shift": 1, "start": time(7, 0), "end": time(11, 0), "label": "Ca Sáng", "periods": 4},

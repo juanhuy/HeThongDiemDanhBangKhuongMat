@@ -129,7 +129,7 @@ const SearchableSelect = ({
           }}
         >
           <div className="sticky top-0 bg-white p-2 border-b border-slate-100">
-            <div className="relative">
+            {/* <div className="relative">
               <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
               <input
                 type="text"
@@ -139,6 +139,18 @@ const SearchableSelect = ({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
                 autoFocus
+              />
+            </div> */}
+            <div style={{ position: 'relative' }}>
+              <Search size={18} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+              <input 
+                type="text" 
+                placeholder="Tìm kiếm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                style={{ padding: '8px 12px 8px 36px',outline: 'none' }}
               />
             </div>
           </div>

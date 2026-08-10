@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Settings, BookOpen, Users, CheckCircle, Clock, PieChart as PieChartIcon, XCircle, BarChart2 } from 'lucide-react';
+import { Plus, Settings, BookOpen, Users, CheckCircle, Clock, PieChart as PieChartIcon, XCircle, BarChart2, Gauge } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { 
   listCreditClasses, deleteCreditClass, updateCreditClassStatus, updateBulkCreditClassStatus,
@@ -88,35 +88,67 @@ const CreditClassesManagement = ({ showToast }) => {
     const active = classes.filter(c => c.status === 'Active').length;
     const planning = classes.filter(c => c.status === 'Planning').length;
     const closed = classes.filter(c => c.status === 'Closed' || c.status === 'Cancelled').length;
-    
-    const chartData = [
-      { name: 'Đang mở', value: active, color: '#10b981' }, { name: 'Kế hoạch', value: planning, color: '#f59e0b' }, { name: 'Đã hủy/đóng', value: closed, color: '#ef4444' }
-    ];
+    const fullClasses = classes.filter(c => Number(c.max_students || 0) > 0 && Number(c.current_students || 0) >= Number(c.max_students || 0)).length;
+    const availableClasses = classes.filter(c => Number(c.max_students || 0) > 0 && Number(c.current_students || 0) < Number(c.max_students || 0)).length;
+    const assignedLecturer = classes.filter(c => c.lecturer_id || c.lecturer_name).length;
+    const unassignedLecturer = total - assignedLecturer;
+    const scheduledClasses = classes.filter(c => Array.isArray(c.schedules) && c.schedules.length > 0).length;
+    const unscheduledClasses = total - scheduledClasses;
+    const theoryOnly = classes.filter(c => Number(c.practical_credits || 0) === 0 && Number(c.theory_credits || 0) > 0).length;
+    const practiceOnly = classes.filter(c => Number(c.theory_credits || 0) === 0 && Number(c.practical_credits || 0) > 0).length;
+    const mixedClasses = total - theoryOnly - practiceOnly;
+    const currentSemesterClasses = filters.semester_id ? classes.filter(c => c.semester_id === filters.semester_id).length : 0;
+    const fillableClasses = classes.filter(c => Number(c.max_students || 0) > 0);
+    const averageFillRate = fillableClasses.length
+      ? Math.round(
+          (fillableClasses.reduce(
+            (sum, c) => sum + Math.min(Number(c.current_students || 0) / Number(c.max_students || 1), 1),
+            0
+          ) /
+            fillableClasses.length) *
+            100
+        )
+      : 0;
 
-    const adminClassData = {}; const majorData = {};
-    let assignedLecturer = 0; let unassignedLecturer = 0; let assignedSchedule = 0; let unassignedSchedule = 0;
-
-    classes.forEach(c => {
-      (c.target_classes || []).forEach(className => {
-        adminClassData[className] = (adminClassData[className] || 0) + 1;
-        const adminClassObj = metaData.adminClasses?.find(a => a.class_name === className || a.class_id === className);
-        if (adminClassObj && adminClassObj.major_id) {
-          const majorObj = metaData.majors?.find(m => m.major_id === adminClassObj.major_id);
-          majorData[majorObj?.major_name || majorObj?.name || 'Unknown'] = (majorData[majorObj?.major_name || majorObj?.name || 'Unknown'] || 0) + 1;
-        } else majorData['Chưa phân loại'] = (majorData['Chưa phân loại'] || 0) + 1;
-      });
-      if (c.lecturer_id || c.lecturer_name) assignedLecturer++; else unassignedLecturer++;
-      if (c.schedules && c.schedules.length > 0) assignedSchedule++; else unassignedSchedule++;
+    const subjectCountMap = {};
+    const lecturerCountMap = {};
+    classes.forEach((c) => {
+      const subjectKey = c.subject_name || c.subject_id || 'Không rõ môn';
+      subjectCountMap[subjectKey] = (subjectCountMap[subjectKey] || 0) + 1;
+      const lecturerKey = c.lecturer_name || c.lecturer_id || 'Chưa phân công';
+      lecturerCountMap[lecturerKey] = (lecturerCountMap[lecturerKey] || 0) + 1;
     });
 
-    return { 
-      total, active, planning, closed, chartData,
-      adminClassChartData: Object.entries(adminClassData).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
-      majorChartData: Object.entries(majorData).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
-      lecturerChartData: [{ name: 'Đã phân công', value: assignedLecturer, color: '#10b981' }, { name: 'Chưa phân công', value: unassignedLecturer, color: '#ef4444' }],
-      scheduleChartData: [{ name: 'Đã xếp phòng', value: assignedSchedule, color: '#3b82f6' }, { name: 'Chưa xếp', value: unassignedSchedule, color: '#f59e0b' }]
+    const subjectBreakdown = Object.entries(subjectCountMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    const lecturerBreakdown = Object.entries(lecturerCountMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    return {
+      total,
+      active,
+      planning,
+      closed,
+      fullClasses,
+      availableClasses,
+      assignedLecturer,
+      unassignedLecturer,
+      scheduledClasses,
+      unscheduledClasses,
+      theoryOnly,
+      practiceOnly,
+      mixedClasses,
+      currentSemesterClasses,
+      averageFillRate,
+      subjectBreakdown,
+      lecturerBreakdown,
     };
-  }, [classes, metaData]);
+  }, [classes, filters.semester_id]);
 
   return (
     <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-5">
@@ -147,31 +179,81 @@ const CreditClassesManagement = ({ showToast }) => {
 
       {activeTab === 'LIST' && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div style={styles.statCard}><div style={styles.statTitle}><BookOpen size={18} color="#3b82f6"/> Số lớp đã tạo</div><div style={styles.statValue}>{stats.total}</div></div>
-            <div style={styles.statCard}><div style={styles.statTitle}><CheckCircle size={18} color="#10b981"/> Đang mở đăng ký</div><div style={styles.statValue}>{stats.active} <span style={{fontSize:"1rem", color:"#94a3b8", fontWeight:"normal"}}>/ {stats.total}</span></div></div>
-            <div style={styles.statCard}><div style={styles.statTitle}><Clock size={18} color="#f59e0b"/> Số lớp dự kiến</div><div style={styles.statValue}>{stats.planning}</div></div>
-            <div style={styles.statCard}><div style={styles.statTitle}><XCircle size={18} color="#ef4444"/> Số lớp đã hủy/đóng</div><div style={styles.statValue}>{stats.closed}</div></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div style={styles.statCard}>
+              <div style={styles.statTitle}><BookOpen size={18} color="#3b82f6"/> Tổng số lớp</div>
+              <div style={styles.statValue}>{stats.total}</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statTitle}><CheckCircle size={18} color="#10b981"/> Trạng thái lớp</div>
+              <div style={styles.statValue}>{stats.active} / {stats.planning} / {stats.closed}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 6 }}>Active / Planning / Closed</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statTitle}><Layers3 size={18} color="#063c1d"/> Số lớp đầy và còn chỗ</div>
+              <div style={styles.statValue}>{stats.fullClasses} / {stats.availableClasses}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 6 }}>Đủ/đầy / Còn chỗ trống</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statTitle}><Users size={18} color="#0f5471"/> Giảng viên</div>
+              <div style={styles.statValue}>{stats.assignedLecturer} / {stats.unassignedLecturer}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 6 }}>Đã có / Chưa có giảng viên</div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div style={styles.statCard}>
+              <div style={styles.statTitle}><CalendarClock size={18} color="#2563eb"/> Xếp lịch</div>
+              <div style={styles.statValue}>{stats.scheduledClasses} / {stats.unscheduledClasses}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 6 }}>Đã xếp / Chưa xếp</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statTitle}><BookOpen size={18} color="#1d4ed8"/> Loại lớp</div>
+              <div style={styles.statValue}>{stats.theoryOnly} / {stats.practiceOnly} / {stats.mixedClasses}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 6 }}>LT / TH / Tổ hợp</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statTitle}><CalendarClock size={18} color="#9333ea"/> Học kỳ hiện tại</div>
+              <div style={styles.statValue}>{stats.currentSemesterClasses}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 6 }}>Lớp trong kỳ đang chọn</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statTitle}><Gauge size={18} color="#085d7a"/> Tỷ lệ lấp đầy TB</div>
+              <div style={styles.statValue}>{stats.averageFillRate}%</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 6 }}>current/max trung bình</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div style={styles.chartBox}>
-              <h4 style={{ margin: "0 0 15px 0", color: "#334155", display: "flex", alignItems: "center", gap: "6px", fontSize: "1.05rem" }}><BarChart2 size={18} color="#64748b"/> Lớp mở theo Lớp biên chế (Top 10)</h4>
-              <div style={{ width: "100%", height: "220px" }}>
-                {stats.adminClassChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%"><BarChart data={stats.adminClassChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" /><XAxis dataKey="name" tick={{fontSize: 11, fill: '#64748b'}} tickLine={false} axisLine={{stroke: '#e2e8f0'}} /><YAxis tick={{fontSize: 11, fill: '#64748b'}} tickLine={false} axisLine={false} allowDecimals={false} /><Tooltip cursor={{fill: '#f1f5f9'}} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }} /><Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Số lớp" /></BarChart></ResponsiveContainer>
-                ) : (<div className="h-full flex items-center justify-center text-slate-400">Chưa có dữ liệu</div>)}
-              </div>
+              <h4 style={{ margin: '0 0 12px 0', color: '#334155', fontSize: '1rem', fontWeight: 700 }}>Top 5 môn theo số lớp</h4>
+              <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                {stats.subjectBreakdown.map((item) => (
+                  <li key={item.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #e2e8f0' }}>
+                    <span style={{ color: '#334155' }}>{item.name}</span>
+                    <span style={{ color: '#0f172a', fontWeight: 700 }}>{item.value}</span>
+                  </li>
+                ))}
+                {stats.subjectBreakdown.length === 0 && <li style={{ color: '#64748b', padding: '12px 0' }}>Không có dữ liệu</li>}
+              </ul>
             </div>
             <div style={styles.chartBox}>
-              <h4 style={{ margin: "0 0 15px 0", color: "#334155", display: "flex", alignItems: "center", gap: "6px", fontSize: "1.05rem" }}><PieChartIcon size={18} color="#64748b"/> Tình trạng phân công Giảng viên</h4>
-              <div style={{ width: "100%", height: "220px" }}>
-                <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stats.lecturerChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">{stats.lecturerChartData.map((e, i) => <Cell key={i} fill={e.color} />)}</Pie><Tooltip /><Legend verticalAlign="bottom" height={36} iconType="circle"/></PieChart></ResponsiveContainer>
-              </div>
+              <h4 style={{ margin: '0 0 12px 0', color: '#334155', fontSize: '1rem', fontWeight: 700 }}>Top 5 giảng viên theo số lớp</h4>
+              <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                {stats.lecturerBreakdown.map((item) => (
+                  <li key={item.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #e2e8f0' }}>
+                    <span style={{ color: '#334155' }}>{item.name}</span>
+                    <span style={{ color: '#0f172a', fontWeight: 700 }}>{item.value}</span>
+                  </li>
+                ))}
+                {stats.lecturerBreakdown.length === 0 && <li style={{ color: '#64748b', padding: '12px 0' }}>Không có dữ liệu</li>}
+              </ul>
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <FilterSection filters={filters} onFilterChange={handleFilterChange} metaData={metaData} />
-            <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", position: "relative" }}>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', position: 'relative' }}>
               <DataTable classes={classes.filter(cls => !classes.some(c => c.parent_class_id === cls.class_id))} loading={loading} selectedIds={selectedIds} setSelectedIds={setSelectedIds} onStatusChange={handleStatusChange} onDelete={handleDelete} onEdit={handleEditClick} />
             </div>
           </div>

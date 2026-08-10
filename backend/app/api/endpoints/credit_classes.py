@@ -171,6 +171,10 @@ def list_credit_classes(
         result.append({
             "class_id": c.class_id, "parent_class_id": c.parent_class_id, "subject_id": c.subject_id,
             "subject_name": subj.subject_name if subj else None, "credits": total_credits,
+            "theory_credits": subj.theory_credits if subj else 0,
+            "practical_credits": subj.practical_credits if subj else 0,
+            "theory_periods": subj.theory_periods if subj else 0,
+            "practical_periods": subj.practical_periods if subj else 0,
             "lecturer_id": c.lecturer_id, "lecturer_name": c.lecturer.full_name if c.lecturer else None,
             "semester_id": c.semester_id, "class_group": format_class_group(c),
             "group_number": c.group_number, "sub_group_number": c.sub_group_number,
@@ -189,25 +193,128 @@ def get_credit_class_detail(class_id: str, db: Session = Depends(get_db)):
     ).filter(CreditClass.class_id == class_id.strip()).first()
     
     if not cc: raise HTTPException(status_code=404, detail="Không tìm thấy lớp học tín chỉ này.")
-    target_classes = [t.admin_class_id for t in cc.expected_mappings]
-    subj = cc.subject
+    root = cc
+    if cc.parent_class_id:
+        root = db.query(CreditClass).options(
+            joinedload(CreditClass.subject), joinedload(CreditClass.lecturer),
+            joinedload(CreditClass.expected_mappings)
+        ).filter(CreditClass.class_id == cc.parent_class_id).first() or cc
+
+    children = db.query(CreditClass).options(
+        joinedload(CreditClass.lecturer), joinedload(CreditClass.expected_mappings)
+    ).filter(CreditClass.parent_class_id == root.class_id).order_by(CreditClass.sub_group_number).all()
+
+    def class_data(item: CreditClass):
+        return {
+            "class_id": item.class_id,
+            "group_number": item.group_number,
+            "sub_group_number": item.sub_group_number,
+            "lecturer_id": item.lecturer_id,
+            "lecturer_name": item.lecturer.full_name if item.lecturer else None,
+            "max_students": item.max_students,
+            "target_classes": [mapping.admin_class_id for mapping in item.expected_mappings],
+        }
+
+    target_classes = [t.admin_class_id for t in root.expected_mappings]
+    subj = root.subject
     total_credits = subj.credits or (subj.theory_credits + subj.practical_credits) or 0 if subj else 0
     c_dict = {
-        "class_id": cc.class_id, "parent_class_id": cc.parent_class_id, "subject_id": cc.subject_id,
-        "subject_name": cc.subject.subject_name if cc.subject else None, "credits": total_credits,
-        "lecturer_id": cc.lecturer_id, "lecturer_name": cc.lecturer.full_name if cc.lecturer else None,
-        "semester_id": cc.semester_id, "class_group": format_class_group(cc), "group_number": cc.group_number,          
-        "sub_group_number": cc.sub_group_number, "class_type": cc.class_type, "start_week": cc.start_week,
-        "end_week": cc.end_week, "max_students": cc.max_students, "current_students": cc.current_students,
-        "status": cc.status, "target_classes": target_classes
+        "class_id": root.class_id, "requested_class_id": cc.class_id,
+        "parent_class_id": root.parent_class_id, "subject_id": root.subject_id,
+        "subject_name": root.subject.subject_name if root.subject else None, "credits": total_credits,
+        "lecturer_id": root.lecturer_id, "lecturer_name": root.lecturer.full_name if root.lecturer else None,
+        "semester_id": root.semester_id, "class_group": format_class_group(root), "group_number": root.group_number,
+        "sub_group_number": None, "class_type": root.class_type, "start_week": root.start_week,
+        "end_week": root.end_week, "max_students": root.max_students, "current_students": root.current_students,
+        "status": root.status, "target_classes": target_classes,
+        "groups": [{**class_data(root), "sub_groups": [class_data(child) for child in children]}]
     }
     return {"status": "success", "data": c_dict}
+
+@router.put("/credit-classes/bulk-status", summary="Update Bulk Status")
+def update_bulk_status(req: BulkStatusUpdate, db: Session = Depends(get_db)):
+    """Cập nhật trạng thái cho nhiều lớp tín chỉ cùng một lúc."""
+    if not req.class_ids:
+        raise HTTPException(status_code=400, detail="Không có lớp nào được chọn")
+
+    updated_count = db.query(CreditClass).filter(
+        CreditClass.class_id.in_(req.class_ids)
+    ).update({"status": req.status}, synchronize_session=False)
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"Đã cập nhật trạng thái {req.status} cho {updated_count} lớp."
+    }
+
 
 @router.put("/credit-classes/{class_id}", summary="Update Credit Class")
 def update_credit_class(class_id: str, data: CreditClassUpdate, db: Session = Depends(get_db)):
     """Cập nhật các thông số của một lớp học tín chỉ."""
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
     if not cc: raise HTTPException(status_code=404, detail="Không tìm thấy lớp học tín chỉ.")
+    root = cc
+    if cc.parent_class_id:
+        root = db.query(CreditClass).filter(CreditClass.class_id == cc.parent_class_id).first() or cc
+
+    def update_mappings(credit_class_id: str, target_classes: Optional[List[str]]):
+        if target_classes is None:
+            return
+        db.query(ExpectedClassMapping).filter(ExpectedClassMapping.credit_class_id == credit_class_id).delete()
+        for admin_class_id in target_classes:
+            db.add(ExpectedClassMapping(
+                credit_class_id=credit_class_id,
+                admin_class_id=admin_class_id.strip()
+            ))
+
+    if data.groups is not None:
+        if data.semester_id:
+            root.semester_id = data.semester_id.strip()
+        if data.status:
+            root.status = data.status.strip()
+        incoming_child_ids = set()
+        for group in data.groups:
+            group_class = db.query(CreditClass).filter(
+                CreditClass.class_id == (group.class_id or root.class_id)
+            ).first()
+            if not group_class:
+                raise HTTPException(status_code=404, detail="Không tìm thấy nhóm lớp cần cập nhật.")
+
+            if group.lecturer_id is not None:
+                group_class.lecturer_id = group.lecturer_id.strip() if group.lecturer_id else None
+            if group.max_students is not None:
+                if group.max_students < group_class.current_students:
+                    raise HTTPException(status_code=400, detail=f"Nhóm {group_class.class_id} đang có sinh viên, không thể giảm sĩ số.")
+                group_class.max_students = group.max_students
+            if group.group_number is not None:
+                group_class.group_number = group.group_number
+            update_mappings(group_class.class_id, group.target_classes)
+
+            for sub_group in group.sub_groups:
+                child = db.query(CreditClass).filter(
+                    CreditClass.class_id == sub_group.class_id,
+                    CreditClass.parent_class_id == group_class.class_id
+                ).first()
+                if not child:
+                    raise HTTPException(status_code=404, detail="Không tìm thấy tổ thực hành cần cập nhật.")
+                incoming_child_ids.add(child.class_id)
+                if sub_group.lecturer_id is not None:
+                    child.lecturer_id = sub_group.lecturer_id.strip() if sub_group.lecturer_id else None
+                if sub_group.max_students is not None:
+                    if sub_group.max_students < child.current_students:
+                        raise HTTPException(status_code=400, detail=f"Tổ {child.class_id} đang có sinh viên, không thể giảm sĩ số.")
+                    child.max_students = sub_group.max_students
+                if sub_group.sub_group_number is not None:
+                    child.sub_group_number = sub_group.sub_group_number
+                update_mappings(child.class_id, sub_group.target_classes or group.target_classes)
+
+        existing_children = db.query(CreditClass).filter(CreditClass.parent_class_id == root.class_id).all()
+        for child in existing_children:
+            if child.class_id not in incoming_child_ids and child.current_students == 0:
+                db.delete(child)
+
+        db.commit()
+        return {"status": "success", "message": f"Đã cập nhật cấu trúc lớp {root.class_id}", "data": {"class_id": root.class_id}}
+
     update_data = data.model_dump(exclude_unset=True)
     if "lecturer_id" in update_data:
         if data.lecturer_id:
@@ -233,14 +340,6 @@ def update_credit_class(class_id: str, data: CreditClassUpdate, db: Session = De
     db.commit()
     db.refresh(cc)
     return {"status": "success", "message": f"Đã cập nhật thành công lớp {cc.class_id}", "data": {"class_id": cc.class_id, "status": cc.status}}
-
-@router.put("/credit-classes/bulk-status", summary="Update Bulk Status")
-def update_bulk_status(req: BulkStatusUpdate, db: Session = Depends(get_db)):
-    """Cập nhật trạng thái cho nhiều lớp tín chỉ cùng một lúc."""
-    if not req.class_ids: raise HTTPException(status_code=400, detail="Không có lớp nào được chọn")
-    db.query(CreditClass).filter(CreditClass.class_id.in_(req.class_ids)).update({"status": req.status}, synchronize_session=False)
-    db.commit()
-    return {"status": "success", "message": f"Đã cập nhật trạng thái {req.status} cho {len(req.class_ids)} lớp."}
 
 @router.delete("/credit-classes/{class_id}", summary="Delete Credit Class")
 def delete_credit_class(class_id: str, db: Session = Depends(get_db)):

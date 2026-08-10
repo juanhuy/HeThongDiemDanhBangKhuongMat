@@ -60,4 +60,17 @@ def get_all_admin_classes(db: Session = Depends(get_db)):
 def get_semesters(db: Session = Depends(get_db)):
     """Lấy danh sách các Học kỳ."""
     semesters = db.query(Semester).order_by(Semester.start_date.desc()).all()
-    return {"status": "success", "data": [{"semester_id": s.semester_id, "semester": s.semester_number, "academic_year": s.academic_year} for s in semesters]}
+    return {
+        "status": "success",
+        "data": [
+            {
+                "semester_id": s.semester_id,
+                "semester": s.semester_number,
+                "academic_year": s.academic_year,
+                "start_date": s.start_date.isoformat() if getattr(s, "start_date", None) is not None else None,
+                "end_date": s.end_date.isoformat() if getattr(s, "end_date", None) is not None else None,
+                "status": getattr(s, "status", None),
+            }
+            for s in semesters
+        ],
+    }

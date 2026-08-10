@@ -258,7 +258,7 @@ export default function SubjectsManagement({ showToast }) {
         <div style={{ display: "flex", gap: "10px" }}>
           <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImportCsv} style={{ display: 'none' }} />
           <button 
-            style={{ ...styles.btn, background: "#f59e0b", display: "flex", alignItems: "center", gap: "6px", opacity: isImporting ? 0.7 : 1, cursor: isImporting ? 'not-allowed' : 'pointer' }} 
+             style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, color: '#334155' }} 
             onClick={() => fileInputRef.current?.click()} disabled={isImporting}
           >
             <Upload size={18} /> {isImporting ? 'Đang Import...' : 'Import CSV'}

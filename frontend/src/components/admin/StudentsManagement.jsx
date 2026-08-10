@@ -402,10 +402,10 @@ export default function StudentsManagement({ showToast }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px 20px", borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <Users size={26} color="#106fa6" />
-          <h2 style={{ fontSize: "1.3rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Quản lý Sinh viên</h2>
+           <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Quản lý Sinh viên</h2>
         </div>
         <div style={{ display: "flex", gap: "10px" }}>
-          <button style={{ ...styles.btn, background: "#16a34a", display: "flex", alignItems: "center", gap: "6px" }} onClick={() => fileInputRef.current?.click()}>
+          <button  style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, color: '#334155' }} onClick={() => fileInputRef.current?.click()}>
             <Upload size={18} /> Import Excel
           </button>
           <button style={{ ...styles.btn, background: "#106fa6", display: "flex", alignItems: "center", gap: "6px" }} onClick={() => { setCreateForm({ ...emptyForm }); setIsCreateOpen(true); }}>

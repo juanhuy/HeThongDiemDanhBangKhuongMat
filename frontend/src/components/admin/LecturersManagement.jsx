@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Plus, Trash2, Edit, X, Users, UserPlus, Upload, CheckCircle, AlertTriangle, PieChart as PieChartIcon, BarChart2, GraduationCap, Briefcase, BookOpen, Menu, Filter, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, SortAsc, SortDesc, Check } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { API_BASE } from '../../api/client';
 
 const styles = {
   btn: { padding: "8px 16px", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600", fontSize: "0.9rem", color: "#fff", transition: "all 0.2s" },
@@ -57,7 +58,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
   const fetchFaculties = async () => {
     if (facultiesList && facultiesList.length > 0) return;
     try {
-      const res = await fetch('http://localhost:8000/api/faculties/');
+      const res = await fetch(`${API_BASE}/api/faculties/`);
       if (res.ok) {
         const data = await res.json();
         setFetchedFaculties(Array.isArray(data) ? data : data.items || []);
@@ -69,7 +70,7 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
 
   const fetchAllLecturers = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/admin/lecturers/');
+      const response = await fetch(`${API_BASE}/api/admin/lecturers/`);
       if (response.ok) {
         const result = await response.json();
         setAllLecturersList(result.items ? result.items : result || []);
@@ -276,15 +277,15 @@ const LecturersManagement = ({ facultiesList, showToast }) => {
       {/* HEADER & ACTIONS */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "15px 20px", borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <Users size={26} color="#7c3aed" />
-          <h2 style={{ fontSize: "1.3rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>Nhân sự & Giảng viên</h2>
+          <Users size={26} color="#106fa6" />
+           <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Quản lý giảng viên</h2>
         </div>
         <div style={{ display: "flex", gap: "10px" }}>
           <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImport} style={{ display: 'none' }} />
-          <button style={{ ...styles.btn, background: "#10b981", display: "flex", alignItems: "center", gap: "6px" }} onClick={() => fileInputRef.current?.click()}>
+          <button  style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, color: '#334155' }}>
             <Upload size={18} /> Import CSV
           </button>
-          <button style={{ ...styles.btn, background: "#7c3aed", display: "flex", alignItems: "center", gap: "6px" }} onClick={() => openLecturerModal()}>
+          <button style={{ ...styles.btn, background: "#106fa6", display: "flex", alignItems: "center", gap: "6px" }} onClick={() => openLecturerModal()}>
             <UserPlus size={18} /> Thêm giảng viên
           </button>
         </div>
