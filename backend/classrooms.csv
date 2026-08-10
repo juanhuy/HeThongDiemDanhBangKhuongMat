@@ -1,0 +1,5 @@
+campus,building,room_number,capacity,room_type,status,notes
+CS Tăng Nhơn Phú,A,101,50,Theory,Active,Máy chiếu mới
+CS Tăng Nhơn Phú,A,102,60,Theory,Active,
+CS Quận 1,B,201,100,Computer_Lab,Active,Phòng Lab iMac
+CS Quận 1,B,202,,Specialized_Lab,Maintenance,Đang sửa chữa

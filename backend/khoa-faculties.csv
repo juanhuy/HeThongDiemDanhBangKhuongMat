@@ -1,0 +1,6 @@
+faculty_id,faculty_name,dean_id,office_room,phone_number,status
+FIT2,Khoa Công nghệ thông tin 2,,Phòng 2A01,02838290001,Active
+FTE2,Khoa Viễn thông 2,,Phòng 2A02,02838290002,Active
+FMM2,Khoa Đa phương tiện,,Phòng 2A03,02838290003,Active
+FBA2,Khoa Quản trị kinh doanh 2,,Phòng 2A04,02838290004,Active
+FCB,Khoa Cơ bản 2,,Phòng 2A05,02838290005,Active

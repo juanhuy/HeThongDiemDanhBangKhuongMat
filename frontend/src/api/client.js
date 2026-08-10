@@ -1,7 +1,9 @@
-// API client mặc định cho cả hệ thống.
-// - url PHẢI là đường dẫn tuyệt đối đầy đủ (VD: "http://127.0.0.1:8000/api/lop_tin_chi").
-// - Tự động gắn `Authorization: Bearer <token>` vào mọi request.
-// - Nhận HTTP 401 → xoá session và gọi onUnauthorized để App tự logout.
+const configuredApiBase = (import.meta.env.VITE_API_BASE || "").trim();
+export const API_BASE = (configuredApiBase || "http://127.0.0.1:8000").replace(
+  /^https?:\/\/localhost(?=[:/]|$)/,
+  (match) => match.replace("localhost", "127.0.0.1")
+);
+
 const STORAGE_TOKEN_KEY = "ptit_token";
 const STORAGE_USER_KEY = "ptit_user";
 
@@ -31,22 +33,19 @@ export const clearSession = () => {
   localStorage.removeItem(STORAGE_USER_KEY);
 };
 
-// onUnauthorized toàn cục: được gọi khi BẤT KỲ apiFetch nào gặp 401
-// (để App tự logout dù request phát sinh từ component/hook không truyền callback).
 let globalOnUnauthorized = null;
 export const setOnUnauthorized = (fn) => {
   globalOnUnauthorized = typeof fn === "function" ? fn : null;
 };
 
-// Fetch wrapper kế thừa fetch chuẩn (giữ nguyên signature fetch(url, options)).
-// onUnauthorized là callback gọi khi nhận 401 (được truyền len qua option đặc biệt).
-export async function apiFetch(url, options = {}) {
+export async function apiFetch(path, options = {}) {
   const { onUnauthorized, ...rest } = options || {};
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
 
   const headers = new Headers(rest.headers || {});
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (!(rest.body instanceof FormData)) {
+  if (rest.body && !(rest.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -59,5 +58,28 @@ export async function apiFetch(url, options = {}) {
     throw new Error("UNAUTHORIZED");
   }
 
-  return res;
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    const message = data?.detail || data?.message || `HTTP ${res.status}`;
+    const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
+    error.status = res.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
+export function formBody(fields) {
+  const fd = new FormData();
+  Object.entries(fields).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) fd.append(k, v);
+  });
+  return fd;
 }

@@ -1,0 +1,175 @@
+Traceback (most recent call last):
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1938, in _exec_single_context
+    self.dialect.do_executemany(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\dialects\mysql\mysqldb.py", line 197, in do_executemany
+    rowcount = cursor.executemany(statement, parameters)
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\cursors.py", line 188, in executemany
+    return self._do_execute_many(
+           ~~~~~~~~~~~~~~~~~~~~~^
+        q_prefix,
+        ^^^^^^^^^
+    ...<4 lines>...
+        self._get_db().encoding,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\cursors.py", line 226, in _do_execute_many
+    rows += self.execute(sql + postfix)
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\cursors.py", line 159, in execute
+    result = self._query(query)
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\cursors.py", line 330, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\connections.py", line 582, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\connections.py", line 847, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\connections.py", line 1245, in read
+    first_packet = self.connection._read_packet()
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\connections.py", line 803, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\err.py", line 154, in raise_mysql_exception
+    raise errorclass(errno, errval, sqlstate=sqlstate)
+pymysql.err.OperationalError: (1644, 'Lá»—i Xáº¿p Lá»‹ch: PhÃ²ng há»\x8dc Ä‘Ã£ Ä‘Æ°á»£c sá»\xad dá»¥ng trong khoáº£ng thá»\x9di gian nÃ\xa0y!')
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\app\api\endpoints\schedules.py", line 307, in batch_save_schedules
+    db.bulk_save_objects(new_schedules)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4586, in bulk_save_objects
+    self._bulk_save_mappings(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        mapper,
+        ^^^^^^^
+    ...<5 lines>...
+        render_nulls=False,
+        ^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4763, in _bulk_save_mappings
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4752, in _bulk_save_mappings
+    bulk_persistence._bulk_insert(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        mapper,
+        ^^^^^^^
+    ...<4 lines>...
+        render_nulls=render_nulls,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\orm\bulk_persistence.py", line 222, in _bulk_insert
+    result = persistence._emit_insert_statements(
+        base_mapper,
+    ...<6 lines>...
+        execution_options=execution_options,
+    )
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 1049, in _emit_insert_statements
+    result = connection.execute(
+        statement, multiparams, execution_options=execution_options
+    )
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1421, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1938, in _exec_single_context
+    self.dialect.do_executemany(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\sqlalchemy\dialects\mysql\mysqldb.py", line 197, in do_executemany
+    rowcount = cursor.executemany(statement, parameters)
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\cursors.py", line 188, in executemany
+    return self._do_execute_many(
+           ~~~~~~~~~~~~~~~~~~~~~^
+        q_prefix,
+        ^^^^^^^^^
+    ...<4 lines>...
+        self._get_db().encoding,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\cursors.py", line 226, in _do_execute_many
+    rows += self.execute(sql + postfix)
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\cursors.py", line 159, in execute
+    result = self._query(query)
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\cursors.py", line 330, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\connections.py", line 582, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\connections.py", line 847, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\connections.py", line 1245, in read
+    first_packet = self.connection._read_packet()
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\connections.py", line 803, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\test\HeThongDiemDanhBangKhuongMat\backend\.venv\Lib\site-packages\pymysql\err.py", line 154, in raise_mysql_exception
+    raise errorclass(errno, errval, sqlstate=sqlstate)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1644, 'Lá»—i Xáº¿p Lá»‹ch: PhÃ²ng há»\x8dc Ä‘Ã£ Ä‘Æ°á»£c sá»\xad dá»¥ng trong khoáº£ng thá»\x9di gian nÃ\xa0y!')
+[SQL: INSERT INTO class_schedules (class_id, room_id, day_of_week, start_shift, end_shift) VALUES (%(class_id)s, %(room_id)s, %(day_of_week)s, %(start_shift)s, %(end_shift)s)]
+[parameters: [{'class_id': 'TEL1305_202620271_N02', 'room_id': 'PH2026002', 'day_of_week': 4, 'start_shift': 1, 'end_shift': 3}, {'class_id': 'TEL1308_202620271_N01', 'room_id': 'RM-458738', 'day_of_week': 4, 'start_shift': 1, 'end_shift': 3}, {'class_id': 'TEL1308_202620271_N01', 'room_id': 'PH2026003', 'day_of_week': 5, 'start_shift': 1, 'end_shift': 3}, {'class_id': 'TEL1308_202620271_N01_T01', 'room_id': 'RM-458738', 'day_of_week': 4, 'start_shift': 3, 'end_shift': 5}, {'class_id': 'TEL1305_202620271_N02', 'room_id': 'PH2026002', 'day_of_week': 5, 'start_shift': 1, 'end_shift': 3}, {'class_id': 'TEL1308_202620271_N01_T01', 'room_id': 'PH2026003', 'day_of_week': 5, 'start_shift': 3, 'end_shift': 5}]]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

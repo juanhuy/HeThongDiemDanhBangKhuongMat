@@ -1,66 +1,95 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar } from 'lucide-react';
-import Header from './components/Header';
-import Sidebar from './components/Sidebar';
-import StudentInfoCard from './components/StudentInfoCard';
-import CourseInfoCard from './components/CourseInfoCard';
-import AIAttendance from './components/AIAttendance';
-import AttendanceLogs from './components/AttendanceLogs';
-import Toast from './components/Toast';
-import Login from './components/Login';
-import { apiFetch, getStoredUser, getToken, clearSession, setOnUnauthorized } from './api/client';
 
-const API_BASE = "http://127.0.0.1:8000";
+import Header from './components/common/Header';
+import Sidebar from './components/common/Sidebar';
+import Toast from './components/common/Toast';
+import Login from './components/common/Login';
+import AttendanceLogs from './components/common/AttendanceLogs';
+
+import {
+  CourseRegistration,
+  MyClasses,
+  CourseInfoCard,
+  SubmitLeave,
+  FaceBiometrics,
+  StudentTimetable,
+  StudentInfoCard
+} from './components/student';
+
+import {
+  TeachingSchedule,
+  ManualCheckin,
+  SummaryReport,
+  LeaveRequests,
+  LecturerInfoCard,
+  LecturerTimetable,
+} from './components/lecturer';
+import LecturerClassesManagement from './components/lecturer/LecturerClassesManagement';
+import {
+  CreditClassesManagement,
+  LecturersManagement,
+  RoomsManagement,
+  FacultiesManagement,
+  MajorsManagement,
+  SubjectsManagement,
+  StudentsManagement,
+  CameraDashboard,
+  PendingFaces,
+  ScheduleAdmin,
+  AdminHomeDashboard,
+} from './components/admin';
+import { API_BASE, apiFetch, getStoredUser, getToken, clearSession } from './api/client';
+import { attendanceApi } from './api';
 
 const styles = {
   appWrapper: {
-    display: "flex",
-    flexDirection: "column",
-    minHeight: "100vh",
-    backgroundColor: "#f4f8fa"
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: '100vh',
+    backgroundColor: '#f4f8fa',
   },
   mainLayout: {
-    display: "grid",
-    gridTemplateColumns: "250px 1fr",
-    flexGrow: 1
+    display: 'grid',
+    gridTemplateColumns: '250px 1fr',
+    flexGrow: 1,
   },
   contentArea: {
-    padding: "1.5rem 2rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1.5rem"
+    padding: '1.5rem 2rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1.5rem',
   },
   welcomeHeader: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px"
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
   },
   welcomeText: {
-    fontSize: "1.4rem",
-    fontWeight: "700",
-    color: "#106fa6",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px"
+    fontSize: '1.4rem',
+    fontWeight: '700',
+    color: '#106fa6',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
   },
   dateText: {
-    fontSize: "0.85rem",
-    color: "var(--text-muted)",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px"
-  }
+    fontSize: '0.85rem',
+    color: 'var(--text-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
 };
 
 function App() {
   const [user, setUser] = useState(null);
   const [logs, setLogs] = useState([]);
-  const [activeTab, setActiveTab] = useState('attendance');
   const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
-  const [activeMenu, setActiveMenu] = useState('home');
+  const [activeMenu, setActiveMenu] = useState(() => localStorage.getItem('ptit_active_menu') || 'home');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 900);
-
   const [studentProfile, setStudentProfile] = useState(null);
+  const [lecturerProfile, setLecturerProfile] = useState(null);
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
@@ -73,55 +102,26 @@ function App() {
   const userRole = user?.role ? user.role.toLowerCase() : '';
   const isStudent = userRole === 'sinh_vien' || userRole === 'student';
   const isLecturer = userRole === 'giang_vien' || userRole === 'lecturer';
-  const isAdmin = userRole === 'admin';
 
-  if (user && isStudent && (!user.mssv || user.mssv === 'N/A')) {
-    user.mssv = user.username.toUpperCase();
-  }
+  // Chuẩn hóa mssv cho SV (không mutate user gốc)
+  const studentMssv =
+    isStudent && user
+      ? user.mssv && user.mssv !== 'N/A'
+        ? user.mssv
+        : (user.username || '').toUpperCase()
+      : user?.mssv;
 
   const getVietnameseDate = () => {
-    const days = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+    const days = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
     const d = new Date();
     return `${days[d.getDay()]}, ngày ${d.getDate()} tháng ${d.getMonth() + 1}`;
   };
 
-  // Check if session exists in localStorage (only if user state is not set yet)
-  useEffect(() => {
-    if (!user) {
-      const savedUser = getStoredUser();
-      if (savedUser && getToken()) {
-        setUser(savedUser);
-        fetchStudentProfile(savedUser);
-      }
-    }
-    if (user) {
-      fetchLogs();
-      fetchNotifications();
-    }
-    const interval = setInterval(() => {
-      if (user) { fetchLogs(); fetchNotifications(); }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [user]);
-
   const showToast = (message, type = 'success') => {
     setToast({ message, type, visible: true });
     setTimeout(() => {
-      setToast(prev => ({ ...prev, visible: false }));
+      setToast((prev) => ({ ...prev, visible: false }));
     }, 4000);
-  };
-
-  const handleLoginSuccess = (userData) => {
-    setUser(userData);
-    showToast("Đăng nhập thành công!");
-    fetchStudentProfile(userData);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    setStudentProfile(null);
-    clearSession();
-    showToast("Đã đăng xuất khỏi hệ thống.");
   };
 
   useEffect(() => {
@@ -160,61 +160,129 @@ function App() {
       const res = await apiFetch(`${API_BASE}/api/admin/students/${mssv}`);
       if (res.ok) {
         const data = await res.json();
-        const mapped = {
+        setStudentProfile({
           mssv: data.student_id,
           ho_ten: data.full_name,
           lop_base: data.administrative_class || 'N/A',
-          email: data.email,
+          email: data.email || 'N/A',
           sdt: data.phone_number || 'N/A',
-          ngay_sinh: 'N/A',
-          gioi_tinh: 'N/A',
-          noi_sinh: 'N/A',
-          dia_chi: 'N/A'
-        };
-        setStudentProfile(mapped);
+          ngay_sinh: data.date_of_birth || 'N/A',
+          gioi_tinh: data.gender || 'N/A',
+          cmnd: data.citizen_id || 'N/A',
+          dan_toc: data.ethnicity || 'N/A',
+          ton_giao: data.religion || 'N/A',
+          quoc_tich: data.nationality || 'N/A',
+          noi_sinh: data.place_of_birth || 'N/A',
+          dia_chi: data.address || 'N/A',
+          major: data.major || 'N/A',
+          specialization: data.specialization || 'N/A',
+          department: data.department || 'N/A',
+          cohort: data.cohort || 'N/A',
+          training_program: data.training_program || 'N/A',
+          academic_status: data.academic_status || 'Đang học',
+        });
       }
     } catch (e) {
-      console.error("Lỗi khi tải thông tin sinh viên:", e);
+      console.error('Lỗi khi tải thông tin sinh viên:', e);
+    }
+  };
+
+  const fetchLecturerProfile = async (lecturer_id) => {
+    if (!lecturer_id) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/lecturers/${lecturer_id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLecturerProfile(data);
+      }
+    } catch (e) {
+      console.error('Lỗi khi tải thông tin giảng viên:', e);
     }
   };
 
   const fetchLogs = async () => {
     try {
-      const res = await apiFetch(`${API_BASE}/api/attendance`);
-      if (res.ok) {
-        const data = await res.json();
-        const newLogs = data.logs || [];
-        
-        setLogs(prevLogs => {
-          // If logged in user is a student, compare incoming logs to trigger checkin alert
-          if (user && isStudent && user.mssv) {
-            const prevStudentLogs = prevLogs.filter(log => log.mssv === user.mssv);
-            const newStudentLogs = newLogs.filter(log => log.mssv === user.mssv);
-            
-            if (newStudentLogs.length > 0) {
-              const latestNew = newStudentLogs[0];
-              const latestPrev = prevStudentLogs[0];
-              if (!latestPrev || latestNew.id !== latestPrev.id) {
-                const newNotif = {
-                  id: latestNew.id || Date.now(),
-                  message: `Bạn vừa được điểm danh tự động [${latestNew.trang_thai}] tại Buổi học số ${latestNew.ma_buoi_hoc}!`,
-                  timestamp: new Date().toLocaleTimeString(),
-                  read: false
-                };
-                setNotifications(prev => [newNotif, ...prev]);
-                showToast(`🔔 Hệ thống: Bạn vừa được điểm danh tự động [${latestNew.trang_thai}] tại Buổi học số ${latestNew.ma_buoi_hoc}!`);
-              }
+      const data = await attendanceApi.getRecentLogs();
+      const newLogs = data.logs || [];
+      setLogs((prevLogs) => {
+        if (user && isStudent && studentMssv) {
+          const prevStudentLogs = prevLogs.filter((log) => log.mssv === studentMssv);
+          const newStudentLogs = newLogs.filter((log) => log.mssv === studentMssv);
+          if (newStudentLogs.length > 0) {
+            const latestNew = newStudentLogs[0];
+            const latestPrev = prevStudentLogs[0];
+            if (!latestPrev || latestNew.id !== latestPrev.id) {
+              const newNotif = {
+                id: latestNew.id || Date.now(),
+                message: `Bạn vừa được điểm danh tự động [${latestNew.trang_thai}] tại Buổi học số ${latestNew.ma_buoi_hoc}!`,
+                timestamp: new Date().toLocaleTimeString(),
+                read: false,
+              };
+              setNotifications((prev) => [newNotif, ...prev]);
+              showToast(`🔔 Bạn vừa được điểm danh [${latestNew.trang_thai}] tại Buổi ${latestNew.ma_buoi_hoc}!`);
             }
           }
-          return newLogs;
-        });
-      }
+        }
+        return newLogs;
+      });
     } catch (e) {
       console.error(e);
     }
   };
 
-  // If not logged in, render the login page
+  // Session + logs — chỉ 1 useEffect
+  useEffect(() => {
+    if (!user) {
+      const savedUser = localStorage.getItem('ptit_user');
+      if (savedUser) {
+        try {
+          const parsed = JSON.parse(savedUser);
+          setUser(parsed);
+          const role = (parsed.role || '').toLowerCase();
+          if (role === 'sinh_vien' || role === 'student') {
+            fetchStudentProfile(parsed.mssv || parsed.username);
+          } else if (role === 'giang_vien' || role === 'lecturer') {
+            fetchLecturerProfile(parsed.lecturer_id);
+          }
+        } catch {
+          localStorage.removeItem('ptit_user');
+        }
+      }
+    }
+
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  const handleLoginSuccess = (userData) => {
+    setUser(userData);
+    localStorage.setItem('ptit_user', JSON.stringify(userData));
+    showToast('Đăng nhập thành công!');
+    const role = (userData.role || '').toLowerCase();
+    if (role === 'sinh_vien' || role === 'student') {
+      fetchStudentProfile(userData.mssv || userData.username);
+    } else if (role === 'giang_vien' || role === 'lecturer') {
+      fetchLecturerProfile(userData.lecturer_id);
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setStudentProfile(null);
+    setLecturerProfile(null);
+    setActiveMenu('home');
+    localStorage.removeItem('ptit_user');
+    localStorage.removeItem('ptit_active_menu');
+    showToast('Đã đăng xuất khỏi hệ thống.');
+  };
+
+  useEffect(() => {
+    localStorage.setItem('ptit_active_menu', activeMenu);
+  }, [activeMenu]);
+
+  // Chưa đăng nhập
   if (!user) {
     return (
       <>
@@ -224,13 +292,98 @@ function App() {
     );
   }
 
-  // Define fallback profile if database loading is in progress or not found
   const profileToRender = studentProfile || {
-    mssv: user.mssv || 'N/A',
+    mssv: studentMssv || 'N/A',
     ho_ten: user.ho_ten || user.username,
-    lop_base: user.lop_base || 'N/A'
+    lop_base: user.lop_base || 'N/A',
   };
 
+  const lecturerProfileToRender = lecturerProfile || {
+    lecturer_id: user.lecturer_id || 'N/A',
+    full_name: user.ho_ten || user.username,
+  };
+
+  // User object truyền xuống component SV (có mssv chuẩn)
+  const userForStudent = isStudent
+    ? { ...user, mssv: studentMssv }
+    : user;
+
+  const renderContent = () => {
+    switch (activeMenu) {
+      case 'home':
+        return (
+          <>
+            {isStudent && <CourseInfoCard studentProfile={profileToRender} />}
+            {isLecturer && <LecturerInfoCard lecturerProfile={lecturerProfileToRender} />}
+            {!isStudent && !isLecturer && <AdminHomeDashboard />}
+            <AttendanceLogs
+              logs={
+                isStudent && studentMssv
+                  ? logs.filter((l) => l.mssv === studentMssv)
+                  : logs
+              }
+            />
+          </>
+        );
+
+      // —— Student ——
+      case 'course_registration':
+        return <CourseRegistration user={userForStudent} showToast={showToast} />;
+      case 'my_classes':
+        return <MyClasses user={userForStudent} showToast={showToast} />;
+      case 'submit_leave':
+        return <SubmitLeave user={userForStudent} showToast={showToast} />;
+      case 'refresh_biometrics':
+        return <FaceBiometrics user={userForStudent} showToast={showToast} />;
+      case 'timetable':
+        return <StudentTimetable user={userForStudent} showToast={showToast} />;
+
+      // —— Lecturer ——
+      case 'lecturer_class_management':
+        return <LecturerClassesManagement user={user} showToast={showToast} />;
+      case 'teaching_schedule':
+        return <TeachingSchedule user={user} showToast={showToast} />;
+      case 'manual_checkin':
+        return <ManualCheckin user={user} showToast={showToast} />;
+      case 'summary_report':
+        return <SummaryReport user={user} showToast={showToast} />;
+      case 'leave_requests':
+        return <LeaveRequests API_BASE={API_BASE} showToast={showToast} />;
+      case 'lecturer_timetable':
+        return <LecturerTimetable user={user} showToast={showToast} />;
+
+      // —— Admin ——
+      case 'admin_class_management':
+        return <CreditClassesManagement showToast={showToast} />;
+      case 'faculties_management':
+        return <FacultiesManagement API_BASE={API_BASE} showToast={showToast} />;
+      case 'majors_management':
+        return <MajorsManagement API_BASE={API_BASE} showToast={showToast} />;
+
+      case 'lecturers_management':
+        return <LecturersManagement API_BASE={API_BASE} showToast={showToast} />;
+      case 'rooms_management':
+        return <RoomsManagement API_BASE={API_BASE} showToast={showToast} />;
+      case 'subjects_management':
+        return <SubjectsManagement showToast={showToast} />;
+      case 'students_list':
+        return <StudentsManagement showToast={showToast} />;
+      case 'camera_dashboard':
+      case 'attendance':
+        return <CameraDashboard showToast={showToast} onAttendanceLogged={fetchLogs} />;
+      case 'pending_faces':
+        return <PendingFaces showToast={showToast} />;
+      case 'schedule':
+        return <ScheduleAdmin showToast={showToast} />;
+
+      default:
+        return (
+          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+            Trang đang được cập nhật
+          </div>
+        );
+    }
+  };
   return (
     <div style={styles.appWrapper}>
       <Header 
@@ -249,7 +402,7 @@ function App() {
           />
         )}
 
-         <main style={{ ...styles.contentArea, padding: isMobile ? "1rem" : "1.5rem 2rem" }}>
+        <main style={{ ...styles.contentArea, padding: isMobile ? "1rem" : "1.5rem 2rem" }}>
           {isMobile && (
             <div style={{ marginBottom: "1rem" }}>
               <Sidebar 
@@ -259,41 +412,9 @@ function App() {
               />
             </div>
           )}
-          <div style={styles.welcomeHeader}>
-            <h2 style={styles.welcomeText}>
-              👋 Chào mừng {isStudent ? profileToRender.ho_ten : (isLecturer ? 'Giảng viên' : 'Quản trị viên')} {isStudent && `(${activeMenu === 'home' ? 'Trang chủ' : activeMenu === 'my_classes' ? 'Lớp học của tôi' : activeMenu === 'course_registration' ? 'Đăng ký học phần' : activeMenu === 'submit_leave' ? 'Xin nghỉ phép' : 'Sinh trắc học'})`}
-            </h2>
-            <div style={styles.dateText}>
-              <Calendar size={14} /> {getVietnameseDate()}
-            </div>
-          </div>
-
-          {activeMenu === 'home' ? (
-            <>
-              {isStudent && (
-                <>
-                  <StudentInfoCard studentProfile={profileToRender} />
-                  <CourseInfoCard studentProfile={profileToRender} />
-                </>
-              )}
-              <AttendanceLogs 
-                logs={isStudent && user.mssv ? logs.filter(log => log.mssv === user.mssv) : logs} 
-              />
-            </>
-          ) : (
-            <AIAttendance 
-              key={activeMenu}
-              API_BASE={API_BASE} 
-              showToast={showToast} 
-              onAttendanceLogged={fetchLogs} 
-              user={user}
-              activeMenu={activeMenu}
-              onUnauthorized={handleLogout}
-            />
-          )}
+          {renderContent()}
         </main>
       </div>
-
       <Toast toast={toast} />
     </div>
   );

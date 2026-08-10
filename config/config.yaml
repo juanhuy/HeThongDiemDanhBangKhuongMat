@@ -12,7 +12,7 @@ camera:
 database:
   db_type: "mysql"
   host: "127.0.0.1"
-  port: 3306
+  port: 3309
   user: "root"
   password: ""
   db_name: "ptit_diem_danh"

@@ -396,9 +396,6 @@ def enroll_bulk_administrative_class(
         raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp tín chỉ {ma_lop_tc}")
     
     students = db.query(Student).filter(Student.administrative_class == lop_hanh_chinh.strip()).all()
-    if not students:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy sinh viên nào thuộc lớp hành chính {lop_hanh_chinh}")
-    
     new_schedules = db.query(ClassSchedule).filter(ClassSchedule.class_id == ma_lop_tc.strip()).all()
     count = 0
     skipped_conflict = 0
@@ -410,7 +407,6 @@ def enroll_bulk_administrative_class(
         ).first()
         
         if not existing:
-            # Kiểm tra quy định đăng ký (đợt, kỳ, sĩ số, tiên quyết, khóa, trùng môn, tín chỉ, học vụ)
             ok, err = _validate_registration(db, st, cc, extra_count=count)
             if not ok:
                 skipped_invalid += 1
@@ -436,7 +432,7 @@ def enroll_bulk_administrative_class(
                                     break
                         if has_conflict:
                             break
-
+            
             if has_conflict:
                 skipped_conflict += 1
                 continue
@@ -479,49 +475,38 @@ def add_schedule(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Dinh dang ngay (YYYY-MM-DD) hoac gio (HH:MM:SS) khong hop le: {e}")
 
-    # Kiểm tra xem phòng học có bị trùng lịch vào giờ này không (thời lượng mỗi buổi học là 3 tiếng - 10800 giây)
-    conflicts = db.query(ClassSchedule).filter(
-        ClassSchedule.room == phong_hoc.strip(),
-        ClassSchedule.study_date == dt_date
-    ).all()
+#     if data.semester_id: cc.semester_id = data.semester_id.strip()
+#     if data.class_group is not None: cc.class_group = data.class_group.strip() if data.class_group.strip() else None
+#     if data.class_type is not None: cc.class_type = data.class_type.strip()
+#     if data.start_week is not None: cc.start_week = data.start_week
+#     if data.end_week is not None: cc.end_week = data.end_week
+
+#     if data.max_students is not None:
+#         if data.max_students < cc.current_students:
+#             raise HTTPException(status_code=400, detail=f"Lớp đang có {cc.current_students} SV, không thể giảm xuống {data.max_students}.")
+#         cc.max_students = data.max_students
+
+#     if data.status: cc.status = data.status.strip()
+
+#     if data.target_classes is not None:
+#         db.query(ExpectedClassMapping).filter(ExpectedClassMapping.credit_class_id == cc.class_id).delete()
+#         for admin_class_id in data.target_classes:
+#             db.add(ExpectedClassMapping(credit_class_id=cc.class_id, admin_class_id=admin_class_id.strip()))
+
+#     db.commit()
+#     db.refresh(cc)
     
-    for c in conflicts:
-        c_seconds = c.start_time.hour * 3600 + c.start_time.minute * 60 + c.start_time.second
-        new_seconds = dt_time.hour * 3600 + dt_time.minute * 60 + dt_time.second
-        if abs(c_seconds - new_seconds) < 10800:
-            conflict_class_id = c.class_id
-            conflict_time_str = c.start_time.strftime("%H:%M")
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Trùng lịch: Phòng {phong_hoc.strip()} đã có lớp {conflict_class_id} học lúc {conflict_time_str} cùng ngày."
-            )
+#     return {"status": "success", "message": f"Đã cập nhật thành công lớp {cc.class_id}", "data": {"class_id": cc.class_id, "status": cc.status}}
 
-    # Kiểm tra trùng lịch giảng viên (thời lượng lệch dưới 3 tiếng)
-    if cc.lecturer_id:
-        lecturer_conflicts = db.query(ClassSchedule).join(CreditClass).filter(
-            CreditClass.lecturer_id == cc.lecturer_id,
-            ClassSchedule.study_date == dt_date,
-            ClassSchedule.class_id != ma_lop_tc.strip()
-        ).all()
-        for lc in lecturer_conflicts:
-            lc_seconds = lc.start_time.hour * 3600 + lc.start_time.minute * 60 + lc.start_time.second
-            new_seconds = dt_time.hour * 3600 + dt_time.minute * 60 + dt_time.second
-            if abs(lc_seconds - new_seconds) < 10800:
-                conflict_time_str = lc.start_time.strftime("%H:%M")
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Trùng lịch giảng viên: Giảng viên phụ trách đã có lịch dạy lớp {lc.class_id} lúc {conflict_time_str} cùng ngày."
-                )
-
-    sched = ClassSchedule(
-        class_id=ma_lop_tc.strip(),
-        study_date=dt_date,
-        room=phong_hoc.strip(),
-        start_time=dt_time
-    )
-    db.add(sched)
-    db.commit()
-    return {"status": "success", "message": f"Da them lich hoc cho lop {ma_lop_tc} tai phong {phong_hoc}"}
+# @router.delete("/credit-classes/{class_id}", summary="Delete Credit Class")
+# def delete_credit_class(class_id: str, db: Session = Depends(get_db)):
+#     """
+#     Xóa một lớp tín chỉ ra khỏi hệ thống.
+#     Quy tắc an toàn: Từ chối yêu cầu xóa nếu lớp học đang có sinh viên đăng ký (current_students > 0).
+#     """
+#     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
+#     if not cc: raise HTTPException(status_code=404, detail="Không tìm thấy lớp học tín chỉ.")
+#     if cc.current_students > 0: raise HTTPException(status_code=400, detail=f"Không thể xóa! Lớp này đang có {cc.current_students} sinh viên.")
 
 @router.get("/attendance", dependencies=[Depends(get_current_user)])
 def get_attendance_history(
@@ -735,58 +720,16 @@ def update_schedule(
             raise HTTPException(status_code=404, detail="Không tìm thấy lịch học")
             
         dt_date = datetime.strptime(study_date.strip(), "%Y-%m-%d").date()
+        dt_time = datetime.strptime(start_time.strip(), "%H:%M:%S").time()
         
-        # Hỗ trợ định dạng cả HH:MM và HH:MM:SS
-        time_str = start_time.strip()
-        if len(time_str) == 5:
-            time_str += ":00"
-        dt_time = datetime.strptime(time_str, "%H:%M:%S").time()
-        
-        # 1. Kiểm tra trùng lịch phòng học (loại trừ chính bản ghi schedule_id này)
-        room_conflicts = db.query(ClassSchedule).filter(
-            ClassSchedule.room == room.strip(),
-            ClassSchedule.study_date == dt_date,
-            ClassSchedule.schedule_id != schedule_id
-        ).all()
-        
-        new_seconds = dt_time.hour * 3600 + dt_time.minute * 60 + dt_time.second
-        for c in room_conflicts:
-            c_seconds = c.start_time.hour * 3600 + c.start_time.minute * 60 + c.start_time.second
-            if abs(c_seconds - new_seconds) < 10800:
-                conflict_class_id = c.class_id
-                conflict_time_str = c.start_time.strftime("%H:%M")
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Trùng lịch: Phòng {room.strip()} đã có lớp {conflict_class_id} học lúc {conflict_time_str} cùng ngày."
-                )
-
-        # 2. Kiểm tra trùng lịch giảng viên (loại trừ chính bản ghi schedule_id này)
-        if sched.credit_class and sched.credit_class.lecturer_id:
-            lecturer_conflicts = db.query(ClassSchedule).join(CreditClass).filter(
-                CreditClass.lecturer_id == sched.credit_class.lecturer_id,
-                ClassSchedule.study_date == dt_date,
-                ClassSchedule.schedule_id != schedule_id
-            ).all()
-            for lc in lecturer_conflicts:
-                lc_seconds = lc.start_time.hour * 3600 + lc.start_time.minute * 60 + lc.start_time.second
-                if abs(lc_seconds - new_seconds) < 10800:
-                    conflict_time_str = lc.start_time.strftime("%H:%M")
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Trùng lịch giảng viên: Giảng viên phụ trách đã có lịch dạy lớp {lc.class_id} lúc {conflict_time_str} cùng ngày."
-                    )
-                    
         sched.study_date = dt_date
         sched.room = room.strip()
         sched.start_time = dt_time
         db.commit()
         return {"status": "success", "message": "Cập nhật lịch học thành công"}
-    except HTTPException:
-        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
-
 @router.delete("/lich_hoc_chi_tiet/{schedule_id}", dependencies=[Depends(require_admin)])
 def delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
     try:
@@ -1485,5 +1428,3 @@ def reject_leave(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
-
-

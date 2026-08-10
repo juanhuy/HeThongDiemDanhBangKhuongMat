@@ -1,6 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.student import Student, UserProfile
-from app.models.account import Account
+from app.models import Student, UserProfile, Account, ClassEnrollment, CreditClass, AdministrativeClass, Faculty, Major
 from app.schemas.student import StudentCreate, StudentUpdate
 from sqlalchemy import or_
 from app.core.security import get_password_hash
@@ -18,13 +17,10 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
     query = db.query(Student)
     
     if lecturer_id:
-        from app.models.student_class import StudentClassEnrollment
-        from app.models.credit_class import CreditClass
-        query = query.join(StudentClassEnrollment).join(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip())
+        query = query.join(ClassEnrollment).join(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip())
         
     if search:
         # Tìm kiếm theo tên (trong UserProfile) hoặc MSSV
-        from app.models.student import UserProfile
         query = query.join(UserProfile).filter(or_(
             UserProfile.full_name.ilike(f"%{search}%"),
             Student.student_id.ilike(f"%{search}%")
@@ -42,30 +38,81 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
 def create_student(db: Session, student: StudentCreate):
     default_password_hash = get_password_hash("123456")
     
-    new_account = Account(
-        username=student.student_id.strip().lower(),
-        password_hash=default_password_hash,
-        role="sinh_vien",
-        is_active=True
-    )
-    db.add(new_account)
-    db.flush()
+    username_lower = student.student_id.strip().lower()
+    existing_account = db.query(Account).filter(Account.username == username_lower).first()
+    
+    if existing_account:
+        new_account = existing_account
+    else:
+        new_account = Account(
+            username=username_lower,
+            password_hash=default_password_hash,
+            role="sinh_vien",
+            is_active=True
+        )
+        db.add(new_account)
+        db.flush()
     
     # Tạo UserProfile liên kết
-    profile = UserProfile(
-        account_id=new_account.account_id,
-        full_name=student.full_name,
-        personal_email=student.email,
-        phone_number=student.phone_number
-    )
-    db.add(profile)
-    db.flush()
+    profile = db.query(UserProfile).filter(UserProfile.account_id == new_account.account_id).first()
+    if not profile:
+        profile = UserProfile(
+            account_id=new_account.account_id,
+            full_name=student.full_name,
+            personal_email=student.email,
+            phone_number=student.phone_number,
+            date_of_birth=getattr(student, 'date_of_birth', None),
+            gender=getattr(student, 'gender', None),
+            citizen_id=getattr(student, 'citizen_id', None),
+            ethnicity=getattr(student, 'ethnicity', None),
+            religion=getattr(student, 'religion', None),
+            nationality=getattr(student, 'nationality', 'Việt Nam'),
+            place_of_birth=getattr(student, 'place_of_birth', None),
+            address=getattr(student, 'address', None)
+        )
+        db.add(profile)
+        db.flush()
     
+    # Đảm bảo Khoa tồn tại
+    if student.faculty_id:
+        fac_id = student.faculty_id.strip()
+        faculty = db.query(Faculty).filter(Faculty.faculty_id == fac_id).first()
+        if not faculty:
+            faculty = Faculty(faculty_id=fac_id, faculty_name=fac_id)
+            db.add(faculty)
+            db.flush()
+            
+    # Đảm bảo Ngành tồn tại
+    if student.major_id:
+        maj_id = student.major_id.strip()
+        major = db.query(Major).filter(Major.major_id == maj_id).first()
+        if not major:
+            major = Major(major_id=maj_id, major_name=maj_id, faculty_id=student.faculty_id)
+            db.add(major)
+            db.flush()
+
+    # Đảm bảo AdministrativeClass tồn tại
+    if student.administrative_class:
+        class_id = student.administrative_class.strip()
+        admin_class = db.query(AdministrativeClass).filter(AdministrativeClass.class_id == class_id).first()
+        if not admin_class:
+            admin_class = AdministrativeClass(
+                class_id=class_id,
+                class_name=class_id,
+                faculty_id=student.faculty_id,
+                major_id=student.major_id,
+                cohort=student.cohort or "Chưa rõ"
+            )
+            db.add(admin_class)
+            db.flush()
+
     db_student = Student(
         student_id=student.student_id.strip().upper(),
         profile_id=profile.profile_id,
-        administrative_class=student.administrative_class,
-        major=student.major,
+        administrative_class_id=student.administrative_class,
+        major_id=student.major_id,
+        specialization=student.specialization, # Mới thêm
+        faculty_id=student.faculty_id,         # Mới thêm
         cohort=student.cohort,
         training_program=student.training_program,
         academic_status=normalize_academic_status(student.academic_status) or ACADEMIC_STATUS_ACTIVE
@@ -81,7 +128,7 @@ def update_student(db: Session, db_student: Student, student_update: StudentUpda
     
     # Cập nhật thông tin sinh viên và hồ sơ cá nhân
     for key, value in update_data.items():
-        if key in ["full_name", "email", "phone_number"]:
+        if key in ["full_name", "email", "phone_number", "address"]:
             if not db_student.profile:
                 profile = UserProfile(
                     account_id=None,
@@ -97,9 +144,39 @@ def update_student(db: Session, db_student: Student, student_update: StudentUpda
                 db_student.profile.personal_email = value
             elif key == "phone_number":
                 db_student.profile.phone_number = value
+            elif key == "address":
+                db_student.profile.address = value
         else:
-            setattr(db_student, key, value)
+            if key == "faculty_id" and value:
+                fac_id = value.strip()
+                faculty = db.query(Faculty).filter(Faculty.faculty_id == fac_id).first()
+                if not faculty:
+                    faculty = Faculty(faculty_id=fac_id, faculty_name=fac_id)
+                    db.add(faculty)
+                    db.flush()
+                    
+            if key == "major_id" and value:
+                maj_id = value.strip()
+                major = db.query(Major).filter(Major.major_id == maj_id).first()
+                if not major:
+                    major = Major(major_id=maj_id, major_name=maj_id, faculty_id=db_student.faculty_id)
+                    db.add(major)
+                    db.flush()
 
+            if key == "administrative_class" and value:
+                class_id = value.strip()
+                admin_class = db.query(AdministrativeClass).filter(AdministrativeClass.class_id == class_id).first()
+                if not admin_class:
+                    admin_class = AdministrativeClass(
+                        class_id=class_id,
+                        class_name=class_id,
+                        faculty_id=db_student.faculty_id,
+                        major_id=db_student.major_id,
+                        cohort=db_student.cohort or "Chưa rõ"
+                    )
+                    db.add(admin_class)
+                    db.flush()
+            setattr(db_student, key, value)
     # Logic nghiệp vụ: chuẩn hoá trạng thái + khoá/mở khoá tài khoản
     if "academic_status" in update_data:
         new_status = normalize_academic_status(update_data["academic_status"])

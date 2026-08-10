@@ -5,6 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+# Đã bỏ api_schedules ở đây vì nó đã được gom vào api_router mới
+from app.api.endpoints import api_timetable 
+
 # Thêm đường dẫn gốc để import config
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
@@ -14,22 +21,10 @@ from config.settings import settings
 from app.db.session import engine, Base
 from app.core.require import require_admin, get_current_user
 
-# Import các model để SQLAlchemy nhận diện được cấu trúc bảng (trigger reload 1)
-from app.models.account import Account
-from app.models.student import Student
-from app.models.subject import Subject 
-from app.models.lecturer import Lecturer
-from app.models.face_feature import FaceFeature
-from app.models.credit_class import CreditClass
-from app.models.student_class import StudentClassEnrollment
-from app.models.class_schedule import ClassSchedule
-from app.models.attendance_history import AttendanceHistory
-from app.models.leave_request import LeaveRequest
-from app.models.system_setting import SystemSetting
-from app.models.audit_log import AuditLog
-from app.models.notification import Notification
+# Import GỌN NHẸ: Chỉ cần import app.models là SQLAlchemy tự nhận diện đủ các bảng
+import app.models 
 
-# Tạo bảng (Nếu dùng Alembic thì bỏ dòng này, nhưng để test nhanh thì dùng)
+# Tạo bảng (Nếu Database trống thì sẽ tự động tạo bảng)
 Base.metadata.create_all(bind=engine)
 
 # Tự động cập nhật cấu trúc cơ sở dữ liệu nếu cột lecturer_id chưa tồn tại
@@ -68,17 +63,7 @@ try:
 except Exception as e:
     print(f">>> DATABASE UPDATE ERROR: {e}")
 
-# Backfill: đồng bộ current_students theo số sinh viên đang đăng ký thực tế
-try:
-    with engine.begin() as conn:
-        conn.execute(text(
-            "UPDATE credit_classes c SET current_students = "
-            "(SELECT COUNT(*) FROM student_class_enrollment s WHERE s.class_id = c.class_id)"
-        ))
-except Exception as e:
-    print(f">>> DATABASE BACKFILL ERROR: {e}")
-
-# Tự động thêm cột thời gian (created_at/updated_at) nếu còn thiếu — cho môi trường khác
+# Tự động thêm cột thời gian (created_at/updated_at) nếu còn thiếu
 _timestamp_columns = [
     ("accounts", "updated_at", "DATETIME NULL"),
     ("students", "created_at", "DATETIME NULL"),
@@ -102,9 +87,16 @@ except Exception as e:
 app = FastAPI(
     title="AI Attendance API",
     description="API cho hệ thống điểm danh bằng khuôn mặt",
-    version="1.0.0"
+    version="2.0.0"
 )
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+    
 # Cấu hình CORS
 app.add_middleware(
     CORSMiddleware,
@@ -119,7 +111,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Thư mục lưu ảnh khuôn mặt (KHÔNG mount công khai; phục vụ qua endpoint có auth)
+# Thư mục lưu ảnh khuôn mặt
 images_dir = os.path.join(project_root, settings.database.get("images_dir", "./database/registered_images"))
 os.makedirs(images_dir, exist_ok=True)
 
@@ -128,24 +120,60 @@ from app.api.endpoints import (
     api_subject,
     api_admin_students,
     api_admin_lecturers,
-    api_admin_faces,
+    api_admin_classrooms,
     api_auth,
-    api_credit_classes,
     api_ai,
-    api_demo
+    api_faculty,
+    api_major
 )
 
-# Đăng ký các Router từ các file api_
-app.include_router(api_auth.router, prefix="/api/auth", tags=["Xác thực"])
-app.include_router(api_credit_classes.router, prefix="/api", tags=["Lớp học & Điểm danh"])
-app.include_router(api_ai.router, prefix="/api", dependencies=[Depends(get_current_user)], tags=["AI & Nhận diện"])
+try:
+    from app.api.endpoints import api_credit_classes
+except ImportError:
+    api_credit_classes = None
 
-# Các Router quản trị (chỉ Admin mới được truy cập)
-app.include_router(api_subject.router, prefix="/api/subjects", tags=["Quản lý Môn học"])
-app.include_router(api_admin_students.router, prefix="/api/admin/students", dependencies=[Depends(require_admin)], tags=["Admin - Quản lý Sinh viên"])
-app.include_router(api_admin_lecturers.router, prefix="/api/admin/lecturers", dependencies=[Depends(require_admin)], tags=["Admin - Quản lý Giảng viên"])
-app.include_router(api_admin_faces.router, prefix="/api/admin/faces", dependencies=[Depends(require_admin)], tags=["Admin - Quản lý Dữ liệu khuôn mặt"])
-app.include_router(api_demo.router, prefix="/api/admin/demo", dependencies=[Depends(require_admin)], tags=["Admin - Bảng điều khiển Demo"])
+try:
+    from app.api.endpoints import api_demo
+except ImportError:
+    api_demo = None
+
+# Import API Router tổng (bao gồm các router phân tách mới)
+try:
+    from app.api.endpoints.api_router import api_router as class_management_router
+except ImportError:
+    class_management_router = None
+
+def include_optional_router(module, prefix: str, tags: list[str], dependencies=None):
+    if module is None:
+        return
+    router = getattr(module, "router", None) if not hasattr(module, "routes") else module
+    if router is not None:
+        kwargs = {"prefix": prefix, "tags": tags}
+        if dependencies:
+            kwargs["dependencies"] = dependencies
+        app.include_router(router, **kwargs)
+
+# Đăng ký các Router từ các file API
+include_optional_router(api_auth, prefix="/api/auth", tags=["Xác thực"])
+include_optional_router(api_ai, prefix="/api", tags=["AI & Nhận diện"])
+include_optional_router(api_timetable, prefix="/api", tags=["Thời khóa biểu"])
+
+if class_management_router is not None:
+    app.include_router(class_management_router, prefix="/api")
+
+if api_credit_classes is not None:
+    include_optional_router(api_credit_classes, prefix="/api", tags=["Lớp học & Điểm danh"])
+
+# Các Router quản lý (Admin)
+include_optional_router(api_subject, prefix="/api/subjects", tags=["Quản lý Môn học"])
+include_optional_router(api_faculty, prefix="/api/faculties", tags=["Quản lý Khoa"])
+include_optional_router(api_major, prefix="/api/majors", tags=["Quản lý Ngành"])
+include_optional_router(api_admin_students, prefix="/api/admin/students", tags=["Admin - Quản lý Sinh viên"])
+include_optional_router(api_admin_students, prefix="/api/students", tags=["Sinh viên (Alias)"])
+include_optional_router(api_admin_lecturers, prefix="/api/admin/lecturers", tags=["Admin - Quản lý Giảng viên"])
+include_optional_router(api_admin_classrooms, prefix="/api/admin/classrooms", tags=["Admin - Quản lý Phòng học"])
+if api_demo is not None:
+    include_optional_router(api_demo, prefix="/api/admin/demo", tags=["Admin - Bảng điều khiển Demo"])
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():

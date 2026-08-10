@@ -11,7 +11,7 @@ def print_json(data):
 
 def wait_for_user(step):
     print(f"\n[!] TẠM DỪNG TẠI BƯỚC: {step}")
-    input(">>> Nhấn ENTER để tiếp tục...")
+    pass
 
 def run_lecturer_tests():
     print("====================================================")
@@ -75,7 +75,7 @@ def run_lecturer_tests():
     print("\n[CASE 3.1] Lấy danh sách toàn bộ giảng viên:")
     res = requests.get(f"{BASE_URL}/")
     status_msg = record_test("Case 3.1: Lấy danh sách không điều kiện (200)", res.status_code == 200)
-    print(" ->", res.status_code, status_msg, f"| Đang có tổng số: {len(res.json()) if res.status_code == 200 else 0} giảng viên")
+    print(" ->", res.status_code, status_msg, "| Đang có tổng số:", len(res.json()) if res.status_code == 200 else f"Lỗi: {res.text}")
 
     print(f"\n[CASE 3.2] Tìm kiếm giảng viên với từ khóa '{lecturer_id}':")
     res = requests.get(f"{BASE_URL}/", params={"search": lecturer_id})

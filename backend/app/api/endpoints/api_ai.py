@@ -3,17 +3,17 @@ import sys
 import shutil
 import cv2 as cv
 import numpy as np
-import csv
-import time
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 
+# Import các Model Database mới
+from app.models import Student, ClassSession, ClassEnrollment, AttendanceRecord, FaceFeature
 
 # Thêm đường dẫn gốc để import FaceAnalyzer
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
@@ -22,17 +22,17 @@ from config.settings import settings
 from app.models.account import Account
 from app.models.lecturer import Lecturer
 from app.models.subject import Subject
-from app.models.student import Student, UserProfile
 from app.models.credit_class import CreditClass
-from app.models.student_class import StudentClassEnrollment
-from app.models.class_schedule import ClassSchedule
-from app.models.attendance_history import AttendanceHistory
-from app.models.face_feature import FaceFeature
-from app.core.student_status import is_active_student
 from app.models.leave_request import LeaveRequest
+from app.core.student_status import is_active_student
 
 router = APIRouter()
 
+analyzer = FaceAnalyzer()
+
+db_config = settings.database
+images_dir = os.path.join(project_root, db_config.get("images_dir", "./database/registered_images"))
+os.makedirs(images_dir, exist_ok=True)
 
 @router.get("/images/{filename}")
 def serve_face_image(filename: str):
@@ -45,264 +45,94 @@ def serve_face_image(filename: str):
         raise HTTPException(status_code=404, detail="Không tìm thấy ảnh.")
     return FileResponse(path, media_type="image/jpeg")
 
-# Khởi tạo FaceAnalyzer
-analyzer = FaceAnalyzer()
+# =========================================================================
+# HÀM BỔ TRỢ: LOGIC ĐIỂM DANH
+# =========================================================================
+def record_attendance_db(db: Session, mssv: str, session_id: int = None, room_id: str = None, score: float = 0.0) -> tuple:
+    """Ghi nhận điểm danh vào Database. Trạng thái Đi muộn/Đúng giờ do MySQL Trigger tự xử lý!"""
+    if mssv in ["Spoof/Fake", "Unknown"]:
+        return False, "Người lạ hoặc giả mạo", None
 
-# Đọc cấu hình
-db_config = settings.database
-images_dir = os.path.join(project_root, db_config.get("images_dir", "./database/registered_images"))
-os.makedirs(images_dir, exist_ok=True)
-
-att_config = settings.attendance
-log_file = os.path.join(project_root, att_config.get("log_file", "./logs/attendance_log.csv"))
-os.makedirs(os.path.dirname(log_file), exist_ok=True)
-cooldown_seconds = att_config.get("cooldown_seconds", 30)
-
-# Cooldown tracking
-last_attendance = {}
-
-def init_csv_file():
-    if not os.path.exists(log_file):
-        with open(log_file, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["Thời gian", "MSSV", "Họ tên", "Lớp chuyên ngành", "Mã buổi học", "Lớp tín chỉ", "Phòng học"])
-
-init_csv_file()
-
-def record_attendance_sqlalchemy(db: Session, mssv: str, ma_buoi_hoc: int = None, phong_hoc: str = None, score: float = 0.0) -> tuple:
-    """
-    Quy trình điểm danh tự động 6 bước sử dụng SQLAlchemy
-    """
-    if mssv == "Spoof/Fake":
-        return False, "Phát hiện giả mạo khuôn mặt!", None
-    if mssv == "Unknown":
-        return False, "Người lạ/Chưa đăng ký mặt.", None
-
-    # Tìm thông tin sinh viên
+    # 1. Kiểm tra sinh viên
     student = db.query(Student).filter(Student.student_id == mssv).first()
     if not student or not is_active_student(student.academic_status):
-        # Ở đây ta giả sử trạng thái học tập tương đương hồ sơ đã duyệt hoặc đang học
-        return False, "Người lạ/Chưa đăng ký mặt.", None
+        return False, "SV chưa đăng ký hoặc không còn học", None
 
     now = datetime.now()
-    today_str = now.strftime("%Y-%m-%d")
-    
-    session = None
-    if ma_buoi_hoc is not None:
-        # Ca học chỉ định sẵn
-        sched = db.query(ClassSchedule).filter(ClassSchedule.schedule_id == ma_buoi_hoc).first()
-        if sched:
-            session = {
-                "ma_buoi_hoc": sched.schedule_id,
-                "ma_lop_tc": sched.class_id,
-                "ngay_hoc": str(sched.study_date),
-                "phong_hoc": sched.room,
-                "gio_bat_dau": str(sched.start_time)
-            }
-        else:
-            return False, "Buổi học không tồn tại.", None
-    else:
-        # Tìm lịch học hôm nay
-        query = db.query(ClassSchedule)
-        if phong_hoc:
-            query = query.filter(ClassSchedule.room == phong_hoc.strip(), ClassSchedule.study_date == today_str)
-        else:
-            # Tìm tất cả lịch hôm nay
-            query = query.filter(ClassSchedule.study_date == today_str)
-            
-        rows = query.all()
-        if not rows:
-            return False, "Phòng không có lịch học.", None
+    target_session = None
 
-        # Lọc theo khung giờ học (trước 30 phút, sau 60 phút)
-        valid_sessions = []
-        for r in rows:
-            try:
-                clean_time = str(r.start_time).strip()
-                if len(clean_time) == 5:
-                    clean_time += ":00"
-                start_time = datetime.strptime(f"{today_str} {clean_time}", "%Y-%m-%d %H:%M:%S")
-                early_time = start_time - timedelta(minutes=30)
-                late_time = start_time + timedelta(minutes=60)
-                
-                if early_time <= now <= late_time:
-                    valid_sessions.append({
-                        "ma_buoi_hoc": r.schedule_id,
-                        "ma_lop_tc": r.class_id,
-                        "ngay_hoc": str(r.study_date),
-                        "phong_hoc": r.room,
-                        "gio_bat_dau": str(r.start_time)
-                    })
-            except Exception as e:
-                print(f"Loi phan tich thoi gian: {e}")
+    # 2. Tìm buổi học (ClassSession) phù hợp
+    if session_id:
+        target_session = db.query(ClassSession).filter(ClassSession.session_id == session_id).first()
+    elif room_id:
+        sessions = db.query(ClassSession).filter(
+            ClassSession.room_id == room_id,
+            ClassSession.session_date == now.date()
+        ).all()
+        
+        for s in sessions:
+            if s.start_time - timedelta(minutes=30) <= now <= s.end_time:
+                enrolled = db.query(ClassEnrollment).filter(
+                    ClassEnrollment.class_id == s.class_id,
+                    ClassEnrollment.student_id == mssv
+                ).first()
+                if enrolled:
+                    target_session = s
+                    break
 
-        if not valid_sessions:
-            # Chế độ thử nghiệm/Fallback: Lấy bất kỳ lịch học nào của ngày hôm nay tại phòng đó
-            if rows:
-                for r in rows:
-                    valid_sessions.append({
-                        "ma_buoi_hoc": r.schedule_id,
-                        "ma_lop_tc": r.class_id,
-                        "ngay_hoc": str(r.study_date),
-                        "phong_hoc": r.room,
-                        "gio_bat_dau": str(r.start_time)
-                    })
-            if not valid_sessions:
-                return False, "Sai ca học/Quét quá sớm.", None
+    if not target_session:
+        return False, "Không tìm thấy lịch học phù hợp", None
 
-        # Tìm buổi học sinh viên thực sự tham gia
-        session = valid_sessions[0]
-        for vs in valid_sessions:
-            enrolled = db.query(StudentClassEnrollment).filter(
-                StudentClassEnrollment.class_id == vs["ma_lop_tc"],
-                StudentClassEnrollment.student_id == mssv
-            ).first()
-            if enrolled:
-                session = vs
-                break
-
-    ma_buoi_hoc = session["ma_buoi_hoc"]
-    ma_lop_tc = session["ma_lop_tc"]
-    phong_hoc = session["phong_hoc"]
-    gio_bat_dau_str = session["gio_bat_dau"]
-
-    # Kiểm tra sinh viên có thuộc lớp tín chỉ không
-    enrolled = db.query(StudentClassEnrollment).filter(
-        StudentClassEnrollment.class_id == ma_lop_tc,
-        StudentClassEnrollment.student_id == mssv
+    # 3. Kiểm tra xem SV có đăng ký lớp này không
+    enrolled = db.query(ClassEnrollment).filter(
+        ClassEnrollment.class_id == target_session.class_id, 
+        ClassEnrollment.student_id == mssv
     ).first()
     if not enrolled:
-        return False, "SV không thuộc lớp tín chỉ này.", None
+        return False, "Không có tên trong danh sách lớp", None
 
-    sv_dict = {
-        "mssv": student.student_id,
-        "ho_ten": student.full_name,
-        "lop_base": student.administrative_class
-    }
+    # 4. Ghi nhận điểm danh
+    record = db.query(AttendanceRecord).filter(
+        AttendanceRecord.session_id == target_session.session_id,
+        AttendanceRecord.student_id == mssv
+    ).first()
 
-    # Kiểm tra xem sinh viên đã điểm danh cho buổi học này chưa
-    existing_att = db.query(AttendanceHistory).filter(
-        AttendanceHistory.student_id == mssv,
-        AttendanceHistory.schedule_id == ma_buoi_hoc
-    ).order_by(AttendanceHistory.check_in_time.asc()).first()
+    if record and record.recorded_at:
+        return True, record.status, student
 
-    if existing_att:
-        # Giữ nguyên kết quả điểm danh ban đầu (không tạo bản ghi mới, không bị đổi từ Đúng giờ thành Đi muộn)
-        return True, existing_att.status, sv_dict
-
-    # Đánh giá thời gian vào lớp (Đúng giờ, Đi muộn, hay Vắng không phép) cho lần quét đầu tiên
-    try:
-        clean_start = gio_bat_dau_str.strip()
-        if len(clean_start) == 5:
-            clean_start += ":00"
-        
-        # Xác định mốc thời gian của buổi học
-        study_date_str = session["ngay_hoc"]
-        start_datetime = datetime.strptime(f"{study_date_str} {clean_start}", "%Y-%m-%d %H:%M:%S")
-        end_datetime = start_datetime + timedelta(hours=3)  # Mỗi ca học/buổi học mặc định kéo dài 3 tiếng
-        
-        if now <= start_datetime:
-            trang_thai = "Đúng giờ"
-        elif start_datetime < now <= end_datetime:
-            trang_thai = "Đi muộn"
-        else:
-            trang_thai = "Vắng không phép"
-    except Exception as e:
-        print(f"Lỗi so sánh giờ học: {e}")
-        trang_thai = "Đúng giờ"
-
-    # Kiểm tra cooldown
-    current_ts = time.time()
-    last_time = last_attendance.get(mssv, 0)
-    if current_ts - last_time < cooldown_seconds:
-        return True, trang_thai, sv_dict
-
-    # Ghi nhận vào DB lần đầu
-    try:
-        new_att = AttendanceHistory(
+    if not record:
+        record = AttendanceRecord(
+            session_id=target_session.session_id,
             student_id=mssv,
-            schedule_id=ma_buoi_hoc,
-            status=trang_thai,
-            confirmed_by="AI"
+            recorded_at=now,
+            confidence_score=score
         )
-        db.add(new_att)
-        db.commit()
+        db.add(record)
+    else:
+        record.recorded_at = now
+        record.confidence_score = score
 
-        # Thông báo cho sinh viên khi được điểm danh
-        try:
-            from app.models.account import Account
-            from app.core.notify import notify
-            acc = db.query(Account).filter(Account.username == mssv.strip().lower()).first()
-            if acc:
-                notify(db, acc.username,
-                       f"Đã điểm danh: {trang_thai}",
-                       f"Buổi học số {ma_buoi_hoc} - phòng {phong_hoc or 'N/A'}.",
-                       ntype="success" if trang_thai in ("Đúng giờ", "Có mặt") else "warning")
-        except Exception:
-            pass
-    except Exception as e:
-        db.rollback()
-        print(f"Lỗi ghi nhận database: {e}")
-        return False, "Lỗi ghi nhận database.", None
+    db.commit()
+    db.refresh(record)
 
-
-    # Ghi nhận log CSV backup
-    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    # Gửi thông báo cho sinh viên
     try:
-        with open(log_file, mode='a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow([now_str, mssv, student.full_name, student.administrative_class, ma_buoi_hoc, ma_lop_tc, phong_hoc])
-        print(f"-> [DIEM DANH THANH CONG] {student.full_name} ({mssv}) - {trang_thai} tai phong {phong_hoc} luc {now_str} (Score: {score:.2f})")
-    except Exception as e:
-        print(f"Lỗi ghi log CSV: {e}")
+        from app.core.notify import notify
+        acc = db.query(Account).filter(Account.username == mssv.strip().lower()).first()
+        if acc:
+            notify(db, acc.username,
+                   f"Đã điểm danh: {record.status}",
+                   f"Buổi học số {target_session.session_id} - phòng {room_id or 'N/A'}.",
+                   ntype="success" if record.status in ("Đúng giờ", "Present", "Có mặt") else "warning")
+    except Exception:
+        pass
 
-    last_attendance[mssv] = current_ts
-    return True, trang_thai, sv_dict
-
-
-@router.post("/register")
-async def register_student(
-    mssv: str = Form(...),
-    ho_ten: str = Form(...),
-    lop_base: str = Form(...),
-    file: UploadFile = File(...),
-    ngay_sinh: str = Form(None),
-    gioi_tinh: str = Form(None),
-    sdt: str = Form(None),
-    cccd: str = Form(None),
-    dan_toc: str = Form(None),
-    ton_giao: str = Form(None),
-    noi_sinh: str = Form(None),
-    quoc_tich: str = Form(None),
-    email: str = Form(None),
-    dia_chi: str = Form(None),
-    db: Session = Depends(get_db)
-):
-    from app.core.uploads import validate_and_read_image, write_image
-
-    data, ext = validate_and_read_image(file)
-
-    mssv = mssv.strip().upper()
-    temp_img_path = write_image(images_dir, mssv, data, ext)
-
-    # Đăng ký AI Vector
-    ai_success = analyzer.dang_ky_mat(
-        temp_img_path, mssv, ho_ten, lop_base,
-        ngay_sinh=ngay_sinh, gioi_tinh=gioi_tinh, sdt=sdt, cccd=cccd,
-        dan_toc=dan_toc, ton_giao=ton_giao, noi_sinh=noi_sinh,
-        quoc_tich=quoc_tich, email=email, dia_chi=dia_chi
-    )
-    if not ai_success:
-        if os.path.exists(temp_img_path):
-            os.remove(temp_img_path)
-        raise HTTPException(status_code=400, detail="AI khong tim thay khuon mat hop le (hoac co qua nhieu mat) trong anh.")
-
-    return {
-        "status": "success",
-        "message": f"Dang ky thanh cong sinh vien {ho_ten} ({mssv})."
-    }
+    return True, record.status, student
 
 
+# =========================================================================
+# 1. API: NHẬN DIỆN KHUÔN MẶT QUA CAMERA (CORE AI)
+# =========================================================================
 @router.post("/recognize")
 async def recognize_uploaded_image(
     file: Optional[UploadFile] = File(None),
@@ -311,15 +141,15 @@ async def recognize_uploaded_image(
     challenge_only: bool = Query(False, description="Chỉ kiểm tra liveness và challenge, không ghi nhận điểm danh."),
     db: Session = Depends(get_db)
 ):
+    """API được Camera gọi liên tục để gửi Frame ảnh lên nhận diện"""
     if not file:
         return {
             "faces_detected": 0,
             "results": [],
-            "message": "Không nhận được file ảnh (Chế độ giả lập)"
+            "message": "Không nhận được file ảnh"
         }
-
     if hasattr(file, "content_type") and file.content_type is not None and not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File gửi lên phải là file ảnh.")
+        raise HTTPException(status_code=400, detail="Vui lòng gửi file ảnh hợp lệ.")
 
     try:
         from app.core.uploads import MAX_IMAGE_BYTES
@@ -331,49 +161,36 @@ async def recognize_uploaded_image(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Không thể giải mã file ảnh: {e}")
-
-    if img is None:
-        raise HTTPException(status_code=400, detail="Ảnh bị lỗi hoặc không thể đọc.")
+        raise HTTPException(status_code=400, detail=f"Lỗi giải mã ảnh: {e}")
 
     faces_results = analyzer.recognize_image(img)
-    
     recognized_faces = []
+    
     for face in faces_results:
         mssv = face["name"]
         score = face["score"]
         is_known = face["is_known"]
-        is_real = face.get("is_real", False)
+        is_real = face.get("is_real", True)
         active_state = face.get("active_state", None)
+        
         ho_ten = "Unknown"
         lop_base = "Unknown"
         trang_thai = "Chưa xác định"
         
-        # Lấy thông tin họ tên từ db nếu sinh viên đã được nhận diện
-        if is_known and mssv != "Unknown":
-            student_info = db.query(Student).filter(Student.student_id == mssv).first()
-            if student_info:
-                ho_ten = student_info.full_name
-                lop_base = student_info.administrative_class
-
-        if not challenge_only and is_real and is_known:
-            success, msg, sv_info = record_attendance_sqlalchemy(
-                db, mssv, ma_buoi_hoc=ma_buoi_hoc, phong_hoc=phong_hoc, score=score
+        if not is_real:
+            trang_thai = "Giả mạo khuôn mặt"
+        elif challenge_only:
+            trang_thai = "Đang thực hiện thử thách"
+        elif is_known and mssv not in ["Unknown", "Spoof/Fake"]:
+            success, msg, student_info = record_attendance_db(
+                db, mssv, session_id=ma_buoi_hoc, room_id=phong_hoc, score=score
             )
-            
-            if sv_info:
-                ho_ten = sv_info["ho_ten"]
-                lop_base = sv_info["lop_base"]
-                trang_thai = msg
-            else:
-                trang_thai = msg if msg else "Chưa đăng ký"
+            if student_info:
+                ho_ten = student_info.profile.full_name if student_info.profile else getattr(student_info, 'full_name', 'N/A')
+                lop_base = student_info.administrative_class or "N/A"
+            trang_thai = msg
         else:
-            if not is_real:
-                trang_thai = "Giả mạo khuôn mặt"
-            elif challenge_only:
-                trang_thai = "Đang thực hiện thử thách"
-            elif not is_known:
-                trang_thai = "Người lạ"
+            trang_thai = "Người lạ"
 
         recognized_faces.append({
             "box": face["box"],
@@ -391,3 +208,73 @@ async def recognize_uploaded_image(
         "faces_detected": len(recognized_faces),
         "results": recognized_faces
     }
+
+
+# =========================================================================
+# 2. API: QUẢN LÝ DỮ LIỆU KHUÔN MẶT CỦA SINH VIÊN
+# =========================================================================
+@router.get("/{student_id}/faces")
+def get_face_status(student_id: str, db: Session = Depends(get_db)):
+    """Kiểm tra xem sinh viên đã có dữ liệu khuôn mặt (Vector) trong DB chưa"""
+    db_student = db.query(Student).filter(Student.student_id == student_id.upper()).first()
+    if not db_student:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
+        
+    faces = db.query(FaceFeature).filter(FaceFeature.student_id == student_id.upper()).all()
+    return {
+        "student_id": student_id, 
+        "has_face_data": len(faces) > 0, 
+        "total_vectors": len(faces)
+    }
+
+@router.post("/{student_id}/faces", status_code=status.HTTP_201_CREATED)
+async def register_student_face(student_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Admin upload ảnh để AI trích xuất Vector và đăng ký nhận diện cho sinh viên"""
+    db_student = db.query(Student).filter(Student.student_id == student_id.upper()).first()
+    if not db_student:
+        raise HTTPException(status_code=404, detail="Vui lòng tạo hồ sơ sinh viên trước khi đăng ký mặt.")
+    
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Vui lòng upload file hình ảnh")
+    
+    student_id = student_id.upper()
+    temp_img_path = os.path.join(images_dir, f"{student_id}.jpg")
+    try:
+        with open(temp_img_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi ghi file: {e}")
+    
+    # Lấy thông tin truyền vào thư viện InsightFace
+    ho_ten = db_student.profile.full_name if db_student.profile else "Unknown"
+    lop_base = db_student.administrative_class or "Unknown"
+    
+    # AI xử lý và ghi Vector khuôn mặt
+    success = analyzer.dang_ky_mat(temp_img_path, mssv=student_id, ho_ten=ho_ten, lop_base=lop_base)
+    
+    if not success:
+        if os.path.exists(temp_img_path):
+            os.remove(temp_img_path)
+        raise HTTPException(status_code=400, detail="AI không tìm thấy khuôn mặt rõ ràng, hoặc có nhiều hơn 1 khuôn mặt trong ảnh.")
+    
+    return {"status": "success", "message": "Đã lưu dữ liệu khuôn mặt thành công", "student_id": student_id}
+
+@router.delete("/{student_id}/faces", status_code=status.HTTP_204_NO_CONTENT)
+def reset_student_face(student_id: str, db: Session = Depends(get_db)):
+    """Reset (Xóa) dữ liệu khuôn mặt của sinh viên nếu ảnh cũ bị lỗi"""
+    db_student = db.query(Student).filter(Student.student_id == student_id.upper()).first()
+    if not db_student:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
+        
+    deleted_count = db.query(FaceFeature).filter(FaceFeature.student_id == student_id.upper()).delete()
+    db.commit()
+    
+    if deleted_count == 0:
+        raise HTTPException(status_code=400, detail="Sinh viên này chưa có dữ liệu khuôn mặt")
+        
+    # Xóa luôn file vật lý nếu có lưu
+    img_path = os.path.join(images_dir, f"{student_id.upper()}.jpg")
+    if os.path.exists(img_path):
+        os.remove(img_path)
+        
+    return None

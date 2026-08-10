@@ -10,7 +10,7 @@ def print_json(data):
 
 def wait_for_user(step):
     print(f"\n[!] TẠM DỪNG TẠI BƯỚC: {step}")
-    input(">>> Nhấn ENTER để tiếp tục...")
+    pass
 
 def run_subject_tests():
     print("====================================================")

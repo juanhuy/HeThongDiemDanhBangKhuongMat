@@ -1,0 +1,21 @@
+ frontend/package-lock.json                         | 911 [32m++++++++++++++++++++[m[31m-[m
+ frontend/package.json                              |   4 [32m+[m
+ frontend/src/App.jsx                               |  38 [32m+[m[31m-[m
+ frontend/src/api/creditClasses.js                  |  74 [32m+[m[31m-[m
+ frontend/src/components/admin/CameraDashboard.jsx  |  66 [32m+[m[31m-[m
+ .../CreditClassesManagement/CreateWizardModal.jsx  | 618 [32m++++++++++++++[m
+ .../CreditClassesManagement.jsx                    | 532 [32m++++++++++++[m
+ .../admin/CreditClassesManagement/DataTable.jsx    | 587 [32m++++++++[m[31m-----[m
+ .../CreditClassesManagement/EditClassModal.jsx     |  24 [32m+[m[31m-[m
+ .../CreditClassesManagement/FilterSection.jsx      | 208 [32m+++[m[31m--[m
+ .../admin/CreditClassesManagement/GroupCard.jsx    | 267 [32m++++++[m
+ .../admin/CreditClassesManagement/Styles.js        | 457 [32m+++++++++++[m
+ .../admin/CreditClassesManagement/test.jsx         |  75 [32m++[m
+ frontend/src/components/admin/index.js             |  12 [32m+[m[31m-[m
+ frontend/src/components/common/AttendanceLogs.jsx  |   4 [32m+[m[31m-[m
+ frontend/src/components/common/Header.jsx          |  14 [32m+[m[31m-[m
+ .../src/components/common/SearchableSelect.jsx     |  37 [32m+[m[31m-[m
+ frontend/src/components/common/Sidebar.jsx         |  23 [32m+[m[31m-[m
+ frontend/src/components/common/styles.jsx          |  96 [32m+++[m
+ .../lecturer/LecturerClassesManagement.jsx         | 428 [32m++++++++++[m
+ 20 files changed, 3988 insertions(+), 487 deletions(-)

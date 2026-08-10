@@ -37,7 +37,12 @@ def _build_user_payload(account: Account, db: Session) -> dict:
         if student:
             student_info = student
     elif role == "giang_vien":
-        lecturer = db.query(Lecturer).filter(Lecturer.account_id == account.account_id).first()
+        from app.models.student import UserProfile
+        lecturer = db.query(Lecturer).join(UserProfile, Lecturer.profile_id == UserProfile.profile_id).filter(
+            UserProfile.account_id == account.account_id
+        ).first()
+        if not lecturer:
+            lecturer = db.query(Lecturer).filter(Lecturer.lecturer_id == account.username).first()
         if lecturer:
             lecturer_info = lecturer
 
@@ -63,7 +68,7 @@ def login(username: str = Form(...), password: str = Form(...), db: Session = De
     if locked:
         raise HTTPException(status_code=429,
                             detail=f"Quá nhiều lần đăng nhập sai. Vui lòng thử lại sau {remaining // 60 + 1} phút.")
-    # Tìm tài khoản
+    
     account = db.query(Account).filter(
         Account.username == username.strip().lower()
     ).first()
@@ -75,7 +80,6 @@ def login(username: str = Form(...), password: str = Form(...), db: Session = De
     if account.is_active is False:
         raise HTTPException(status_code=403, detail="Tai khoan da bi khoa.")
 
-    # Nâng cấp hash cũ (SHA-256) lên bcrypt ngay khi đăng nhập thành công
     if password_needs_rehash(account.password_hash):
         account.password_hash = get_password_hash(password)
         db.add(account)
@@ -114,11 +118,9 @@ def register(username: str = Form(...), password: str = Form(...), mssv: str = F
     if existing_account:
         raise HTTPException(status_code=400, detail="Tai khoan da ton tai.")
 
-    # Mặc định tạo tài khoản SINH VIÊN (không tự động cấp quyền giảng viên).
-    # Tài khoản giảng viên phải do Admin tạo/phân quyền trước.
     role = "sinh_vien"
+    student = None
     if mssv:
-        # Sinh viên phải tồn tại trong CSDL thì mới được liên kết tài khoản.
         student = db.query(Student).filter(Student.student_id == mssv.strip().upper()).first()
         if not student:
             raise HTTPException(status_code=404, detail=f"Khong tim thay sinh vien {mssv} de lien ket tai khoan.")
@@ -133,21 +135,19 @@ def register(username: str = Form(...), password: str = Form(...), mssv: str = F
     db.commit()
     db.refresh(new_account)
 
-    if mssv:
-        student = db.query(Student).filter(Student.student_id == mssv.strip().upper()).first()
-        if student:
-            if not student.profile:
-                from app.models.student import UserProfile
-                profile = UserProfile(
-                    account_id=new_account.account_id,
-                    full_name=student.student_id
-                )
-                db.add(profile)
-                db.flush()
-                student.profile_id = profile.profile_id
-            else:
-                student.profile.account_id = new_account.account_id
-            db.commit()
+    if student:
+        if not student.profile:
+            from app.models.student import UserProfile
+            profile = UserProfile(
+                account_id=new_account.account_id,
+                full_name=student.student_id
+            )
+            db.add(profile)
+            db.flush()
+            student.profile_id = profile.profile_id
+        else:
+            student.profile.account_id = new_account.account_id
+        db.commit()
 
     return {"status": "success", "message": f"Tai khoan {username} da duoc tao (sinh vien)."}
 

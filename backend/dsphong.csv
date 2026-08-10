@@ -1,0 +1,11 @@
+room_id,room_name,campus,building,room_number,capacity,room_type,status,notes,camera_rtsp_url,camera_status
+LT-A101,A101,CS Tăng Nhơn Phú,A,101,60,Theory,Active,Phòng lý thuyết 1,,Online
+LT-A102,A102,CS Tăng Nhơn Phú,A,102,60,Theory,Active,Phòng lý thuyết 2,,Online
+LT-A103,A103,CS Tăng Nhơn Phú,A,103,80,Theory,Active,Phòng lý thuyết 3,,Online
+LT-B201,B201,CS Tăng Nhơn Phú,B,201,100,Theory,Active,Phòng lý thuyết 4,,Online
+LT-B202,B202,CS Tăng Nhơn Phú,B,202,100,Theory,Active,Phòng lý thuyết 5,,Online
+TH-LAB01,LAB01,CS Tăng Nhơn Phú,C,01,40,Practice,Active,Phòng thực hành 1,,Online
+TH-LAB02,LAB02,CS Tăng Nhơn Phú,C,02,40,Practice,Active,Phòng thực hành 2,,Online
+TH-LAB03,LAB03,CS Tăng Nhơn Phú,C,03,35,Practice,Active,Phòng thực hành 3,,Online
+TH-LAB04,LAB04,CS Tăng Nhơn Phú,C,04,35,Practice,Active,Phòng thực hành 4,,Online
+TH-LAB05,LAB05,CS Tăng Nhơn Phú,C,05,30,Practice,Active,Phòng thực hành 5,,Online

@@ -5,7 +5,7 @@ from config.settings import settings
 
 db_config = settings.database
 host = db_config.get("host", "127.0.0.1")
-port = db_config.get("port", 3306)
+port = db_config.get("port", 3309)
 user = db_config.get("user", "root")
 password = db_config.get("password", "")
 db_name = db_config.get("db_name", "ptit_diem_danh")

@@ -3,15 +3,31 @@ from sqlalchemy.orm import Session
 from app.models.subject import Subject
 from app.schemas.subject import SubjectCreate
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
 
 def get_subjects(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(Subject).offset(skip).limit(limit).all()
+    return (
+        db.query(Subject)
+        .options(joinedload(Subject.faculty))  # kéo data khoa
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 def get_subject_by_id(db: Session, subject_id: str):
-    return db.query(Subject).filter(Subject.subject_id == subject_id).first()
+    return (
+        db.query(Subject)
+        .options(joinedload(Subject.faculty))  # kéo data khoa
+        .filter(Subject.subject_id == subject_id)
+        .first()
+    )
 
 def create_subject(db: Session, subject: SubjectCreate):
-    db_subject = Subject(**subject.dict())
+    subject_data = subject.model_dump()
+    theory = subject_data.get('theory_credits', 0)
+    practical = subject_data.get('practical_credits', 0)
+    
+    db_subject = Subject(**subject_data)
     db.add(db_subject)
     db.commit()
     db.refresh(db_subject)

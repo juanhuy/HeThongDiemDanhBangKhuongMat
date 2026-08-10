@@ -1,0 +1,12 @@
+export * from "./client";
+export * as authApi from "./auth";
+export * as creditClassesApi from "./creditClasses";
+export * as studentsApi from "./students";
+export * as lecturersApi from "./lecturers";
+export * as roomsApi from "./rooms";
+export * as schedulesApi from "./schedules";
+export * as attendanceApi from "./attendance";
+export * as subjectsApi from "./subjects";
+export * as facultiesApi from "./faculties";
+export * as majorsApi from "./majors";
+export { timetableApi } from './timetable';
