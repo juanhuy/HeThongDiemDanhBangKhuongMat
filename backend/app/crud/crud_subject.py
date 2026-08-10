@@ -40,3 +40,11 @@ def search_subjects(db: Session, query: str):
             Subject.subject_name.ilike(search_pattern)
         )
     ).all()
+
+def delete_subject(db: Session, subject_id: str):
+    db_obj = get_subject_by_id(db, subject_id=subject_id)
+    if not db_obj:
+        return None
+    db.delete(db_obj)
+    db.commit()
+    return db_obj

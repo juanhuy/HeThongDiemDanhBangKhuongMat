@@ -1,10 +1,28 @@
 import React from 'react';
-import { CheckCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
+
+const COLOR_MAP = {
+  success: '#10b981',
+  danger: '#ef4444',
+  error: '#ef4444',
+  warning: '#f59e0b',
+  info: '#1d92d1',
+};
+
+const ICON_MAP = {
+  success: CheckCircle,
+  danger: AlertCircle,
+  error: AlertCircle,
+  warning: AlertTriangle,
+  info: Info,
+};
 
 const Toast = ({ toast }) => {
   if (!toast.visible) return null;
 
-  const isSuccess = toast.type === 'success';
+  const type = toast.type || 'success';
+  const color = COLOR_MAP[type] || COLOR_MAP.info;
+  const Icon = ICON_MAP[type] || Info;
 
   return (
     <div style={{
@@ -12,7 +30,7 @@ const Toast = ({ toast }) => {
       bottom: "2rem",
       right: "2rem",
       background: "#ffffff",
-      borderLeft: `4px solid ${isSuccess ? 'var(--primary)' : 'var(--danger)'}`,
+      borderLeft: `4px solid ${color}`,
       borderRadius: "6px",
       padding: "12px 20px",
       color: "var(--text-main)",
@@ -23,7 +41,7 @@ const Toast = ({ toast }) => {
       gap: "10px",
       border: "1px solid #d0e0eb"
     }}>
-      {isSuccess ? <CheckCircle size={18} color="var(--primary)" /> : <AlertCircle size={18} color="var(--danger)" />}
+      <Icon size={18} color={color} />
       <span>{toast.message}</span>
     </div>
   );

@@ -1,7 +1,6 @@
 import pymysql
 import os
 import numpy as np
-import hashlib
 from config.settings import settings
 
 class DatabaseService:
@@ -577,8 +576,12 @@ class DatabaseService:
 
     @staticmethod
     def hash_password(password: str) -> str:
-        """Mã hóa mật khẩu bằng SHA-256"""
-        return hashlib.sha256(password.encode()).hexdigest()
+        """Mã hóa mật khẩu bằng bcrypt (tương thích app.core.security)."""
+        import bcrypt
+        pwd_bytes = password.encode('utf-8')
+        if len(pwd_bytes) > 72:
+            pwd_bytes = pwd_bytes[:72]
+        return bcrypt.hashpw(pwd_bytes, bcrypt.gensalt()).decode('utf-8')
 
     def register_account(self, username, password, mssv=None, role='sinh_vien'):
         """Đăng ký tài khoản người dùng mới"""

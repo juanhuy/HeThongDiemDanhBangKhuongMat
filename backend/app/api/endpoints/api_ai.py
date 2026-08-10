@@ -28,9 +28,22 @@ from app.models.student_class import StudentClassEnrollment
 from app.models.class_schedule import ClassSchedule
 from app.models.attendance_history import AttendanceHistory
 from app.models.face_feature import FaceFeature
+from app.core.student_status import is_active_student
 from app.models.leave_request import LeaveRequest
 
 router = APIRouter()
+
+
+@router.get("/images/{filename}")
+def serve_face_image(filename: str):
+    """Phục vụ ảnh khuôn mặt (yêu cầu đăng nhập) — thay thế static mount công khai."""
+    from fastapi.responses import FileResponse
+    from app.core.uploads import safe_filename
+    name = os.path.basename(safe_filename(filename, ".jpg"))
+    path = os.path.join(images_dir, name)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Không tìm thấy ảnh.")
+    return FileResponse(path, media_type="image/jpeg")
 
 # Khởi tạo FaceAnalyzer
 analyzer = FaceAnalyzer()
@@ -67,7 +80,7 @@ def record_attendance_sqlalchemy(db: Session, mssv: str, ma_buoi_hoc: int = None
 
     # Tìm thông tin sinh viên
     student = db.query(Student).filter(Student.student_id == mssv).first()
-    if not student or student.academic_status != "studying":
+    if not student or not is_active_student(student.academic_status):
         # Ở đây ta giả sử trạng thái học tập tương đương hồ sơ đã duyệt hoặc đang học
         return False, "Người lạ/Chưa đăng ký mặt.", None
 
@@ -214,6 +227,19 @@ def record_attendance_sqlalchemy(db: Session, mssv: str, ma_buoi_hoc: int = None
         )
         db.add(new_att)
         db.commit()
+
+        # Thông báo cho sinh viên khi được điểm danh
+        try:
+            from app.models.account import Account
+            from app.core.notify import notify
+            acc = db.query(Account).filter(Account.username == mssv.strip().lower()).first()
+            if acc:
+                notify(db, acc.username,
+                       f"Đã điểm danh: {trang_thai}",
+                       f"Buổi học số {ma_buoi_hoc} - phòng {phong_hoc or 'N/A'}.",
+                       ntype="success" if trang_thai in ("Đúng giờ", "Có mặt") else "warning")
+        except Exception:
+            pass
     except Exception as e:
         db.rollback()
         print(f"Lỗi ghi nhận database: {e}")
@@ -252,18 +278,12 @@ async def register_student(
     dia_chi: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File gui len phai la file anh.")
+    from app.core.uploads import validate_and_read_image, write_image
+
+    data, ext = validate_and_read_image(file)
 
     mssv = mssv.strip().upper()
-    img_filename = f"{mssv}.jpg"
-    temp_img_path = os.path.join(images_dir, img_filename)
-
-    try:
-        with open(temp_img_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Khong the ghi file anh: {e}")
+    temp_img_path = write_image(images_dir, mssv, data, ext)
 
     # Đăng ký AI Vector
     ai_success = analyzer.dang_ky_mat(
@@ -302,9 +322,14 @@ async def recognize_uploaded_image(
         raise HTTPException(status_code=400, detail="File gửi lên phải là file ảnh.")
 
     try:
+        from app.core.uploads import MAX_IMAGE_BYTES
         contents = await file.read()
+        if len(contents) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="File ảnh vượt quá kích thước cho phép (tối đa 5MB).")
         nparr = np.frombuffer(contents, np.uint8)
         img = cv.imdecode(nparr, cv.IMREAD_COLOR)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Không thể giải mã file ảnh: {e}")
 

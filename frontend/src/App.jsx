@@ -8,6 +8,7 @@ import AIAttendance from './components/AIAttendance';
 import AttendanceLogs from './components/AttendanceLogs';
 import Toast from './components/Toast';
 import Login from './components/Login';
+import { apiFetch, getStoredUser, getToken, clearSession, setOnUnauthorized } from './api/client';
 
 const API_BASE = "http://127.0.0.1:8000";
 
@@ -57,9 +58,17 @@ function App() {
   const [activeTab, setActiveTab] = useState('attendance');
   const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
   const [activeMenu, setActiveMenu] = useState('home');
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 900);
 
   const [studentProfile, setStudentProfile] = useState(null);
   const [notifications, setNotifications] = useState([]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const handler = () => setIsMobile(mq.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const userRole = user?.role ? user.role.toLowerCase() : '';
   const isStudent = userRole === 'sinh_vien' || userRole === 'student';
@@ -76,18 +85,22 @@ function App() {
     return `${days[d.getDay()]}, ngày ${d.getDate()} tháng ${d.getMonth() + 1}`;
   };
 
+  // Check if session exists in localStorage (only if user state is not set yet)
   useEffect(() => {
-    // Check if session exists in localStorage (only if user state is not set yet)
     if (!user) {
-      const savedUser = localStorage.getItem("ptit_user");
-      if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        setUser(parsed);
-        fetchStudentProfile(parsed.mssv);
+      const savedUser = getStoredUser();
+      if (savedUser && getToken()) {
+        setUser(savedUser);
+        fetchStudentProfile(savedUser);
       }
     }
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 5000);
+    if (user) {
+      fetchLogs();
+      fetchNotifications();
+    }
+    const interval = setInterval(() => {
+      if (user) { fetchLogs(); fetchNotifications(); }
+    }, 5000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -100,26 +113,51 @@ function App() {
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
-    localStorage.setItem("ptit_user", JSON.stringify(userData));
     showToast("Đăng nhập thành công!");
-    fetchStudentProfile(userData.mssv);
+    fetchStudentProfile(userData);
   };
 
   const handleLogout = () => {
     setUser(null);
     setStudentProfile(null);
-    localStorage.removeItem("ptit_user");
+    clearSession();
     showToast("Đã đăng xuất khỏi hệ thống.");
   };
 
+  useEffect(() => {
+    setOnUnauthorized(handleLogout);
+    return () => setOnUnauthorized(null);
+  }, [handleLogout]);
+
   const handleMarkAllAsRead = () => {
+    apiFetch(`${API_BASE}/api/auth/notifications/read-all`, { method: "POST" }).catch(() => {});
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
-  const fetchStudentProfile = async (mssv) => {
-    if (!mssv) return;
+  const fetchNotifications = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/students/${mssv}`);
+      const res = await apiFetch(`${API_BASE}/api/auth/notifications`);
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications((data.notifications || []).map(n => ({
+          id: n.id,
+          message: n.message ? `${n.title} - ${n.message}` : n.title,
+          timestamp: n.timestamp ? new Date(n.timestamp).toLocaleTimeString() : "",
+          read: n.is_read,
+        })));
+      }
+    } catch (e) { /* bỏ qua lỗi poll */ }
+  };
+
+  const fetchStudentProfile = async (userData) => {
+    const mssv = userData?.mssv;
+    if (!mssv) return;
+    // Endpoint /api/admin/students chỉ dành cho Admin; sinh viên/giảng viên
+    // dùng profile fallback hiển thị từ dữ liệu đăng nhập.
+    const role = (userData?.role || '').toLowerCase();
+    if (role !== 'admin') return;
+    try {
+      const res = await apiFetch(`${API_BASE}/api/admin/students/${mssv}`);
       if (res.ok) {
         const data = await res.json();
         const mapped = {
@@ -142,7 +180,7 @@ function App() {
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/attendance`);
+      const res = await apiFetch(`${API_BASE}/api/attendance`);
       if (res.ok) {
         const data = await res.json();
         const newLogs = data.logs || [];
@@ -202,14 +240,25 @@ function App() {
         onMarkAllAsRead={handleMarkAllAsRead}
       />
       
-      <div style={styles.mainLayout}>
-        <Sidebar 
-          activeMenu={activeMenu} 
-          setActiveMenu={setActiveMenu} 
-          user={user}
-        />
+      <div style={isMobile ? { ...styles.mainLayout, gridTemplateColumns: "1fr" } : styles.mainLayout}>
+        {!isMobile && (
+          <Sidebar 
+            activeMenu={activeMenu} 
+            setActiveMenu={setActiveMenu} 
+            user={user}
+          />
+        )}
 
-         <main style={styles.contentArea}>
+         <main style={{ ...styles.contentArea, padding: isMobile ? "1rem" : "1.5rem 2rem" }}>
+          {isMobile && (
+            <div style={{ marginBottom: "1rem" }}>
+              <Sidebar 
+                activeMenu={activeMenu} 
+                setActiveMenu={setActiveMenu} 
+                user={user}
+              />
+            </div>
+          )}
           <div style={styles.welcomeHeader}>
             <h2 style={styles.welcomeText}>
               👋 Chào mừng {isStudent ? profileToRender.ho_ten : (isLecturer ? 'Giảng viên' : 'Quản trị viên')} {isStudent && `(${activeMenu === 'home' ? 'Trang chủ' : activeMenu === 'my_classes' ? 'Lớp học của tôi' : activeMenu === 'course_registration' ? 'Đăng ký học phần' : activeMenu === 'submit_leave' ? 'Xin nghỉ phép' : 'Sinh trắc học'})`}
@@ -239,6 +288,7 @@ function App() {
               onAttendanceLogged={fetchLogs} 
               user={user}
               activeMenu={activeMenu}
+              onUnauthorized={handleLogout}
             />
           )}
         </main>

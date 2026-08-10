@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, User, AlertCircle } from 'lucide-react';
+import { storeSession } from '../api/client';
 
 const Login = ({ API_BASE, onLoginSuccess }) => {
   const [username, setUsername] = useState('');
@@ -23,6 +24,7 @@ const Login = ({ API_BASE, onLoginSuccess }) => {
       });
       const data = await res.json();
       if (res.ok) {
+        storeSession(data.access_token, data.user);
         onLoginSuccess(data.user);
       } else {
         setError(data.detail || "Đăng nhập thất bại. Vui lòng kiểm tra lại tài khoản và mật khẩu.");

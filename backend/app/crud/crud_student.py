@@ -4,6 +4,12 @@ from app.models.account import Account
 from app.schemas.student import StudentCreate, StudentUpdate
 from sqlalchemy import or_
 from app.core.security import get_password_hash
+from app.core.student_status import (
+    normalize_academic_status,
+    is_active_student,
+    ACADEMIC_STATUS_ACTIVE,
+    ACCOUNT_LOCKED_STATUSES,
+)
 
 def get_student(db: Session, student_id: str):
     return db.query(Student).filter(Student.student_id == student_id.strip().upper()).first()
@@ -24,8 +30,8 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
             Student.student_id.ilike(f"%{search}%")
         ))
     if status:
-        # Lọc theo trạng thái học tập
-        query = query.filter(Student.academic_status == status)
+        # Lọc theo trạng thái học tập (chuẩn hoá để nhận cả giá trị tiếng Anh cũ)
+        query = query.filter(Student.academic_status == normalize_academic_status(status))
         
     # Loại bỏ bản ghi trùng lặp (nếu sinh viên đăng ký nhiều lớp của cùng giảng viên)
     if lecturer_id:
@@ -34,8 +40,7 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
     return query.offset(skip).limit(limit).all()
 
 def create_student(db: Session, student: StudentCreate):
-    import hashlib
-    default_password_hash = hashlib.sha256("123456".encode()).hexdigest() 
+    default_password_hash = get_password_hash("123456")
     
     new_account = Account(
         username=student.student_id.strip().lower(),
@@ -63,7 +68,7 @@ def create_student(db: Session, student: StudentCreate):
         major=student.major,
         cohort=student.cohort,
         training_program=student.training_program,
-        academic_status=student.academic_status or "Đang học"
+        academic_status=normalize_academic_status(student.academic_status) or ACADEMIC_STATUS_ACTIVE
     )
     db.add(db_student)
     db.commit()
@@ -94,16 +99,15 @@ def update_student(db: Session, db_student: Student, student_update: StudentUpda
                 db_student.profile.phone_number = value
         else:
             setattr(db_student, key, value)
-        
-    # Logic nghiệp vụ: Khóa tài khoản nếu trạng thái là graduated hoặc dropped_out
+
+    # Logic nghiệp vụ: chuẩn hoá trạng thái + khoá/mở khoá tài khoản
     if "academic_status" in update_data:
-        new_status = update_data["academic_status"]
-        if new_status in ["graduated", "dropped_out", "Thôi học", "Tốt nghiệp"]:
-            if db_student.profile and db_student.profile.account:
-                db_student.profile.account.is_active = False
-        elif new_status in ["studying", "Đang học"]:
-            if db_student.profile and db_student.profile.account:
-                db_student.profile.account.is_active = True
+        new_status = normalize_academic_status(update_data["academic_status"])
+        db_student.academic_status = new_status
+        if db_student.profile and db_student.profile.account:
+            # Bảo lưu vẫn được đăng nhập (xem hồ sơ) nhưng không tham gia
+            # điểm danh/đăng ký; chỉ khoá tài khoản khi Tốt nghiệp/Thôi học/Đình chỉ.
+            db_student.profile.account.is_active = new_status not in ACCOUNT_LOCKED_STATUSES
                 
     db.add(db_student)
     db.commit()

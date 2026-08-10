@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, PrimaryKeyConstraint
+from sqlalchemy import Column, String, ForeignKey, PrimaryKeyConstraint, Index
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -11,6 +11,7 @@ class StudentClassEnrollment(Base):
 
     __table_args__ = (
         PrimaryKeyConstraint("class_id", "student_id"),
+        Index("ix_sce_class", "class_id"),
     )
 
     credit_class = relationship("CreditClass")

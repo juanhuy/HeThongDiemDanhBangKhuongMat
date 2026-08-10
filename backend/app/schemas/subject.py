@@ -6,6 +6,8 @@ class SubjectBase(BaseModel):
     subject_id: str = Field(..., example="IT101")
     subject_name: str = Field(..., example="Cấu trúc dữ liệu và giải thuật")
     credits: int = Field(..., example=3)
+    semester: Optional[int] = None
+    prerequisites: Optional[str] = None
     is_active: bool = True
 
 class SubjectCreate(SubjectBase):
@@ -24,4 +26,6 @@ class SubjectResponse(BaseModel):
 class SubjectUpdate(BaseModel):
     subject_name: Optional[str] = None
     credits: Optional[int] = None
+    semester: Optional[int] = None
+    prerequisites: Optional[str] = None
     is_active: Optional[bool] = None

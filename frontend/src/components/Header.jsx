@@ -1,9 +1,45 @@
 import React from 'react';
-import { Bell, LogOut } from 'lucide-react';
+import { Bell, LogOut, KeyRound } from 'lucide-react';
+import { apiFetch } from '../api/client';
 
 const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead }) => {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [showPwd, setShowPwd] = React.useState(false);
+  const [curPwd, setCurPwd] = React.useState('');
+  const [newPwd, setNewPwd] = React.useState('');
+  const [newPwd2, setNewPwd2] = React.useState('');
+  const [pwdMsg, setPwdMsg] = React.useState('');
+  const [pwdErr, setPwdErr] = React.useState(false);
+  const [savingPwd, setSavingPwd] = React.useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  const API_BASE = "http://127.0.0.1:8000";
+
+  const submitPassword = async (e) => {
+    e.preventDefault();
+    setPwdMsg(''); setPwdErr(false);
+    if (newPwd !== newPwd2) { setPwdErr(true); setPwdMsg("Mật khẩu xác nhận không khớp."); return; }
+    if (newPwd.length < 6) { setPwdErr(true); setPwdMsg("Mật khẩu mới phải có ít nhất 6 ký tự."); return; }
+    setSavingPwd(true);
+    try {
+      const fd = new FormData();
+      fd.append("current_password", curPwd);
+      fd.append("new_password", newPwd);
+      const res = await apiFetch(`${API_BASE}/api/auth/change-password`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (res.ok) {
+        setPwdMsg("Đổi mật khẩu thành công!"); setPwdErr(false);
+        setCurPwd(''); setNewPwd(''); setNewPwd2('');
+        setTimeout(() => setShowPwd(false), 1200);
+      } else {
+        setPwdErr(true); setPwdMsg(data.detail || "Đổi mật khẩu thất bại.");
+      }
+    } catch {
+      setPwdErr(true); setPwdMsg("Lỗi kết nối máy chủ.");
+    } finally {
+      setSavingPwd(false);
+    }
+  };
 
   const styles = {
     header: {
@@ -64,7 +100,16 @@ const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead 
       opacity: 0.9,
       padding: "4px 8px",
       borderRadius: "4px",
-      transition: "background-color 0.2s"
+      whiteSpace: "nowrap"
+    },
+    pwdInput: {
+      width: "100%",
+      boxSizing: "border-box",
+      padding: "8px 12px",
+      marginBottom: "10px",
+      border: "1px solid #d0e0eb",
+      borderRadius: "6px",
+      fontSize: "0.9rem"
     },
     notificationDropdown: {
       position: "absolute",
@@ -213,7 +258,16 @@ const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead 
         </div>
         
         <button 
-          onClick={onLogout} 
+          onClick={() => setShowPwd(true)} 
+          style={styles.btnLogout}
+          title="Đổi mật khẩu"
+        >
+          <KeyRound size={16} />
+          <span>Đổi mật khẩu</span>
+        </button>
+
+        <button 
+          onClick={() => { if (window.confirm("Bạn có chắc muốn đăng xuất khỏi hệ thống?")) onLogout(); }} 
           style={styles.btnLogout}
           title="Đăng xuất"
           onMouseEnter={(e) => e.target.style.backgroundColor = "rgba(255, 255, 255, 0.15)"}
@@ -223,6 +277,24 @@ const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead 
           <span>Đăng xuất</span>
         </button>
       </div>
+
+      {showPwd && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1001 }} onClick={() => setShowPwd(false)}>
+          <form onSubmit={submitPassword} onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: "10px", padding: "20px", width: "360px", maxWidth: "90vw" }}>
+            <h4 style={{ margin: "0 0 14px", color: "#106fa6" }}>Đổi mật khẩu</h4>
+            <input type="password" placeholder="Mật khẩu hiện tại" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} required style={styles.pwdInput} />
+            <input type="password" placeholder="Mật khẩu mới (≥6 ký tự)" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} required style={styles.pwdInput} />
+            <input type="password" placeholder="Xác nhận mật khẩu mới" value={newPwd2} onChange={(e) => setNewPwd2(e.target.value)} required style={styles.pwdInput} />
+            {pwdMsg && (
+              <div style={{ fontSize: "0.8rem", color: pwdErr ? "#ef4444" : "#10b981", marginBottom: "10px" }}>{pwdMsg}</div>
+            )}
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setShowPwd(false)} style={{ ...styles.btnLogout, color: "#54738c", border: "1px solid #d0e0eb", background: "#fff", padding: "8px 14px", borderRadius: "6px", cursor: "pointer" }}>Hủy</button>
+              <button type="submit" disabled={savingPwd} style={{ ...styles.btnLogout, background: "#1d92d1", color: "#fff", padding: "8px 14px", borderRadius: "6px", cursor: "pointer" }}>{savingPwd ? "Đang lưu..." : "Lưu"}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </header>
   );
 };

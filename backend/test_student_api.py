@@ -73,8 +73,8 @@ def run_student_tests():
     status_msg = record_test("Case 3.2: Tìm kiếm theo tên/MSSV (200)", res.status_code == 200)
     print(" ->", res.status_code, status_msg)
 
-    print("\n[CASE 3.3] Lọc sinh viên theo trạng thái 'studying':")
-    res = requests.get(f"{BASE_URL}/", params={"status": "studying"})
+    print("\n[CASE 3.3] Lọc sinh viên theo trạng thái 'Đang học':")
+    res = requests.get(f"{BASE_URL}/", params={"status": "Đang học"})
     status_msg = record_test("Case 3.3: Lọc theo trạng thái (200)", res.status_code == 200)
     print(" ->", res.status_code, status_msg)
 

@@ -8,6 +8,9 @@ import io
 from app.db.session import get_db
 from app.schemas import student as schemas
 from app.crud import crud_student as crud
+from app.core.student_status import ACADEMIC_STATUS_ACTIVE
+from app.core.require import get_current_user
+from app.core.audit import log_audit
 
 from app.crud import crud_face
 from fastapi import UploadFile, File
@@ -66,21 +69,30 @@ def get_student_detail(student_id: str, db: Session = Depends(get_db)):
 
 #API Thêm mới một sinh viên
 @router.post("/", response_model=schemas.StudentResponse, status_code=status.HTTP_201_CREATED)
-def create_new_student(student: schemas.StudentCreate, db: Session = Depends(get_db)):
+def create_new_student(student: schemas.StudentCreate, db: Session = Depends(get_db),
+                       current_user: dict = Depends(get_current_user)):
     """Thêm mới một sinh viên và tự động tạo tài khoản"""
     db_student = crud.get_student(db, student_id=student.student_id)
     if db_student:
         raise HTTPException(status_code=400, detail="Mã sinh viên đã tồn tại")
-    return crud.create_student(db=db, student=student)
+    created = crud.create_student(db=db, student=student)
+    log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
+              action="CREATE", target="students", target_id=student.student_id, detail=f"Tạo sinh viên {student.full_name}")
+    return created
 
 #API Cập nhật thông tin sinh viên
 @router.put("/{student_id}", response_model=schemas.StudentResponse)
-def update_existing_student(student_id: str, student_in: schemas.StudentUpdate, db: Session = Depends(get_db)):
+def update_existing_student(student_id: str, student_in: schemas.StudentUpdate, db: Session = Depends(get_db),
+                            current_user: dict = Depends(get_current_user)):
     """Cập nhật thông tin sinh viên (Tự động khóa tài khoản nếu thôi học/tốt nghiệp)"""
     db_student = crud.get_student(db, student_id=student_id)
     if not db_student:
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
-    return crud.update_student(db=db, db_student=db_student, student_update=student_in)
+    updated = crud.update_student(db=db, db_student=db_student, student_update=student_in)
+    log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
+              action="UPDATE", target="students", target_id=student_id,
+              detail=f"Cập nhật sinh viên: {student_in.model_dump(exclude_unset=True)}")
+    return updated
 
 #API Import danh sách sinh viên hàng loạt từ file Excel
 @router.post("/import", status_code=status.HTTP_201_CREATED)
@@ -107,7 +119,7 @@ def import_students_from_excel(file: UploadFile = File(...), db: Session = Depen
                 phone_number=str(row.get("Số điện thoại", "")) if pd.notna(row.get("Số điện thoại")) else None,
                 administrative_class=str(row.get("Lớp hành chính", "")) if pd.notna(row.get("Lớp hành chính")) else None,
                 major="Công nghệ thông tin",
-                academic_status="studying"
+                academic_status=ACADEMIC_STATUS_ACTIVE
             )
             crud.create_student(db=db, student=student_data)
             success_count += 1
@@ -118,7 +130,8 @@ def import_students_from_excel(file: UploadFile = File(...), db: Session = Depen
 
 #API Xóa sinh viên
 @router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_existing_student(student_id: str, db: Session = Depends(get_db)):
+def delete_existing_student(student_id: str, db: Session = Depends(get_db),
+                            current_user: dict = Depends(get_current_user)):
     """Xóa một sinh viên và tài khoản liên quan"""
     db_student = crud.get_student(db, student_id=student_id)
     if not db_student:
@@ -132,6 +145,8 @@ def delete_existing_student(student_id: str, db: Session = Depends(get_db)):
             db.delete(account)
             
     crud.delete_student(db=db, student_id=student_id)
+    log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
+              action="DELETE", target="students", target_id=student_id, detail="Xóa sinh viên và tài khoản")
     return None
 
 

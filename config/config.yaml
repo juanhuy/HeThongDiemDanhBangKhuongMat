@@ -14,18 +14,60 @@ database:
   host: "127.0.0.1"
   port: 3306
   user: "root"
-  password: "19082004"
+  password: ""
   db_name: "ptit_diem_danh"
   images_dir: "./database/registered_images"
-  encryption_key: "j9z1S0Hpx3D5D-zD5vQo_N_T5yP6yS1z4aB8c7D9eFg="
+  encryption_key: ""
 
 attendance:
   cooldown_seconds: 30
   log_file: "./logs/attendance_log.csv"
+  # Ghi phạm vi không đạt để CẤM THI (tỷ lệ vắng %)
+  cam_thi_threshold: 20
+
+registration:
+  # Học kỳ & niên khóa đang mở đăng ký (Lớp tín chỉ phải khớp mới được đăng ký)
+  semester: 1
+  academic_year: "2025-2026"
+  # Đợt đăng ký: khóa đăng ký chỉ hoạt động trong khoảng thời gian này
+  open_date: "2026-07-01"
+  close_date: "2026-12-31"
+  # Giới hạn số tín chỉ đăng ký tối thiểu / tối đa mỗi kỳ
+  min_credits: 6
+  max_credits: 25
+
+# Giá trị mặc định của bảng điều khiển DEMO (Admin bật/tắt trực tiếp trên giao diện
+# trong lúc demo; bản lưu trong hệ thống sẽ ghi đè các giá trị này)
+demo:
+  demo_mode: false
+  bypass_registration_window: false
+  bypass_semester: false
+  bypass_capacity: false
+  bypass_prerequisites: false
+  bypass_credit_limit: false
+  bypass_eligibility: false
+  bypass_duplicate_subject: false
+  allow_unenroll_after_attendance: false
+  allow_after_hours_leave: false
+  allow_override_present_leave: false
 
 server:
   host: "127.0.0.1"
   port: 8000
 
+# Cấu hình xác thực JWT (token đăng nhập)
+# LƯU Ý: Thay secret_key trước khi đưa lên môi trường thực tế
+auth:
+  secret_key: ""
+  algorithm: "HS256"
+  expire_minutes: 480
+  token_type: "bearer"
+
 liveness:
   enabled: true
+  # Ngưỡng score "người thật" (Silent-Face probs[1])
+  ai_threshold: 0.35
+  # Ngưỡng khi người dùng quay đầu làm thử thách (KHÔNG hạ quá thấp để tránh bị qua mặt)
+  challenge_threshold: 0.30
+  # Ngưỡng phương sai Laplacian cho chế độ heuristic (fallback)
+  heuristic_min: 80

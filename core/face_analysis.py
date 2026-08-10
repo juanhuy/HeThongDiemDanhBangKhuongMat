@@ -200,8 +200,8 @@ class FaceAnalyzer:
                     username_lower = str(mssv).strip().lower()
                     account = db.query(Account).filter(Account.username == username_lower).first()
                     if not account:
-                        import hashlib
-                        pw_hash = hashlib.sha256("123456".encode()).hexdigest()
+                        import bcrypt
+                        pw_hash = bcrypt.hashpw(b"123456", bcrypt.gensalt()).decode("utf-8")
                         account = Account(
                             username=username_lower,
                             password_hash=pw_hash,
@@ -225,7 +225,7 @@ class FaceAnalyzer:
                         student_id=mssv,
                         profile_id=profile.profile_id,
                         administrative_class=lop_base,
-                        academic_status="studying"
+                        academic_status="Đang học"
                     )
                     db.add(student)
                     db.flush()
@@ -236,8 +236,8 @@ class FaceAnalyzer:
                         username_lower = str(mssv).strip().lower()
                         account = db.query(Account).filter(Account.username == username_lower).first()
                         if not account:
-                            import hashlib
-                            pw_hash = hashlib.sha256("123456".encode()).hexdigest()
+                            import bcrypt
+                            pw_hash = bcrypt.hashpw(b"123456", bcrypt.gensalt()).decode("utf-8")
                             account = Account(
                                 username=username_lower,
                                 password_hash=pw_hash,
@@ -425,6 +425,7 @@ class FaceAnalyzer:
                 "box": (x1, y1, x2, y2),
                 "name": best_name,
                 "score": float(best_score),
+                "liveness_score": float(liveness_score) if is_real else 0.0,
                 "is_known": is_known,
                 "is_real": is_real,
                 "active_state": {

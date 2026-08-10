@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Date, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, Date, Text, DateTime
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.db.session import Base
 
 class UserProfile(Base):
@@ -39,6 +40,8 @@ class Student(Base):
     cohort = Column(String(20))
     training_program = Column(String(50))
     academic_status = Column(String(50), default="Đang học")
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     profile = relationship("UserProfile", back_populates="student_info")
 

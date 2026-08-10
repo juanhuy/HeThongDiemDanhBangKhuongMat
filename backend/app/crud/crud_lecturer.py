@@ -58,3 +58,18 @@ def update_lecturer(db: Session, db_lecturer: Lecturer, lecturer_update: Lecture
     db.commit()
     db.refresh(db_lecturer)
     return db_lecturer
+
+def delete_lecturer(db: Session, lecturer_id: str):
+    db_lecturer = get_lecturer(db, lecturer_id)
+    if not db_lecturer:
+        return None
+    # Xoá tài khoản liên kết (nếu có)
+    if db_lecturer.account_id:
+        account = db.query(Account).filter(Account.account_id == db_lecturer.account_id).first()
+        if account:
+            # Không xoá cứng account nếu đang có lịch sử; chỉ khoá lại
+            account.is_active = False
+            db.add(account)
+    db.delete(db_lecturer)
+    db.commit()
+    return db_lecturer

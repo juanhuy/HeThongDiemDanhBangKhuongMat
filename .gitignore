@@ -13,3 +13,5 @@ env/
 
 # IDE files (ví dụ: thư mục cài đặt của VS Code)
 .vscode/
+# Cấu hình bí mật môi trường
+config/.env

@@ -25,16 +25,10 @@ async def upload_student_face(student_id: str, file: UploadFile = File(...), db:
     db_student = crud.get_student(db, student_id=student_id)
     if not db_student:
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Vui lòng upload file hình ảnh")
-    
-    os.makedirs(images_dir, exist_ok=True)
-    temp_img_path = os.path.join(images_dir, f"{student_id}.jpg")
-    try:
-        with open(temp_img_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Không thể ghi file ảnh: {e}")
+
+    from app.core.uploads import validate_and_read_image, write_image
+    data, ext = validate_and_read_image(file)
+    temp_img_path = write_image(images_dir, student_id, data, ext)
     
     # Sử dụng FaceAnalyzer thực tế để trích xuất vector khuôn mặt và ghi vào database
     success = analyzer.dang_ky_mat(

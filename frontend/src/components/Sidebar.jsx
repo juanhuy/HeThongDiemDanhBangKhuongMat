@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
-  Home, User, BookOpen, Calendar, Clock, 
-  Clipboard, FileText, Camera, ShieldAlert
+  Home, User, UserCheck, BookOpen, Calendar, Clock, 
+  Clipboard, FileText, Camera, ShieldAlert, Settings2
 } from 'lucide-react';
 
 const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
@@ -55,6 +55,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'students_list' ? 'active' : ''}`} onClick={() => setActiveMenu('students_list')}>
             <User size={16} /> Quản lý Sinh viên
           </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'lecturers' ? 'active' : ''}`} onClick={() => setActiveMenu('lecturers')}>
+            <UserCheck size={16} /> Quản lý Giảng viên
+          </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'attendance' ? 'active' : ''}`} onClick={() => setActiveMenu('attendance')}>
             <User size={16} /> Đăng ký SV mới
           </div>
@@ -66,6 +69,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'class_management' ? 'active' : ''}`} onClick={() => setActiveMenu('class_management')}>
             <BookOpen size={16} /> Quản lý Đăng ký Lớp
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'demo' ? 'active' : ''}`} onClick={() => setActiveMenu('demo')}>
+            <Settings2 size={16} /> Bảng điều khiển Demo
           </div>
         </>
       );
@@ -104,6 +110,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
         </div>
         <div className={`ptit-sidebar-item ${activeMenu === 'my_classes' ? 'active' : ''}`} onClick={() => setActiveMenu('my_classes')}>
           <BookOpen size={16} /> Lớp học của tôi
+        </div>
+        <div className={`ptit-sidebar-item ${activeMenu === 'my_report' ? 'active' : ''}`} onClick={() => setActiveMenu('my_report')}>
+          <FileText size={16} /> Báo cáo của tôi
         </div>
         <div className={`ptit-sidebar-item ${activeMenu === 'course_registration' ? 'active' : ''}`} onClick={() => setActiveMenu('course_registration')}>
           <BookOpen size={16} /> Đăng ký học phần

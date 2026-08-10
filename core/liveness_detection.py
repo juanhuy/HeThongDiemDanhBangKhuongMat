@@ -31,10 +31,17 @@ class LivenessDetector:
             if project_root not in sys.path:
                 sys.path.append(project_root)
             from config.settings import settings
-            self.enabled = settings.config.get("liveness", {}).get("enabled", True)
+            liveness_cfg = settings.config.get("liveness", {}) or {}
+            self.enabled = liveness_cfg.get("enabled", True)
+            self.challenge_threshold = float(liveness_cfg.get("challenge_threshold", 0.30))
+            self.ai_threshold = float(liveness_cfg.get("ai_threshold", 0.35))
+            self.heuristic_min = float(liveness_cfg.get("heuristic_min", 80))
         except Exception as e:
             print(f"-> [Liveness] Lỗi đọc config: {e}")
             self.enabled = True
+            self.challenge_threshold = 0.30
+            self.ai_threshold = 0.35
+            self.heuristic_min = 80
         
         if self.enabled and os.path.exists(self.model_path):
             try:
@@ -137,11 +144,12 @@ class LivenessDetector:
                 # Nếu người dùng đang quay đầu/ngẩng mặt để làm thử thách (yaw/pitch > 10 độ), 
                 # mô hình Silent-Face vốn chỉ được huấn luyện trên mặt nhìn thẳng sẽ giảm score.
                 # Hành động quay đầu chính là bằng chứng người thật đang tương tác.
+                # Ngưỡng được cấu hình trong config.yaml (liveness.challenge_threshold).
                 effective_threshold = threshold
                 if pose is not None:
                     pitch, yaw, roll = pose
                     if abs(yaw) > 10 or abs(pitch) > 10:
-                        effective_threshold = 0.10 # Ngưỡng linh hoạt khi đang làm thử thách
+                        effective_threshold = self.challenge_threshold
                 
                 is_real = real_score >= effective_threshold
                 return is_real, real_score
@@ -156,10 +164,10 @@ class LivenessDetector:
         gray = cv.cvtColor(face_crop, cv.COLOR_BGR2GRAY)
         laplacian_var = cv.Laplacian(gray, cv.CV_64F).var()
         
-        # Nếu phương sai Laplacian cực thấp (< 80) hoặc quá cao do phản sáng màn hình điện thoại
+        # Nếu phương sai Laplacian cực thấp (< heuristic_min) hoặc quá cao do phản sáng màn hình điện thoại
         # thì có nguy cơ cao là ảnh giả mạo.
         # Ngưỡng chuẩn thông thường cho webcam thực tế là khoảng 100 - 1500.
-        is_real = 80.0 <= laplacian_var <= 3000.0
+        is_real = self.heuristic_min <= laplacian_var <= 3000.0
         
         # Chuẩn hóa score về khoảng [0, 1] cho trực quan
         score = min(1.0, max(0.0, laplacian_var / 1000.0))
