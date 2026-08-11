@@ -191,6 +191,22 @@ def add_schedule(
     db.commit()
     return {"status": "success", "message": f"Đã thêm lịch học cho lớp {class_id} tại phòng {room_id}"}
 
+@router.delete("/schedules/{session_id}", summary="Delete Schedule Session", dependencies=[Depends(require_admin)])
+def delete_session(session_id: int, db: Session = Depends(get_db)):
+    """Xóa một buổi học (ClassSession) khỏi lịch. Attendance records liên quan bị xóa theo (CASCADE)."""
+    try:
+        sched = db.query(ClassSession).filter(ClassSession.session_id == session_id).first()
+        if not sched:
+            raise HTTPException(status_code=404, detail="Không tìm thấy buổi học.")
+        db.delete(sched)
+        db.commit()
+        return {"status": "success", "message": f"Đã xóa buổi học {session_id}."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
+
 from sqlalchemy import func
 
 @router.get("/schedules", summary="List Schedules")

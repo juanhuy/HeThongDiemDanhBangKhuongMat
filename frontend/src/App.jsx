@@ -26,6 +26,7 @@ import {
   LecturerTimetable,
 } from './components/lecturer';
 import LecturerClassesManagement from './components/lecturer/LecturerClassesManagement';
+import LivePresencePanel from './components/lecturer/LivePresencePanel';
 import {
   CreditClassesManagement,
   LecturersManagement,
@@ -92,6 +93,7 @@ function App() {
   const [studentProfile, setStudentProfile] = useState(null);
   const [lecturerProfile, setLecturerProfile] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
@@ -132,10 +134,9 @@ function App() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await apiFetch(`${API_BASE}/api/auth/notifications`);
-      if (res.ok) {
-        const data = await res.json();
-        setNotifications((data.notifications || []).map(n => ({
+      const data = await apiFetch(`${API_BASE}/api/auth/notifications`);
+      if (data && Array.isArray(data.notifications)) {
+        setNotifications(data.notifications.map(n => ({
           id: n.id,
           message: n.message ? `${n.title} - ${n.message}` : n.title,
           timestamp: n.timestamp ? new Date(n.timestamp).toLocaleTimeString() : "",
@@ -200,6 +201,7 @@ function App() {
     try {
       const data = await attendanceApi.getRecentLogs();
       const newLogs = data.logs || [];
+      if (typeof data.checkout_enabled === 'boolean') setCheckoutEnabled(data.checkout_enabled);
       setLogs((prevLogs) => {
         if (user && isStudent && studentMssv) {
           const prevStudentLogs = prevLogs.filter((log) => log.mssv === studentMssv);
@@ -208,13 +210,6 @@ function App() {
             const latestNew = newStudentLogs[0];
             const latestPrev = prevStudentLogs[0];
             if (!latestPrev || latestNew.id !== latestPrev.id) {
-              const newNotif = {
-                id: latestNew.id || Date.now(),
-                message: `Bạn vừa được điểm danh tự động [${latestNew.trang_thai}] tại Buổi học số ${latestNew.ma_buoi_hoc}!`,
-                timestamp: new Date().toLocaleTimeString(),
-                read: false,
-              };
-              setNotifications((prev) => [newNotif, ...prev]);
               showToast(`🔔 Bạn vừa được điểm danh [${latestNew.trang_thai}] tại Buổi ${latestNew.ma_buoi_hoc}!`);
             }
           }
@@ -247,7 +242,8 @@ function App() {
     }
 
     fetchLogs();
-    const interval = setInterval(fetchLogs, 5000);
+    fetchNotifications();
+    const interval = setInterval(() => { fetchLogs(); fetchNotifications(); }, 5000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -316,7 +312,12 @@ function App() {
         return (
           <>
             {isStudent && <CourseInfoCard studentProfile={profileToRender} />}
-            {isLecturer && <LecturerInfoCard lecturerProfile={lecturerProfileToRender} />}
+            {isLecturer && (
+              <>
+                <LivePresencePanel lecturerId={user?.lecturer_id || user?.username} />
+                <LecturerInfoCard lecturerProfile={lecturerProfileToRender} />
+              </>
+            )}
             {!isStudent && !isLecturer && <AdminHomeDashboard />}
             <AttendanceLogs
               logs={
@@ -324,6 +325,7 @@ function App() {
                   ? logs.filter((l) => l.mssv === studentMssv)
                   : logs
               }
+              checkoutEnabled={checkoutEnabled}
             />
           </>
         );

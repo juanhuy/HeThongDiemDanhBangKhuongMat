@@ -13,6 +13,7 @@ from app.db.session import get_db
 # Import các Model Database mới
 from app.models import Student, ClassSession, ClassEnrollment, AttendanceRecord, FaceFeature
 from app.models import ClassSchedule, StudentClassEnrollment, AttendanceHistory
+from app.models.presence_snapshot import PresenceSnapshot
 
 # Thêm đường dẫn gốc để import FaceAnalyzer
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,6 +42,22 @@ os.makedirs(images_dir, exist_ok=True)
 # Key: (mssv, room/session) -> {"ts": float, "trang_thai": str, "full_name": str, "lop_base": str}
 _attendance_cache = {}
 _attendance_cooldown = float(settings.config.get("attendance", {}).get("cooldown_seconds", 30))
+# Thời gian ân hạn (phút): SV đến trong khoảng này sau giờ bắt đầu vẫn tính "Đúng giờ"
+_late_grace_minutes = int(settings.config.get("attendance", {}).get("late_grace_minutes", 5))
+# Ngưỡng (phút) không thấy khuôn mặt => coi như SV đã rời lớp (check-out)
+_checkout_idle_minutes = int(settings.config.get("attendance", {}).get("checkout_idle_minutes", 5))
+# Bật/tắt check-in / check-out (tạm tắt: điểm danh đơn giản, quét 1 lần là có mặt)
+_enable_checkout = bool(settings.config.get("attendance", {}).get("enable_checkout", False))
+
+def _notify_student(db, mssv: str, title: str, message: str, ntype: str = "info"):
+    """Gửi thông báo DB cho sinh viên (an toàn, không làm hỏng luồng điểm danh)."""
+    try:
+        from app.core.notify import notify
+        acc = db.query(Account).filter(Account.username == mssv.strip().lower()).first()
+        if acc:
+            notify(db, acc.username, title, message, ntype=ntype)
+    except Exception:
+        pass
 
 def _attendance_cache_key(mssv: str, session_id, room_id):
     return (mssv, room_id or f"session:{session_id}")
@@ -117,46 +134,108 @@ def record_attendance_db(db: Session, mssv: str, session_id: int = None, room_id
     if not _is_enrolled(db, target_session.class_id, mssv):
         return False, "Không có tên trong danh sách lớp", None
 
-    # 4. Ghi nhận điểm danh (không dựa vào MySQL Trigger — cột status NOT NULL)
+    # 4. Ghi nhận điểm danh
+    now = datetime.now()
     record = db.query(AttendanceRecord).filter(
         AttendanceRecord.session_id == target_session.session_id,
         AttendanceRecord.student_id == mssv
     ).first()
 
-    if record and record.recorded_at:
+    start_ref = target_session.start_time + timedelta(minutes=_late_grace_minutes)
+
+    if not _enable_checkout:
+        # --- Điểm danh đơn giản (check-out tạm tắt): quét 1 lần là có mặt, quét lại giữ trạng thái cũ ---
+        if record and record.recorded_at:
+            return True, record.status, student
+        status_val = "Đúng giờ" if now <= start_ref else "Đi muộn"
+        if not record:
+            record = AttendanceRecord(
+                session_id=target_session.session_id,
+                student_id=mssv,
+                status=status_val,
+                recorded_at=now,
+                confidence_score=score
+            )
+            db.add(record)
+        else:
+            record.recorded_at = now
+            record.status = status_val
+            record.confidence_score = score
+        db.commit()
+        db.refresh(record)
+        _notify_student(db, mssv,
+                        f"Đã điểm danh: {record.status}",
+                        f"Buổi học số {target_session.session_id} - phòng {room_id or 'N/A'}.",
+                        ntype="success" if record.status == "Đúng giờ" else "warning")
         return True, record.status, student
 
-    status_val = "Đúng giờ" if now <= target_session.start_time else "Đi muộn"
+    # --- Check-out được bật ---
+    idle = timedelta(minutes=_checkout_idle_minutes)
+
+    # Đóng phiên của các SV khác cùng buổi đã không thấy mặt lâu (đi ra giữa giờ)
+    stale = db.query(AttendanceRecord).filter(
+        AttendanceRecord.session_id == target_session.session_id,
+        AttendanceRecord.check_out_time.is_(None),
+        AttendanceRecord.last_seen < now - idle
+    ).all()
+    for r in stale:
+        r.check_out_time = r.last_seen
+
+    def _checkin_status():
+        return "Đúng giờ" if now <= start_ref else "Đi muộn"
 
     if not record:
+        # Check-in lần đầu trong buổi
         record = AttendanceRecord(
             session_id=target_session.session_id,
             student_id=mssv,
-            status=status_val,
+            status=_checkin_status(),
             recorded_at=now,
+            last_seen=now,
             confidence_score=score
         )
         db.add(record)
-    else:
-        record.recorded_at = now
-        record.status = status_val
-        record.confidence_score = score
+        db.commit()
+        db.refresh(record)
+        _notify_student(db, mssv,
+                        f"Đã điểm danh: {record.status}",
+                        f"Buổi học số {target_session.session_id} - phòng {room_id or 'N/A'}.",
+                        ntype="success" if record.status == "Đúng giờ" else "warning")
+        return True, record.status, student
 
+    last_seen = record.last_seen or record.recorded_at or now
+
+    if record.check_out_time is None:
+        # SV đang có mặt
+        if now - last_seen > idle:
+            # Rời lớp rồi quay lại: đóng phiên trước tại lần thấy cuối, mở phiên mới
+            record.check_out_time = last_seen
+            record.recorded_at = now
+            record.last_seen = now
+            record.status = _checkin_status()
+            db.commit()
+            db.refresh(record)
+            _notify_student(db, mssv,
+                            f"Đã điểm danh lại: {record.status}",
+                            f"Buổi học số {target_session.session_id} - phòng {room_id or 'N/A'}.",
+                            ntype="warning")
+            return True, record.status, student
+        # Vẫn đang ở trong lớp: chỉ cập nhật lần thấy mặt cuối
+        record.last_seen = now
+        db.commit()
+        return True, record.status, student
+
+    # Đã rời lớp trước đó, giờ quay lại -> check-in phiên mới
+    record.check_out_time = None
+    record.recorded_at = now
+    record.last_seen = now
+    record.status = _checkin_status()
     db.commit()
     db.refresh(record)
-
-    # Gửi thông báo cho sinh viên
-    try:
-        from app.core.notify import notify
-        acc = db.query(Account).filter(Account.username == mssv.strip().lower()).first()
-        if acc:
-            notify(db, acc.username,
-                   f"Đã điểm danh: {record.status}",
-                   f"Buổi học số {target_session.session_id} - phòng {room_id or 'N/A'}.",
-                   ntype="success" if record.status in ("Đúng giờ", "Present", "Có mặt") else "warning")
-    except Exception:
-        pass
-
+    _notify_student(db, mssv,
+                    f"Đã điểm danh lại: {record.status}",
+                    f"Buổi học số {target_session.session_id} - phòng {room_id or 'N/A'}.",
+                    ntype="warning")
     return True, record.status, student
 
 
@@ -220,7 +299,16 @@ def _record_attendance_from_schedule(db: Session, student, mssv: str, room_id: s
     if target is None:
         return False, "Không tìm thấy lịch học phù hợp", None
 
-    trang_thai = "Đúng giờ" if now <= start_dt else "Đi muộn"
+    # Ưu tiên giờ buổi học thực tế (ClassSession) thay vì giờ lịch cũ (class_schedules)
+    # để tránh sai trạng thái khi 2 bảng lệch thời gian.
+    real_session = db.query(ClassSession).filter(
+        ClassSession.class_id == target.class_id,
+        ClassSession.session_date == today
+    ).first()
+    if real_session:
+        start_dt = real_session.start_time
+
+    trang_thai = "Đúng giờ" if now <= start_dt + timedelta(minutes=_late_grace_minutes) else "Đi muộn"
 
     # Upsert AttendanceHistory (bảng mà báo cáo/UI đọc)
     rec = db.query(AttendanceHistory).filter(
@@ -355,6 +443,74 @@ async def recognize_uploaded_image(
     return {
         "faces_detected": len(recognized_faces),
         "results": recognized_faces
+    }
+
+
+# =========================================================================
+# 1b. API: CAMERA THỤ ĐỘNG — CHỤP SNAPSHOT HIỆN DIỆN TRONG PHÒNG
+# =========================================================================
+@router.post("/presence/snapshot", summary="Camera thụ động: chụp snapshot đếm SV có mặt")
+async def passive_snapshot(
+    file: UploadFile = File(...),
+    phong_hoc: Optional[str] = Query(None, description="Tên phòng học (để tìm buổi đang diễn ra)."),
+    session_id: Optional[int] = Query(None, description="Mã buổi học cụ thể (tùy chọn)."),
+    db: Session = Depends(get_db),
+):
+    """Quét định kỳ 15-30 phút (demo: vài giây). Ghi nhận ai đang có mặt trong phòng
+    vào bảng presence_snapshots để GV xem số SV hiện diện trực tiếp.
+    KHÔNG thực hiện check-in/check-out."""
+    if not file:
+        return {"status": "failed", "message": "Không nhận được file ảnh", "count": 0}
+    try:
+        from app.core.uploads import MAX_IMAGE_BYTES
+        contents = await file.read()
+        if len(contents) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="File ảnh vượt quá kích thước cho phép (tối đa 5MB).")
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv.imdecode(nparr, cv.IMREAD_COLOR)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi giải mã ảnh: {e}")
+
+    now = datetime.now()
+    target = None
+    if session_id:
+        target = db.query(ClassSession).filter(ClassSession.session_id == session_id).first()
+    elif phong_hoc:
+        sessions = db.query(ClassSession).filter(
+            ClassSession.room_id == phong_hoc.strip(),
+            ClassSession.session_date == now.date()
+        ).all()
+        for s in sessions:
+            if s.start_time - timedelta(minutes=30) <= now <= s.end_time:
+                target = s
+                break
+    if not target:
+        return {"status": "failed", "message": "Không tìm thấy buổi học đang diễn ra ở phòng này.", "count": 0}
+
+    faces = analyzer.recognize_image(img)
+    seen = set()
+    for face in faces:
+        mssv = face["name"]
+        if mssv in ("Unknown", "Spoof/Fake"):
+            continue
+        if not face.get("is_known", False) or not face.get("is_real", True):
+            continue
+        if mssv in seen:
+            continue
+        seen.add(mssv)
+        db.add(PresenceSnapshot(session_id=target.session_id, scanned_at=now, mssv=mssv))
+
+    db.commit()
+    return {
+        "status": "success",
+        "session_id": target.session_id,
+        "class_id": target.class_id,
+        "phong_hoc": phong_hoc,
+        "scanned_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "count": len(seen),
+        "mssvs": sorted(seen),
     }
 
 

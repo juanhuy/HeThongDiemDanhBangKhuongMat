@@ -56,11 +56,29 @@ class OllamaClient:
 
 
 def _get_llm():
-    """Trả về client LLM nếu được bật trong config, ngược lại None."""
+    """Trả về client LLM chính nếu được bật trong config, ngược lại None."""
     llm_cfg = settings.config.get("llm", {}) or {}
     if not llm_cfg.get("enabled", True):
         return None
     return OllamaClient()
+
+
+def _get_moderation_llms():
+    """Trả về DANH SÁCH client LLM cho kiểm duyệt (ensemble).
+
+    - Luôn gồm model CHÍNH (model).
+    - Nếu config có model_base khác model chính -> thêm client thứ 2
+      để kiểm duyệt 2 lớp an toàn (chỉ cần 1 trong 2 flag 'rejected' là từ chối).
+    """
+    llm_cfg = settings.config.get("llm", {}) or {}
+    if not llm_cfg.get("enabled", True):
+        return []
+    main = OllamaClient()
+    base_model = (llm_cfg.get("model_base") or "").strip()
+    main_model = (llm_cfg.get("model") or "").strip()
+    if base_model and base_model != main_model:
+        return [main, OllamaClient(model=base_model)]
+    return [main]
 
 
 def extract_json(text: str) -> dict | None:

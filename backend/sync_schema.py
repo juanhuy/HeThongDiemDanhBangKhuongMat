@@ -83,6 +83,10 @@ _ADD_COLUMNS = [
     ("documents", "moderation_reason", "VARCHAR(500) NULL"),
     ("documents", "moderation_risk", "VARCHAR(10) NULL"),
     ("documents", "moderation_categories", "TEXT NULL"),
+
+    # Điểm danh check-in / check-out (AI)
+    ("attendance_records", "check_out_time", "DATETIME NULL"),
+    ("attendance_records", "last_seen", "DATETIME NULL"),
 ]
 
 # Các cột cần đổi định nghĩa (ALTER ... MODIFY) để tương thích model

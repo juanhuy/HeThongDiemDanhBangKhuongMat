@@ -14,6 +14,10 @@ class AttendanceRecord(Base):
     proof_image_url = Column(String(255), nullable=True)
     notes = Column(String(255), nullable=True)
     updated_by = Column(Integer, ForeignKey('accounts.account_id', ondelete='SET NULL'), nullable=True)
+    # Check-in / Check-out: check_out_time = thời điểm SV rời lớp (NULL = đang có mặt);
+    # last_seen = lần quét cuối của camera để phát hiện SV đã đi ra.
+    check_out_time = Column(DateTime, nullable=True)
+    last_seen = Column(DateTime, nullable=True)
 
     class_session = relationship('ClassSession', back_populates='attendance_records')
     student = relationship('Student', back_populates='attendance_records')

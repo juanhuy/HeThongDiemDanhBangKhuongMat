@@ -25,6 +25,7 @@ from .audit_log import AuditLog
 from .notification import Notification
 from .system_setting import SystemSetting
 from .document import Document, DocumentComment, Flashcard
+from .presence_snapshot import PresenceSnapshot
 
 __all__ = [
     "Account",
@@ -54,4 +55,5 @@ __all__ = [
     "Document",
     "DocumentComment",
     "Flashcard",
+    "PresenceSnapshot",
 ]

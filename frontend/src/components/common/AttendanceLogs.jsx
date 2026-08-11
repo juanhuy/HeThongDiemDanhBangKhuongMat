@@ -1,7 +1,7 @@
 import React from 'react';
 import { CalendarDays } from 'lucide-react';
 
-const AttendanceLogs = ({ logs }) => {
+const AttendanceLogs = ({ logs, checkoutEnabled = false }) => {
   const styles = {
     card: {
       backgroundColor: "#ffffff",
@@ -78,12 +78,18 @@ const AttendanceLogs = ({ logs }) => {
                 <th style={styles.th}>Lớp chuyên ngành</th>
                 <th style={styles.th}>Buổi học</th>
                 <th style={styles.th}>Trạng thái</th>
+                {checkoutEnabled && (
+                  <>
+                    <th style={styles.th}>Giờ rời</th>
+                    <th style={styles.th}>Hiện diện</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ ...styles.td, textAlign: "center", color: "var(--text-muted)" }}>
+                  <td colSpan={checkoutEnabled ? 8 : 6} style={{ ...styles.td, textAlign: "center", color: "var(--text-muted)" }}>
                     Chưa ghi nhận lịch sử quét điểm danh nào trong ngày.
                   </td>
                 </tr>
@@ -100,6 +106,16 @@ const AttendanceLogs = ({ logs }) => {
                     <td style={styles.td}>
                       <span style={{ ...styles.badge, ...styles.badgeSuccess }}>{log.trang_thai}</span>
                     </td>
+                    {checkoutEnabled && (
+                      <>
+                        <td style={styles.td}>
+                          {log.check_out_time ? log.check_out_time : (log.is_present ? "Đang ở lớp" : "—")}
+                        </td>
+                        <td style={styles.td}>
+                          {log.duration_min != null ? `${log.duration_min} phút` : "—"}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))
               )}

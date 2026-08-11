@@ -24,6 +24,12 @@ database:
 
 attendance:
   cooldown_seconds: 30
+  # Số phút ân hạn: SV đến trong khoảng này sau giờ bắt đầu vẫn tính "Đúng giờ"
+  late_grace_minutes: 5
+  # Ngưỡng (phút) không thấy khuôn mặt => coi như SV đã rời lớp (check-out)
+  checkout_idle_minutes: 5
+  # Bật/tắt tính năng check-in / check-out (đang tạm tắt)
+  enable_checkout: false
   log_file: "./logs/attendance_log.csv"
   # Ghi phạm vi không đạt để CẤM THI (tỷ lệ vắng %)
   cam_thi_threshold: 20
@@ -81,7 +87,12 @@ liveness:
 llm:
   enabled: true
   base_url: "http://127.0.0.1:11434"
+  # Model CHÍNH: dùng cho phân tích (tóm tắt/flashcard) + kiểm duyệt.
+  # Sau khi train xong: đổi thành "qwen-mine" (model fine-tuned của bạn).
   model: "qwen2.5:7b"
+  # Model BASE: dùng làm "lớp an toàn" thứ 2 trong kiểm duyệt (ensemble).
+  # Nếu rỗng hoặc giống model chính -> chỉ dùng 1 model.
+  model_base: "qwen2.5:7b"
   timeout: 180
 
 # Kiểm duyệt tự động tài liệu

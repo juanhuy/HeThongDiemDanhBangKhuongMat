@@ -12,7 +12,7 @@ export const addSchedule = (fields) =>
   });
 
 export const deleteSchedule = (sessionId) =>
-  apiFetch(`/api/lich_hoc_chi_tiet/${sessionId}`, { method: "DELETE" });
+  apiFetch(`/api/schedules/${sessionId}`, { method: "DELETE" });
 
 export const updateSchedule = (sessionId, fields) =>
   apiFetch(`/api/lich_hoc_chi_tiet/${sessionId}`, {

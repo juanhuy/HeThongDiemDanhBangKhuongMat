@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, StopCircle, UploadCloud } from 'lucide-react';
+import { Camera, StopCircle, UploadCloud, Users } from 'lucide-react';
 import { attendanceApi, roomsApi } from '../../api';
 
 export default function CameraDashboard({ showToast, onAttendanceLogged }) {
@@ -10,11 +10,16 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
   const [detectionLogs, setDetectionLogs] = useState([]);
   const [recognizeImageSrc, setRecognizeImageSrc] = useState('');
   const [recognizeFile, setRecognizeFile] = useState(null);
+  const [passiveMode, setPassiveMode] = useState(false);
+  const [passiveInterval, setPassiveInterval] = useState(5);
+  const [lastSnapshot, setLastSnapshot] = useState(null);
+  const [snapshotCount, setSnapshotCount] = useState(0);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
   const intervalRef = useRef(null);
+  const snapshotTimerRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -39,6 +44,7 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
     return () => {
       if (webcamStream) webcamStream.getTracks().forEach((t) => t.stop());
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (snapshotTimerRef.current) clearInterval(snapshotTimerRef.current);
     };
   }, [webcamStream]);
 
@@ -76,6 +82,44 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [useWebcam, webcamStream, cameraRoom]);
+
+  // Camera thụ động: quét định kỳ chụp snapshot hiện diện (demo: vài giây)
+  useEffect(() => {
+    if (!useWebcam || !webcamStream || !passiveMode) {
+      if (snapshotTimerRef.current) {
+        clearInterval(snapshotTimerRef.current);
+        snapshotTimerRef.current = null;
+      }
+      return;
+    }
+
+    const capture = () => {
+      if (!videoRef.current) return;
+      const video = videoRef.current;
+      const temp = document.createElement('canvas');
+      temp.width = video.videoWidth || 640;
+      temp.height = video.videoHeight || 480;
+      temp.getContext('2d').drawImage(video, 0, 0, temp.width, temp.height);
+      temp.toBlob(async (blob) => {
+        if (!blob) return;
+        try {
+          const data = await attendanceApi.presenceSnapshot(blob, cameraRoom);
+          setLastSnapshot(data);
+          setSnapshotCount((c) => c + 1);
+          if (data?.status === 'success' && data.count > 0) {
+            showToast?.(`📸 Snapshot: ${data.count} SV đang có mặt`, 'success');
+          }
+        } catch (err) {
+          console.error('Lỗi chụp snapshot:', err);
+        }
+      }, 'image/jpeg');
+    };
+
+    snapshotTimerRef.current = setInterval(capture, Math.max(1, passiveInterval) * 1000);
+    return () => {
+      if (snapshotTimerRef.current) clearInterval(snapshotTimerRef.current);
+    };
+  }, [useWebcam, webcamStream, passiveMode, passiveInterval, cameraRoom]);
 
   const drawBoxes = (results, sourceCanvas) => {
     const canvas = canvasRef.current;
@@ -145,6 +189,33 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
     }
   };
 
+  const takeSnapshotNow = async () => {
+    if (!videoRef.current) {
+      showToast?.('Hãy bật webcam trước khi chụp snapshot', 'warning');
+      return;
+    }
+    const video = videoRef.current;
+    const temp = document.createElement('canvas');
+    temp.width = video.videoWidth || 640;
+    temp.height = video.videoHeight || 480;
+    temp.getContext('2d').drawImage(video, 0, 0, temp.width, temp.height);
+    temp.toBlob(async (blob) => {
+      if (!blob) return;
+      try {
+        const data = await attendanceApi.presenceSnapshot(blob, cameraRoom);
+        setLastSnapshot(data);
+        setSnapshotCount((c) => c + 1);
+        if (data?.status === 'success') {
+          showToast?.(`📸 Snapshot thủ công: ${data.count} SV đang có mặt`, data.count > 0 ? 'success' : 'warning');
+        } else {
+          showToast?.(data?.message || 'Không chụp được snapshot', 'warning');
+        }
+      } catch (err) {
+        showToast?.(err.message || 'Lỗi chụp snapshot', 'danger');
+      }
+    }, 'image/jpeg');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -185,6 +256,35 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
             <UploadCloud size={16} /> Upload ảnh
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileUpload} />
+
+          {/* Camera thụ động */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderLeft: '1px solid #e2edf5', paddingLeft: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
+              <input type="checkbox" checked={passiveMode} onChange={(e) => setPassiveMode(e.target.checked)} />
+              <Users size={16} /> Snapshot thụ động
+            </label>
+            {passiveMode && (
+              <>
+                <label style={{ fontSize: '0.8rem', color: '#475569' }}>mỗi</label>
+                <input
+                  type="number" min={1} value={passiveInterval}
+                  onChange={(e) => setPassiveInterval(Math.max(1, Number(e.target.value) || 1))}
+                  style={{ width: 60, padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: '0.8rem' }}
+                />
+                <label style={{ fontSize: '0.8rem', color: '#475569' }}>giây</label>
+                <button onClick={takeSnapshotNow} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', background: '#059669', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem' }}>
+                  <Camera size={14} /> Chụp ngay
+                </button>
+              </>
+            )}
+          </div>
+          {lastSnapshot && (
+            <div style={{ fontSize: '0.75rem', color: passiveMode ? '#059669' : '#64748b', fontWeight: 600 }}>
+              {lastSnapshot.status === 'success'
+                ? `Đã chụp ${snapshotCount} snapshot · ${lastSnapshot.count} SV có mặt · ${lastSnapshot.scanned_at}`
+                : lastSnapshot.message}
+            </div>
+          )}
         </div>
       </div>
 

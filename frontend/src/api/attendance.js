@@ -22,3 +22,20 @@ export const recognizeFace = (file, room) => {
     body: fd,
   });
 };
+
+export const presenceSnapshot = (file, room, sessionId) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  const params = new URLSearchParams();
+  if (room) params.set("phong_hoc", room);
+  if (sessionId) params.set("session_id", sessionId);
+  return apiFetch(`/api/presence/snapshot?${params.toString()}`, {
+    method: "POST",
+    body: fd,
+  });
+};
+
+export const getLivePresence = (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return apiFetch(`/api/live-presence${qs ? `?${qs}` : ""}`);
+};

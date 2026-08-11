@@ -531,47 +531,89 @@ def _moderation_categories_config():
     return reject, review
 
 
+def _parse_moderation(data: dict) -> dict:
+    """Chuẩn hoá + áp dụng quy tắc reject/review cho kết quả 1 model."""
+    verdict = str(data.get("verdict") or "approved").strip().lower()
+    if verdict not in ("approved", "rejected", "review"):
+        verdict = "approved"
+    categories = [str(c).strip() for c in (data.get("categories") or []) if str(c).strip()]
+    risk = float(data.get("risk") or 0.0)
+    reason = str(data.get("reason") or "").strip()
+    reject, review = _moderation_categories_config()
+    if any(c in reject for c in categories):
+        verdict = "rejected"
+        risk = max(risk, 0.9)
+    elif any(c in review for c in categories):
+        verdict = "review"
+        risk = max(risk, 0.5)
+    return {"verdict": verdict, "risk": risk, "reason": reason, "categories": categories}
+
+
+def _combine_moderation(results: list) -> dict:
+    """Kết hợp kết quả nhiều model (ensemble) theo nguyên tắc an toàn:
+    - Chỉ cần 1 model 'rejected' -> từ chối.
+    - Không ai reject, nhưng có 'review' -> xem xét.
+    - Cả hai approved -> duyệt.
+    """
+    reject, review = _moderation_categories_config()
+    all_cats = []
+    for r in results:
+        for c in r.get("categories", []):
+            if c not in all_cats:
+                all_cats.append(c)
+
+    if any(r["verdict"] == "rejected" for r in results) or any(c in reject for c in all_cats):
+        rej = [r for r in results if r["verdict"] == "rejected"] or \
+              [r for r in results if any(c in reject for c in r.get("categories", []))]
+        best = max(rej, key=lambda r: r.get("risk", 0.0))
+        return {
+            "verdict": "rejected",
+            "risk": max(round(max(r["risk"] for r in results), 2), 0.9),
+            "reason": best.get("reason") or "Tài liệu vi phạm chính sách nội dung.",
+            "categories": all_cats,
+        }
+    if any(r["verdict"] == "review" for r in results) or any(c in review for c in all_cats):
+        rej = [r for r in results if r["verdict"] == "review"]
+        reason = rej[0].get("reason") if rej and rej[0].get("reason") else "Tài liệu cần xem xét."
+        return {
+            "verdict": "review",
+            "risk": max(round(max(r["risk"] for r in results), 2), 0.5),
+            "reason": reason,
+            "categories": all_cats,
+        }
+    return {
+        "verdict": "approved",
+        "risk": round(max(r["risk"] for r in results), 2),
+        "reason": "",
+        "categories": all_cats,
+    }
+
+
 def moderate_content(raw_text: str, max_chars: int = 9000) -> dict:
-    """Kiểm duyệt tự động nội dung tài liệu.
+    """Kiểm duyệt tự động nội dung tài liệu (có thể dùng 2 model ensemble).
 
     Trả về {verdict, risk, reason, categories}.
     verdict = None khi không kiểm được (LLM không khả dụng) → hệ thống giữ nguyên luồng cũ.
     """
-    llm = _get_llm()
-    if llm is None or not llm.available():
-        return {"verdict": None, "risk": 0.0, "reason": "", "categories": []}
-    snippet = _clean_text(raw_text)[:max_chars]
+    snippet = _clean_text(raw_text or "")[:max_chars]
     if not snippet:
         return {"verdict": "approved", "risk": 0.0, "reason": "", "categories": []}
-    try:
-        from app.services.llm_client import extract_json
-        resp = llm.chat(_MODERATION_SYSTEM_PROMPT, f"Kiểm duyệt tài liệu sau:\n\n{snippet}")
-        data = extract_json(resp)
-        if not data:
-            return {"verdict": None, "risk": 0.0, "reason": "", "categories": []}
-        verdict = str(data.get("verdict") or "approved").strip().lower()
-        if verdict not in ("approved", "rejected", "review"):
-            verdict = "approved"
-        categories = [str(c).strip() for c in (data.get("categories") or []) if str(c).strip()]
-        risk = float(data.get("risk") or 0.0)
-        reason = str(data.get("reason") or "").strip()
 
-        # Áp dụng quy tắc chặt: nếu chứa mã reject/review thì ép verdict tương ứng
-        reject, review = _moderation_categories_config()
-        if any(c in reject for c in categories):
-            verdict = "rejected"
-            if risk < 0.7:
-                risk = 0.9
-        elif any(c in review for c in categories):
-            verdict = "review"
-            if risk < 0.4:
-                risk = 0.5
-
-        return {
-            "verdict": verdict,
-            "risk": risk,
-            "reason": reason,
-            "categories": categories,
-        }
-    except Exception:
+    from app.services.llm_client import _get_moderation_llms, extract_json
+    llms = _get_moderation_llms()
+    if not llms:
         return {"verdict": None, "risk": 0.0, "reason": "", "categories": []}
+
+    results = []
+    for llm in llms:
+        try:
+            resp = llm.chat(_MODERATION_SYSTEM_PROMPT, f"Kiểm duyệt tài liệu sau:\n\n{snippet}")
+            data = extract_json(resp)
+            if data:
+                results.append(_parse_moderation(data))
+        except Exception:
+            continue
+
+    if not results:
+        return {"verdict": None, "risk": 0.0, "reason": "", "categories": []}
+    return _combine_moderation(results)
