@@ -60,16 +60,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": exc.errors()},
     )
     
-# Cấu hình CORS
+# Cấu hình CORS — mở cho mọi origin vì API dùng Bearer token (không dùng cookie).
+# Tránh lỗi "Failed to fetch" khi mở frontend qua localhost/127.0.0.1/IP/port khác.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -30,6 +30,27 @@ const DocumentDetail = ({ user, showToast, docId, initialTab = 'view', onBack })
   const [commentText, setCommentText] = useState('');
   const [similar, setSimilar] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [summaryProcessing, setSummaryProcessing] = useState(false);
+
+  const loadSummary = async () => {
+    try {
+      const sm = await documentsApi.getDocumentSummary(docId);
+      setSummary(sm);
+      setSummaryProcessing(!!sm.processing);
+      return sm;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Poll kết quả khi AI đang phân tích nền
+  useEffect(() => {
+    if (!summaryProcessing) return;
+    const t = setInterval(loadSummary, 4000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryProcessing]);
 
   useEffect(() => {
     let alive = true;
@@ -48,7 +69,7 @@ const DocumentDetail = ({ user, showToast, docId, initialTab = 'view', onBack })
           const t = await documentsApi.getDocumentText(docId);
           if (alive) setTextContent(t.content || '');
         }
-        documentsApi.getDocumentSummary(docId).then((sm) => alive && setSummary(sm)).catch(() => {});
+        documentsApi.getDocumentSummary(docId).then((sm) => { if (alive) { setSummary(sm); setSummaryProcessing(!!sm.processing); } }).catch(() => {});
         documentsApi.listComments(docId).then((cm) => alive && setComments(cm.comments || [])).catch(() => {});
         documentsApi.similarDocuments(docId).then((sim) => alive && setSimilar(sim.documents || [])).catch(() => {});
       } catch (e) {
@@ -133,9 +154,49 @@ const DocumentDetail = ({ user, showToast, docId, initialTab = 'view', onBack })
 
       {tab === 'summary' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+              {summaryProcessing ? (
+                <span style={{ fontSize: '0.8rem', background: '#dbeafe', color: '#2563eb', borderRadius: 20, padding: '3px 12px' }}>
+                  ⏳ AI đang phân tích nội dung...
+                </span>
+              ) : summary?.has_llm ? (
+                <span style={{ fontSize: '0.8rem', background: '#e8f2f9', color: '#106fa6', borderRadius: 20, padding: '3px 12px' }}>Phân tích bởi AI</span>
+              ) : (
+                <span style={{ fontSize: '0.8rem', background: '#fef3c7', color: '#b45309', borderRadius: 20, padding: '3px 12px' }}>Phân tích quy tắc (chưa bật LLM)</span>
+              )}
+            </div>
+            <button
+              style={s.btnPrimary}
+              disabled={reanalyzing || summaryProcessing}
+              onClick={async () => {
+                setReanalyzing(true);
+                setSummaryProcessing(true);
+                try {
+                  await documentsApi.reanalyzeDocument(docId);
+                  showToast?.('Đang phân tích lại bằng AI...', 'info');
+                } catch (e) {
+                  showToast?.(e.message || 'Lỗi phân tích lại', 'danger');
+                  setSummaryProcessing(false);
+                } finally {
+                  setReanalyzing(false);
+                }
+              }}
+            >
+              {reanalyzing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
+              {reanalyzing ? 'Đang yêu cầu...' : 'Phân tích lại bằng AI'}
+            </button>
+          </div>
+
+          {summaryProcessing ? (
+            <div style={{ ...s.box, textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+              <Loader2 size={28} className="spin" style={{ margin: '0 auto 10px', display: 'block' }} />
+              AI đang tóm tắt tài liệu, vui lòng chờ... (trang sẽ tự cập nhật khi xong)
+            </div>
+          ) : (<>
           <div style={s.box}>
             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#106fa6', marginBottom: 8 }}>
-              <Sparkles size={14} style={{ verticalAlign: -2 }} /> Tóm tắt AI
+              <Sparkles size={14} style={{ verticalAlign: -2 }} /> Tổng quan
             </div>
             <div style={{ fontSize: '0.9rem', color: '#334155', lineHeight: 1.7 }}>
               {summary?.summary || 'Chưa có nội dung tóm tắt cho tài liệu này.'}
@@ -148,8 +209,30 @@ const DocumentDetail = ({ user, showToast, docId, initialTab = 'view', onBack })
             </div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {(summary?.keywords || []).map((k) => <span key={k} style={s.tag}>{k}</span>)}
+              {(summary?.keywords || []).length === 0 && <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Chưa có từ khóa.</span>}
             </div>
           </div>
+
+          {(summary?.chapters || []).length > 0 && (
+            <div style={s.box}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#106fa6', marginBottom: 8 }}>
+                <Layers size={14} style={{ verticalAlign: -2 }} /> Nội dung theo chương
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {(summary.chapters || []).map((ch, i) => (
+                  <div key={i} style={{ borderLeft: '3px solid #106fa6', paddingLeft: 12 }}>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#1e3a5f' }}>{ch.title}</div>
+                    {ch.summary && <div style={{ fontSize: '0.86rem', color: '#475569', marginTop: 4, lineHeight: 1.6 }}>{ch.summary}</div>}
+                    {ch.keywords && ch.keywords.length > 0 && (
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 5 }}>
+                        {(ch.keywords || []).slice(0, 5).map((k) => <span key={k} style={s.tag}>{k}</span>)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div style={s.box}>
             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#106fa6', marginBottom: 8 }}>
@@ -160,6 +243,32 @@ const DocumentDetail = ({ user, showToast, docId, initialTab = 'view', onBack })
               {(!summary?.key_points || summary.key_points.length === 0) && <li>Chưa có ý chính.</li>}
             </ul>
           </div>
+
+          {(summary?.terms || []).length > 0 && (
+            <div style={s.box}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#106fa6', marginBottom: 8 }}>
+                <Layers size={14} style={{ verticalAlign: -2 }} /> Thuật ngữ quan trọng
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {(summary.terms || []).map((t, i) => (
+                  <div key={i}>
+                    <b style={{ color: '#1e3a5f', fontSize: '0.9rem' }}>{t.term}</b>
+                    <div style={{ fontSize: '0.85rem', color: '#475569' }}>{t.definition}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {summary?.conclusion && (
+            <div style={s.box}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#106fa6', marginBottom: 8 }}>
+                <Sparkles size={14} style={{ verticalAlign: -2 }} /> Kết luận
+              </div>
+              <div style={{ fontSize: '0.9rem', color: '#334155', lineHeight: 1.7 }}>{summary.conclusion}</div>
+            </div>
+          )}
+          </>)}
         </div>
       )}
 

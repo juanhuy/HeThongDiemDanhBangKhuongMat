@@ -51,10 +51,14 @@ const DocumentUpload = ({ user, showToast, onBack, onUploaded }) => {
       const res = await documentsApi.uploadDocument({
         file, title: title.trim(), description: description.trim(), subject_id: subjectId || undefined,
       });
-      showToast?.('Đăng tải thành công! Hệ thống đã tự động phân tích & gắn thẻ.', 'success');
+      showToast?.('Đăng tải thành công! AI đang phân tích nội dung trong nền...', 'success');
       onUploaded?.(res.document?.document_id);
     } catch (e) {
-      showToast?.(e.message || 'Đăng tải thất bại', 'danger');
+      if (e?.message === 'Failed to fetch' || e?.name === 'TypeError' || e?.status === undefined) {
+        showToast?.('Không kết nối được máy chủ. Vui lòng kiểm tra backend đang chạy tại http://127.0.0.1:8000', 'danger');
+      } else {
+        showToast?.(e.message || 'Đăng tải thất bại', 'danger');
+      }
     } finally {
       setSubmitting(false);
     }

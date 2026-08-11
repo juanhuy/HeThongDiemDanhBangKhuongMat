@@ -74,3 +74,21 @@ liveness:
   challenge_threshold: 0.30
   # Ngưỡng phương sai Laplacian cho chế độ heuristic (fallback)
   heuristic_min: 80
+
+# LLM local cho Hệ thống Tài liệu (tóm tắt/trích xuất học thuật + flashcard)
+# Chạy Ollama:  ~/.local/ollama/bin/ollama serve   rồi   ollama pull qwen2.5:7b
+# Nếu model không khả dụng, hệ thống tự động fallback sang thuật toán quy tắc offline.
+llm:
+  enabled: true
+  base_url: "http://127.0.0.1:11434"
+  model: "qwen2.5:7b"
+  timeout: 180
+
+# Kiểm duyệt tự động tài liệu
+moderation:
+  # Mã vi phạm LUÔN TỪ CHỐI tự động
+  reject_categories: ["phapluat", "dothi", "doitruy", "spam", "rip", "link_doc_hai", "buon_ban"]
+  # Mã vi phạm cần ADMIN xem xét lại
+  review_categories: ["daovan", "sai_chu_de", "chat_luong_thap", "sai_lech", "trung_lap"]
+  # Ngưỡng tương đồng để gắn cờ trùng lặp (0-1)
+  duplicate_threshold: 0.75

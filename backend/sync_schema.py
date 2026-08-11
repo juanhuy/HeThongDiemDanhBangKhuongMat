@@ -72,6 +72,17 @@ _ADD_COLUMNS = [
 
     # Nhận diện khuôn mặt (model_version)
     ("face_features", "model_version", "VARCHAR(50) DEFAULT 'buffalo_l'"),
+
+    # Hệ thống tài liệu (flashcard theo chương)
+    ("flashcards", "chapter", "VARCHAR(200) NULL"),
+    ("flashcards", "card_type", "VARCHAR(20) DEFAULT 'fill-blank'"),
+    ("documents", "analysis_json", "TEXT NULL"),
+    ("documents", "analysis_status", "VARCHAR(20) DEFAULT 'pending'"),
+    ("documents", "analysis_error", "VARCHAR(255) NULL"),
+    ("documents", "moderation_verdict", "VARCHAR(20) NULL"),
+    ("documents", "moderation_reason", "VARCHAR(500) NULL"),
+    ("documents", "moderation_risk", "VARCHAR(10) NULL"),
+    ("documents", "moderation_categories", "TEXT NULL"),
 ]
 
 # Các cột cần đổi định nghĩa (ALTER ... MODIFY) để tương thích model
@@ -82,6 +93,11 @@ _MODIFY_COLUMNS = [
     # để NULL để không chặn INSERT qua model mới (không có default ở DB cũ)
     ("lecturers", "full_name", "VARCHAR(50) NULL"),
     ("lecturers", "email", "VARCHAR(50) NULL"),
+    # documents: văn bản trích xuất từ PDF có thể rất lớn -> nâng từ TEXT (64KB) lên LONGTEXT
+    ("documents", "content_text", "LONGTEXT"),
+    ("documents", "analysis_json", "LONGTEXT"),
+    ("documents", "summary", "LONGTEXT"),
+    ("documents", "key_points", "LONGTEXT"),
 ]
 
 

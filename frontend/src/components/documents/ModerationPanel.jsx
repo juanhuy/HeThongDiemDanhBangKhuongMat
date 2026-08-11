@@ -77,6 +77,11 @@ const ModerationPanel = ({ user, showToast, onBack }) => {
             <span style={{ ...s.tag, background: '#fef3c7', color: '#b45309' }}>Chờ duyệt</span>
           </div>
           {d.description && <div style={{ fontSize: '0.85rem', color: '#475569' }}>{d.description}</div>}
+          {d.moderation_reason && (
+            <div style={{ fontSize: '0.82rem', color: '#a16207', background: '#fef9c3', borderRadius: 6, padding: '6px 10px' }}>
+              ⚠️ {d.moderation_reason}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {(d.tags || []).map((t) => <span key={t} style={s.tag}>{t}</span>)}
           </div>

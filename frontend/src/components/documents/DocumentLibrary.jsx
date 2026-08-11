@@ -71,6 +71,14 @@ const DocumentLibrary = ({ user, showToast, onUpload, onOpen, onModeration }) =>
 
   useEffect(() => { applyFilters(1); }, [activeTag, sort]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tự làm mới danh sách khi còn tài liệu đang phân tích AI nền
+  useEffect(() => {
+    const processing = docs.some((d) => d.analysis_status === 'processing');
+    if (!processing) return;
+    const t = setInterval(() => { applyFilters(page, activeTag, sort); }, 5000);
+    return () => clearInterval(t);
+  }, [docs]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDelete = async (doc) => {
     if (!window.confirm(`Xóa tài liệu "${doc.title}"?`)) return;
     try {
@@ -157,8 +165,26 @@ const DocumentLibrary = ({ user, showToast, onUpload, onOpen, onModeration }) =>
               <span style={{ background: '#f0f6fb', borderRadius: 8, padding: '6px 8px', color: '#106fa6' }}>
                 {d.file_ext === '.pdf' ? <FileText size={22} /> : <FileIcon size={22} />}
               </span>
-              {d.status !== 'approved' && (
+              {d.status === 'rejected' && (
+                <span style={{ ...s.badge, background: '#fee2e2', color: '#dc2626', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  title={d.moderation_reason || 'Vi phạm chính sách nội dung'}>
+                  ✕ Đã từ chối: {d.moderation_reason || 'vi phạm nội dung'}
+                </span>
+              )}
+              {d.status === 'pending' && d.moderation_verdict === 'review' && (
+                <span style={{ ...s.badge, background: '#fef9c3', color: '#a16207', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  title={d.moderation_reason || 'Cần admin xem xét'}>
+                  ⚠️ Cần xem xét: {d.moderation_reason || ''}
+                </span>
+              )}
+              {d.status === 'pending' && d.analysis_status === 'done' && d.moderation_verdict !== 'review' && (
                 <span style={{ ...s.badge, background: '#fef3c7', color: '#b45309' }}>Chờ duyệt</span>
+              )}
+              {d.analysis_status === 'processing' && (
+                <span style={{ ...s.badge, background: '#dbeafe', color: '#2563eb' }}>⏳ Đang phân tích AI...</span>
+              )}
+              {d.analysis_status === 'failed' && (
+                <span style={{ ...s.badge, background: '#fee2e2', color: '#dc2626' }}>Lỗi phân tích</span>
               )}
               {isOwner(d) && (
                 <span

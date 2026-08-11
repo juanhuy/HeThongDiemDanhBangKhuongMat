@@ -8,8 +8,9 @@
 import os
 import sys
 import uuid
+import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models import Document, DocumentComment, Flashcard, Subject
 from app.core.require import get_current_user, require_admin
-from app.services.document_ai import extract_text, analyze_document, generate_flashcards
+from app.services.document_ai import extract_text, document_analysis, document_flashcards
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if project_root not in sys.path:
@@ -34,6 +35,147 @@ MAX_DOC_BYTES = 20 * 1024 * 1024  # 20MB
 ALLOWED_EXT = {".pdf": "application/pdf", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 
 AUTO_APPROVE_ROLES = {"giang_vien", "admin", "lecturer"}
+
+
+def _analysis_to_json(analysis: dict) -> str:
+    """Chỉ lưu các trường có cấu trúc (không lưu content_text/thẻ flashcard tạm)."""
+    return json.dumps({
+        "summary": analysis.get("summary", ""),
+        "keywords": [k.strip() for k in (analysis.get("keywords") or "").split(",") if k.strip()],
+        "key_points": [k.strip() for k in (analysis.get("key_points") or "").split("\n") if k.strip()],
+        "chapters": analysis.get("chapters", []),
+        "conclusion": analysis.get("conclusion", ""),
+        "terms": analysis.get("terms", []),
+        "has_llm": bool(analysis.get("_llm_flashcards")),
+    }, ensure_ascii=False)
+
+
+def _analysis_from_json(doc) -> dict | None:
+    if not getattr(doc, "analysis_json", None):
+        return None
+    try:
+        data = json.loads(doc.analysis_json)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return None
+
+
+def _norm_words(text: str) -> set:
+    """Tập từ chuẩn hóa (bỏ dấu, tách từ) để so sánh độ tương đồng."""
+    from app.services.document_ai import _clean_text
+    return set(_clean_text(text or "").split()[:8000])
+
+
+def _find_duplicate(db, doc_id: int, content_text: str, threshold: float) -> int | None:
+    """Tìm tài liệu trùng/gần giống với tài liệu hiện tại. Trả về document_id hoặc None."""
+    wa = _norm_words(content_text)
+    if not wa:
+        return None
+    others = db.query(Document.document_id, Document.content_text).filter(
+        Document.document_id != doc_id,
+        Document.status.in_(["approved", "pending"]),
+        Document.content_text.isnot(None),
+    ).all()
+    best_id = None
+    best_score = 0.0
+    for oid, otext in others:
+        wb = _norm_words(otext)
+        if not wb:
+            continue
+        inter = len(wa & wb)
+        score = inter / min(len(wa), len(wb))
+        if score > best_score:
+            best_score = score
+            best_id = oid
+    if best_id is not None and best_score >= threshold:
+        return best_id
+    return None
+
+
+def _run_analysis(doc_id: int, content_text: str) -> None:
+    """Phân tích AI chạy NỀN (background): LLM tóm tắt + sinh flashcard.
+
+    Không chặn request upload — chạy trong thread riêng, mở session riêng.
+    Ollama tự xếp hàng các request đồng thời nên an toàn cho tải lớn.
+    """
+    from app.db.session import SessionLocal as _SessionLocal
+    db = _SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.document_id == doc_id).first()
+        if not doc:
+            return
+        doc.analysis_status = "processing"
+        doc.analysis_error = None
+        db.commit()
+
+        analysis = document_analysis(content_text)
+
+        doc.tags = analysis["tags"]
+        doc.keywords = analysis["keywords"]
+        doc.summary = analysis["summary"]
+        doc.key_points = analysis["key_points"]
+        doc.content_text = analysis["content_text"]
+        doc.analysis_json = _analysis_to_json(analysis)
+
+        # Kiểm duyệt tự động (toàn bộ vi phạm) + phát hiện trùng lặp
+        from app.services.document_ai import moderate_content
+        mod = moderate_content(content_text)
+        categories = list(mod.get("categories") or [])
+
+        # Phát hiện trùng lặp với tài liệu đã có
+        try:
+            threshold = float((settings.config.get("moderation", {}) or {}).get("duplicate_threshold", 0.75))
+        except Exception:
+            threshold = 0.75
+        dup_of = _find_duplicate(db, doc_id, content_text, threshold)
+        if dup_of:
+            if "trung_lap" not in categories:
+                categories.append("trung_lap")
+            mod["categories"] = categories
+            mod["verdict"] = "review"
+            mod["reason"] = (mod.get("reason") and f"{mod['reason']}. " or "") + f"Trùng nội dung với tài liệu #{dup_of}."
+
+        doc.moderation_verdict = mod.get("verdict")
+        doc.moderation_reason = (mod.get("reason") or "")[:500] or None
+        doc.moderation_risk = str(mod.get("risk") or 0.0)
+        doc.moderation_categories = json.dumps(categories, ensure_ascii=False)
+
+        if mod.get("verdict") == "rejected":
+            # Tự động từ chối tài liệu vi phạm nghiêm trọng
+            doc.status = "rejected"
+            doc.moderation_note = (mod.get("reason") or "")[:255] or "Tài liệu vi phạm chính sách nội dung."
+        elif mod.get("verdict") == "review":
+            # Cần admin xem xét: đưa về trạng thái chờ duyệt kèm lý do
+            doc.status = "pending"
+            doc.moderation_note = (mod.get("reason") or "")[:255] or "Tài liệu cần kiểm duyệt."
+
+        # Sinh lại flashcard
+        db.query(Flashcard).filter(Flashcard.document_id == doc_id, Flashcard.source == "auto").delete()
+        cards = analysis.get("_llm_flashcards")
+        if cards is None:
+            cards = document_flashcards(content_text)
+        for c in cards:
+            db.add(Flashcard(
+                document_id=doc_id, owner_username=None,
+                question=c["question"], answer=c["answer"], chapter=c.get("chapter"),
+                card_type=c.get("type", "fill-blank"), source="auto",
+            ))
+
+        doc.analysis_status = "done"
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        try:
+            doc = db.query(Document).filter(Document.document_id == doc_id).first()
+            if doc:
+                doc.analysis_status = "failed"
+                doc.analysis_error = str(e)[:255]
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 def _storage_path(stored_name: str) -> str:
@@ -64,6 +206,9 @@ def _doc_to_dict(doc: Document, current_user: dict) -> dict:
         "tags": tags,
         "status": doc.status,
         "moderation_note": doc.moderation_note if current_user["role"] == "admin" else None,
+        "analysis_status": doc.analysis_status,
+        "moderation_verdict": doc.moderation_verdict,
+        "moderation_reason": doc.moderation_reason,
         "view_count": doc.view_count,
         "download_count": doc.download_count,
         "created_at": doc.created_at.isoformat() if doc.created_at else None,
@@ -79,6 +224,7 @@ async def upload_document(
     title: str = Form(...),
     description: str = Form(None),
     subject_id: str = Form(None),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -92,9 +238,9 @@ async def upload_document(
     if len(data) > MAX_DOC_BYTES:
         raise HTTPException(status_code=413, detail="File vượt quá kích thước tối đa 20MB.")
 
-    # Trích xuất văn bản + phân tích AI
-    content_text = extract_text(data, ext)
-    analysis = analyze_document(content_text)
+    # Trích xuất văn bản (nhanh) — phần LLM nặng sẽ chạy nền
+    # Giới hạn độ dài lưu trữ để tránh quá tải DB (LONGTEXT vẫn giới hạn ~4GB)
+    content_text = extract_text(data, ext)[:200000]
 
     stored_name = f"{uuid.uuid4().hex[:20]}{ext}"
     with open(_storage_path(stored_name), "wb") as f:
@@ -115,28 +261,22 @@ async def upload_document(
         uploaded_by_role=role,
         uploader_name=current_user.get("ho_ten") or current_user.get("username") or "N/A",
         subject_id=(subject_id or "").strip() or None,
-        tags=analysis["tags"],
-        keywords=analysis["keywords"],
-        summary=analysis["summary"],
-        key_points=analysis["key_points"],
-        content_text=analysis["content_text"],
+        content_text=content_text,
         status=status_val,
+        analysis_status="processing",
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
 
-    # Tự sinh flashcard cho tài liệu được duyệt (GV/Admin)
-    if status_val == "approved" and analysis["content_text"]:
-        cards = generate_flashcards(analysis["content_text"])
-        for c in cards:
-            db.add(Flashcard(
-                document_id=doc.document_id, owner_username=None,
-                question=c["question"], answer=c["answer"], source="auto",
-            ))
-        db.commit()
+    # Chạy phân tích AI (tóm tắt + flashcard) trong BACKGROUND -> upload phản hồi ngay
+    background_tasks.add_task(_run_analysis, doc.document_id, content_text)
 
-    return {"status": "success", "message": "Đã đăng tải tài liệu thành công.", "document": _doc_to_dict(doc, current_user)}
+    return {
+        "status": "success",
+        "message": "Đã đăng tải tài liệu. AI đang phân tích nội dung trong nền...",
+        "document": _doc_to_dict(doc, current_user),
+    }
 
 
 # =========================================================================
@@ -224,14 +364,94 @@ def get_document(doc_id: int, db: Session = Depends(get_db), current_user: dict 
     return {"status": "success", "document": _doc_to_dict(doc, current_user)}
 
 
-@router.get("/{doc_id}/summary", summary="Tóm tắt AI của tài liệu (Keywords, Summary, Key Points)")
+@router.get("/{doc_id}/summary", summary="Tóm tắt AI của tài liệu (Overview, Chương, Ý chính, Thuật ngữ, Kết luận)")
 def get_document_summary(doc_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     doc = _get_doc(db, doc_id, current_user)
+
+    # Đang phân tích nền -> trả cờ để UI hiện "đang chờ"
+    if doc.analysis_status == "processing":
+        return {
+            "status": "success",
+            "processing": True,
+            "summary": "",
+            "keywords": [], "key_points": [],
+            "chapters": [], "conclusion": "", "terms": [],
+            "has_llm": False,
+        }
+
+    stored = _analysis_from_json(doc)
+    if stored:
+        return {
+            "status": "success",
+            "processing": False,
+            "summary": stored.get("summary", ""),
+            "keywords": stored.get("keywords", []),
+            "key_points": stored.get("key_points", []),
+            "chapters": stored.get("chapters", []),
+            "conclusion": stored.get("conclusion", ""),
+            "terms": stored.get("terms", []),
+            "has_llm": bool(stored.get("has_llm")),
+        }
+
+    # Fallback: tính từ nội dung đã trích xuất (không có bản phân tích đã lưu)
+    chapters = []
+    if doc.content_text:
+        from app.services.document_ai import extract_chapters, _clean_text
+        for ch in extract_chapters(doc.content_text):
+            body = _clean_text(" ".join(ch["body"]))
+            if len(body.strip()) < 30:
+                continue
+            chapters.append({"title": ch["title"], "summary": body[:300], "keywords": []})
+
     return {
         "status": "success",
+        "processing": False,
         "summary": doc.summary or "",
         "keywords": [k.strip() for k in (doc.keywords or "").split(",") if k.strip()],
         "key_points": [k.strip() for k in (doc.key_points or "").split("\n") if k.strip()],
+        "chapters": chapters,
+        "conclusion": "",
+        "terms": [],
+        "has_llm": False,
+    }
+
+
+@router.post("/{doc_id}/reanalyze", summary="Phân tích lại tài liệu bằng AI (tóm tắt + flashcard)")
+def reanalyze_document(
+    doc_id: int,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Chạy lại AI trong nền: cập nhật tóm tắt/thẻ/ý chính/chương và sinh lại flashcard."""
+    doc = db.query(Document).filter(Document.document_id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+    is_owner = (doc.uploaded_by or "").lower() == (current_user.get("username") or "").lower()
+    if not is_owner and current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Không có quyền phân tích lại tài liệu này.")
+    if doc.analysis_status == "processing":
+        raise HTTPException(status_code=409, detail="Tài liệu đang được phân tích, vui lòng chờ.")
+
+    content_text = doc.content_text
+    if not content_text:
+        path = _storage_path(doc.stored_name)
+        if os.path.isfile(path):
+            with open(path, "rb") as f:
+                content_text = extract_text(f.read(), doc.file_ext)
+    if not content_text:
+        raise HTTPException(status_code=400, detail="Không trích xuất được nội dung văn bản.")
+
+    doc.analysis_status = "processing"
+    doc.analysis_error = None
+    db.commit()
+
+    background_tasks.add_task(_run_analysis, doc_id, content_text)
+
+    return {
+        "status": "success",
+        "message": "Đang phân tích lại tài liệu trong nền...",
+        "document": _doc_to_dict(doc, current_user),
     }
 
 
@@ -371,16 +591,21 @@ def delete_flashcard(card_id: int, db: Session = Depends(get_db), current_user: 
 @router.get("/{doc_id}/flashcards", summary="Flashcard tự sinh từ tài liệu")
 def get_document_flashcards(doc_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     doc = _get_doc(db, doc_id, current_user)
+    if doc.analysis_status == "processing":
+        return {"status": "success", "processing": True, "cards": []}
     cards = db.query(Flashcard).filter(Flashcard.document_id == doc_id, Flashcard.source == "auto").all()
     if not cards and doc.content_text:
         cards = [Flashcard(document_id=doc_id, owner_username=None, question=c["question"],
-                           answer=c["answer"], source="auto")
-                 for c in generate_flashcards(doc.content_text)]
+                           answer=c["answer"], chapter=c.get("chapter"),
+                           card_type=c.get("type", "fill-blank"), source="auto")
+                 for c in document_flashcards(doc.content_text)]
         for c in cards:
             db.add(c)
         db.commit()
     return {"status": "success", "cards": [
-        {"card_id": c.card_id, "question": c.question, "answer": c.answer} for c in cards
+        {"card_id": c.card_id, "question": c.question, "answer": c.answer,
+         "chapter": c.chapter, "type": c.card_type}
+        for c in cards
     ]}
 
 
@@ -413,9 +638,10 @@ def moderate_document(
         exists = db.query(Flashcard).filter(Flashcard.document_id == doc.document_id,
                                             Flashcard.source == "auto").first()
         if not exists:
-            for c in generate_flashcards(doc.content_text):
+            for c in document_flashcards(doc.content_text):
                 db.add(Flashcard(document_id=doc.document_id, owner_username=None,
-                                 question=c["question"], answer=c["answer"], source="auto"))
+                                 question=c["question"], answer=c["answer"], chapter=c.get("chapter"),
+                                 card_type=c.get("type", "fill-blank"), source="auto"))
     db.commit()
     return {"status": "success", "message": "Đã cập nhật trạng thái tài liệu."}
 

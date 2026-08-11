@@ -3,7 +3,8 @@ import { apiFetch, getToken, API_BASE } from './client';
 const base = `${API_BASE}/api/documents`;
 
 async function fetchBlob(path) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
+  const res = await fetch(url, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error('Không thể tải file.');
@@ -35,6 +36,9 @@ export const listTags = () => apiFetch(`${base}/tags`);
 export const getDocument = (id) => apiFetch(`${base}/${id}`);
 
 export const getDocumentSummary = (id) => apiFetch(`${base}/${id}/summary`);
+
+export const reanalyzeDocument = (id) =>
+  apiFetch(`${base}/${id}/reanalyze`, { method: 'POST' });
 
 export const getDocumentText = (id) => apiFetch(`${base}/${id}/text`);
 

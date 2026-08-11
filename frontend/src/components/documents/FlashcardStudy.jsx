@@ -36,12 +36,26 @@ const FlashcardStudy = ({ user, showToast, docId, onBack }) => {
   const [title, setTitle] = useState('Flashcard');
   const [q, setQ] = useState('');
   const [a, setA] = useState('');
+  const [chapterFilter, setChapterFilter] = useState('');
+  const [processing, setProcessing] = useState(false);
+
+  useEffect(() => {
+    if (!processing) return;
+    const t = setInterval(load, 4000);
+    return () => clearInterval(t);
+  }, [processing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const typeLabel = (t) => (t === 'ai' ? 'AI' : t === 'definition' ? 'Định nghĩa' : 'Điền khuyết');
+  const chapters = [...new Set((cards || []).map((c) => c.chapter || 'Khác').filter(Boolean))];
+  const filteredCards = chapterFilter ? (cards || []).filter((c) => (c.chapter || 'Khác') === chapterFilter) : cards;
+  const visibleCards = filteredCards.length > 0 ? filteredCards : cards;
 
   const load = async () => {
     setLoading(true);
     try {
       const data = await documentsApi.documentFlashcards(docId);
       setCards(data.cards || []);
+      setProcessing(!!data.processing);
       setIdx(0);
       setFlipped(false);
       try {
@@ -81,29 +95,64 @@ const FlashcardStudy = ({ user, showToast, docId, onBack }) => {
     }
   };
 
-  const current = cards[idx];
+  const current = visibleCards[idx];
+  const cardChapter = current?.chapter || '';
 
   return (
     <div style={s.panel}>
       <button style={s.back} onClick={onBack}><ArrowLeft size={15} /> Quay lại</button>
       <h3 style={s.title}><Sparkles size={22} /> {title}</h3>
 
+      {chapters.length > 1 && (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <button
+            style={{ ...s.btn, ...(!chapterFilter ? { background: '#106fa6', color: '#fff' } : {}) }}
+            onClick={() => { setChapterFilter(''); setIdx(0); setFlipped(false); }}
+          >
+            Tất cả
+          </button>
+          {chapters.map((ch) => (
+            <button
+              key={ch}
+              style={{ ...s.btn, ...(chapterFilter === ch ? { background: '#106fa6', color: '#fff' } : {}) }}
+              onClick={() => { setChapterFilter(ch); setIdx(0); setFlipped(false); }}
+            >
+              {ch}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && <div style={{ textAlign: 'center', color: '#94a3b8', padding: 30 }}>Đang tải...</div>}
 
-      {!loading && cards.length === 0 && (
+      {!loading && processing && (
+        <div style={{ textAlign: 'center', color: '#2563eb', padding: 30, background: '#dbeafe', borderRadius: 10 }}>
+          ⏳ AI đang sinh flashcard, vui lòng chờ... (tự cập nhật khi xong)
+        </div>
+      )}
+
+      {!loading && !processing && visibleCards.length === 0 && (
         <div style={{ textAlign: 'center', color: '#94a3b8', padding: 30 }}>
           Tài liệu này chưa có đủ nội dung để sinh flashcard.
         </div>
       )}
 
-      {!loading && cards.length > 0 && current && (
+      {!loading && !processing && visibleCards.length > 0 && current && (
         <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#106fa6' }}>
+              {cardChapter || 'Nội dung'}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+              {idx + 1}/{visibleCards.length}
+            </span>
+          </div>
           <div style={s.card} onClick={flip}>
             <div style={{ ...s.inner, transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
               <div style={s.face}>
                 <div>
                   <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 10 }}>
-                    Câu hỏi · {idx + 1}/{cards.length}
+                    Câu hỏi · {typeLabel(current.type)}
                   </div>
                   {current.question}
                 </div>
@@ -118,13 +167,13 @@ const FlashcardStudy = ({ user, showToast, docId, onBack }) => {
           </div>
 
           <div style={s.controls}>
-            <button style={s.btn} onClick={() => { setIdx((idx + cards.length - 1) % cards.length); setFlipped(false); }}>
+            <button style={s.btn} onClick={() => { setIdx((idx + visibleCards.length - 1) % visibleCards.length); setFlipped(false); }}>
               <ChevronLeft size={16} /> Trước
             </button>
             <button style={s.btn} onClick={flip}><RotateCcw size={16} /> Lật thẻ</button>
             <button style={s.btn} onClick={() => speak(current.question)}><Volume2 size={16} /> Đọc câu hỏi</button>
             <button style={s.btn} onClick={() => speak(current.answer)}><Volume2 size={16} /> Đọc trả lời</button>
-            <button style={s.btn} onClick={() => { setIdx((idx + 1) % cards.length); setFlipped(false); }}>
+            <button style={s.btn} onClick={() => { setIdx((idx + 1) % visibleCards.length); setFlipped(false); }}>
               Sau <ChevronRight size={16} />
             </button>
           </div>
