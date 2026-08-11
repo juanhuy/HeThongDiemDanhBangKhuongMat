@@ -8,7 +8,7 @@ import os
 # Đảm bảo Python nhận diện được thư mục gốc backend
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-# Import file API của bạn
+# Import file API
 from app.api.endpoints.api_credit_classes import router 
 from app.db.session import get_db
 

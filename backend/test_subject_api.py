@@ -30,7 +30,7 @@ def run_subject_tests():
             failed_cases.append(case_name)
             return "❌ LỖI (Fail)"
             
-    # Dùng timestamp để tạo subject_id ngẫu nhiên, giúp bạn có thể chạy file test 
+    # Dùng timestamp để tạo subject_id ngẫu nhiên, có thể chạy file test 
     # nhiều lần liên tiếp mà không cần vào DB xóa dữ liệu cũ
     subject_id = f"IT_{int(time.time())}"
     fake_id = "FAKE_MON_HOC_9999"

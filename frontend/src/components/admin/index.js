@@ -10,3 +10,4 @@ export { default as AdminHomeDashboard } from './AdminHomeDashboard';
 
 export { default as PendingFaces } from './PendingFaces';
 export { default as ScheduleAdmin } from './ScheduleAdmin';
+export { default as DemoControlsPanel } from './DemoControlsPanel';

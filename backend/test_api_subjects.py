@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-# Import app từ file main của bạn (Sửa lại đường dẫn 'app.main' cho đúng với project của bạn)
+# Import app từ file main (Sửa lại đường dẫn 'app.main' cho đúng với project)
 from app.main import app 
 
 # Khởi tạo TestClient

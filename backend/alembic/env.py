@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# Import Base và tất cả các file Model của bạn vào đây
+# Import Base và tất cả các file Model vào đây
 from app.db.session import Base, SQLALCHEMY_DATABASE_URL
 from app.models import *
 

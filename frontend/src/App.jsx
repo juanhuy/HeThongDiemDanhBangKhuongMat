@@ -6,6 +6,7 @@ import Sidebar from './components/common/Sidebar';
 import Toast from './components/common/Toast';
 import Login from './components/common/Login';
 import AttendanceLogs from './components/common/AttendanceLogs';
+import ChatWidget from './components/common/ChatWidget';
 
 import {
   CourseRegistration,
@@ -27,6 +28,7 @@ import {
 } from './components/lecturer';
 import LecturerClassesManagement from './components/lecturer/LecturerClassesManagement';
 import LivePresencePanel from './components/lecturer/LivePresencePanel';
+import AdminAnalytics from './components/admin/AdminAnalytics';
 import {
   CreditClassesManagement,
   LecturersManagement,
@@ -39,6 +41,7 @@ import {
   PendingFaces,
   ScheduleAdmin,
   AdminHomeDashboard,
+  DemoControlsPanel,
 } from './components/admin';
 import DocumentSystem from './components/documents/DocumentSystem';
 import { API_BASE, apiFetch, getStoredUser, getToken, clearSession, setOnUnauthorized, authFetch } from './api/client';
@@ -318,7 +321,12 @@ function App() {
                 <LecturerInfoCard lecturerProfile={lecturerProfileToRender} />
               </>
             )}
-            {!isStudent && !isLecturer && <AdminHomeDashboard />}
+            {!isStudent && !isLecturer && (
+              <>
+                <AdminHomeDashboard />
+                <AdminAnalytics />
+              </>
+            )}
             <AttendanceLogs
               logs={
                 isStudent && studentMssv
@@ -379,6 +387,8 @@ function App() {
         return <PendingFaces showToast={showToast} />;
       case 'schedule':
         return <ScheduleAdmin showToast={showToast} />;
+      case 'demo':
+        return <DemoControlsPanel showToast={showToast} />;
 
       // —— Document System (SV + GV + Admin chia sẻ tài liệu) ——
       case 'documents':
@@ -424,6 +434,7 @@ function App() {
         </main>
       </div>
       <Toast toast={toast} />
+      <ChatWidget />
     </div>
   );
 }

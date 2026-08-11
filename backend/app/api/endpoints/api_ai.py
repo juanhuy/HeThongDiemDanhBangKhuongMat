@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query, status
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from app.db.session import get_db
 
 # Import các Model Database mới
@@ -679,3 +680,25 @@ def update_pending_face_status(face_id: str, payload: dict, db: Session = Depend
     """Cập nhật trạng thái duyệt / từ chối hồ sơ khuôn mặt chờ duyệt."""
     status_val = payload.get("status", "Approved")
     return {"status": "success", "message": f"Đã {status_val} thành công hồ sơ Face ID {face_id}"}
+
+
+# =========================================================================
+# 5. CHATBOT TRỢ LÝ HỆ THỐNG (RAG trên DB + quy chế)
+# =========================================================================
+class ChatRequest(BaseModel):
+    message: str
+    history: list = []
+
+
+@router.post("/chat", summary="Chatbot trợ lý hệ thống (trả lời dựa trên dữ liệu thật)")
+def chat(
+    req: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Trả lời câu hỏi của người dùng dựa trên dữ liệu thật của vai trò + quy chế."""
+    from app.services.chatbot import handle_chat
+    if not req.message or not req.message.strip():
+        return {"status": "failed", "message": "Vui lòng nhập câu hỏi."}
+    reply, used_fallback = handle_chat(db, current_user, req.message.strip(), req.history or [])
+    return {"status": "success", "reply": reply, "fallback": used_fallback}

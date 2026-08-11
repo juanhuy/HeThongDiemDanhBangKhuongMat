@@ -87,7 +87,7 @@ export default function SummaryReport({ user, showToast }) {
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
           <input type="checkbox" checked={liveRefresh} onChange={(e) => setLiveRefresh(e.target.checked)} />
           <span style={{ color: liveRefresh ? '#059669' : '#475569' }}>
-            {liveRefresh ? '🟢 Cập nhật trực tiếp' : 'Cập nhật trực tiếp'}
+            {liveRefresh ? 'Cập nhật trực tiếp' : 'Cập nhật trực tiếp'}
           </span>
         </label>
         {lastUpdated && (

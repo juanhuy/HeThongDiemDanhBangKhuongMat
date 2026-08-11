@@ -107,7 +107,7 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
           setLastSnapshot(data);
           setSnapshotCount((c) => c + 1);
           if (data?.status === 'success' && data.count > 0) {
-            showToast?.(`📸 Snapshot: ${data.count} SV đang có mặt`, 'success');
+            showToast?.(`Snapshot: ${data.count} SV đang có mặt`, 'success');
           }
         } catch (err) {
           console.error('Lỗi chụp snapshot:', err);
@@ -206,7 +206,7 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
         setLastSnapshot(data);
         setSnapshotCount((c) => c + 1);
         if (data?.status === 'success') {
-          showToast?.(`📸 Snapshot thủ công: ${data.count} SV đang có mặt`, data.count > 0 ? 'success' : 'warning');
+          showToast?.(`Snapshot thủ công: ${data.count} SV đang có mặt`, data.count > 0 ? 'success' : 'warning');
         } else {
           showToast?.(data?.message || 'Không chụp được snapshot', 'warning');
         }

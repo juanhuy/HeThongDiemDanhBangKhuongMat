@@ -7,6 +7,7 @@ from typing import Optional
 from app.db.session import get_db
 from app.models import ClassSession, ClassEnrollment, AttendanceRecord, CreditClass, Student
 from app.models.presence_snapshot import PresenceSnapshot
+from app.models.student_class import StudentClassEnrollment
 from app.core.require import get_current_user, require_roles
 
 def _checkout_enabled() -> bool:
@@ -40,7 +41,7 @@ def get_class_attendance_report(class_id: str, db: Session = Depends(get_db)):
                 "Absent": "Vắng", "Vắng": "Vắng", "Vắng KP": "Vắng",
             }.get(st, st or "—")
 
-        enrollments = db.query(ClassEnrollment).filter(ClassEnrollment.class_id == class_id.strip()).all()
+        enrollments = db.query(StudentClassEnrollment).filter(StudentClassEnrollment.class_id == class_id.strip()).all()
         report = []
         matrix = []
         now = datetime.now()
@@ -107,12 +108,28 @@ def teacher_manual_checkin(
     try:
         sched = db.query(ClassSession).filter(ClassSession.session_id == session_id).first()
         if not sched: raise HTTPException(status_code=404, detail="Không tìm thấy buổi học.")
-        existing = db.query(AttendanceRecord).filter(AttendanceRecord.student_id == mssv.strip().upper(), AttendanceRecord.session_id == session_id).first()
+
+        # Kiểm tra SV thuộc lớp của buổi học (chống điểm danh bừa)
+        mssv_clean = mssv.strip().upper()
+        enrolled = db.query(StudentClassEnrollment).filter(
+            StudentClassEnrollment.class_id == sched.class_id,
+            StudentClassEnrollment.student_id == mssv_clean
+        ).first()
+        if not enrolled:
+            enrolled = db.query(ClassEnrollment).filter(
+                ClassEnrollment.class_id == sched.class_id,
+                ClassEnrollment.student_id == mssv_clean
+            ).first()
+        if not enrolled:
+            raise HTTPException(status_code=400,
+                                detail=f"Sinh viên {mssv_clean} không thuộc lớp {sched.class_id} của buổi học này.")
+
+        existing = db.query(AttendanceRecord).filter(AttendanceRecord.student_id == mssv_clean, AttendanceRecord.session_id == session_id).first()
         if existing:
             existing.status = trang_thai; existing.notes = f"Sửa bởi {nguoi_xac_nhan or 'GV'}"
             existing.recorded_at = datetime.now()
         else:
-            new_att = AttendanceRecord(student_id=mssv.strip().upper(), session_id=session_id, status=trang_thai, notes=f"ĐD bởi {nguoi_xac_nhan or 'GV'}", recorded_at=datetime.now())
+            new_att = AttendanceRecord(student_id=mssv_clean, session_id=session_id, status=trang_thai, notes=f"ĐD bởi {nguoi_xac_nhan or 'GV'}", recorded_at=datetime.now())
             db.add(new_att)
         db.commit()
 
@@ -238,7 +255,7 @@ def live_presence(
             return {"status": "success", "has_session": False,
                     "message": "Hiện không có buổi học nào đang diễn ra."}
 
-        total = db.query(ClassEnrollment).filter(ClassEnrollment.class_id == session.class_id).count()
+        total = db.query(StudentClassEnrollment).filter(StudentClassEnrollment.class_id == session.class_id).count()
 
         # 2 lần quét snapshot gần nhất để so sánh ai vừa vào / vừa rời
         scan_times = [r[0] for r in db.query(PresenceSnapshot.scanned_at)

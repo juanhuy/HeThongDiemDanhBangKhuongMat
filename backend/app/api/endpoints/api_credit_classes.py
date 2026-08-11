@@ -383,9 +383,8 @@ def enroll_student(ma_lop_tc: str = Form(...), mssv: str = Form(...), db: Sessio
         academic_status="Active"
     )
     db.add(enroll)
-    if cc.current_students is None:
-        cc.current_students = 0
-    cc.current_students = _enrolled_count(db, cc.class_id) + 1
+    db.flush()
+    cc.current_students = _enrolled_count(db, cc.class_id)
     db.commit()
     return {"status": "success", "message": f"Da dang ky sinh vien {mssv} vao lop {ma_lop_tc}"}
 
@@ -418,10 +417,9 @@ def unenroll_student(ma_lop_tc: str, mssv: str, db: Session = Depends(get_db),
 
     cc = db.query(CreditClass).filter(CreditClass.class_id == ma_lop_tc.strip()).first()
     db.delete(enrollment)
+    db.flush()
     if cc:
-        if cc.current_students is None:
-            cc.current_students = 0
-        cc.current_students = max(0, _enrolled_count(db, cc.class_id) - 1)
+        cc.current_students = _enrolled_count(db, cc.class_id)
     db.commit()
     return {"status": "success", "message": f"Đã hủy đăng ký lớp {ma_lop_tc} thành công."}
 
@@ -490,7 +488,8 @@ def enroll_bulk_administrative_class(
             db.add(enroll)
             count += 1
             
-    cc.current_students = _enrolled_count(db, cc.class_id) + count
+    db.flush()
+    cc.current_students = _enrolled_count(db, cc.class_id)
     db.commit()
     msg = f"Đã đăng ký thành công {count} sinh viên của lớp {lop_hanh_chinh} vào lớp tín chỉ {ma_lop_tc}."
     if skipped_conflict > 0:

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from app.db.session import get_db
 from app.models import CreditClass, ClassEnrollment, Student, ClassSchedule
+from app.models.student_class import StudentClassEnrollment
 from app.core.require import get_current_user
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -124,8 +125,11 @@ def enroll_student(class_id: str, student_id: str = Form(...), db: Session = Dep
 
     new_enroll_ids = []
     for c_enroll in classes_to_enroll:
-        if c_enroll.class_id in enrolled_class_ids: continue 
-        if c_enroll.current_students >= c_enroll.max_students:
+        if c_enroll.class_id in enrolled_class_ids: continue
+        live_count = db.query(StudentClassEnrollment).filter(
+            StudentClassEnrollment.class_id == c_enroll.class_id
+        ).count()
+        if live_count >= (c_enroll.max_students or 50):
              raise HTTPException(status_code=400, detail=f"Lớp {c_enroll.class_id} đã đạt giới hạn sĩ số.")
         new_enroll_ids.append(c_enroll.class_id)
 
@@ -153,6 +157,22 @@ def enroll_student(class_id: str, student_id: str = Form(...), db: Session = Dep
             enrollment_date=datetime.now(), updated_at=datetime.now(), status="Enrolled"
         )
         db.add(enroll)
+        # Đồng bộ vào bảng đăng ký chính thức (StudentClassEnrollment)
+        exists_sce = db.query(StudentClassEnrollment).filter(
+            StudentClassEnrollment.class_id == c_id,
+            StudentClassEnrollment.student_id == student_id.strip().upper()
+        ).first()
+        if not exists_sce:
+            db.add(StudentClassEnrollment(
+                class_id=c_id, student_id=student_id.strip().upper(), academic_status="Active"
+            ))
+
+    # Cập nhật sĩ số theo số lượng đăng ký chính thức
+    db.flush()
+    for cc_obj in classes_to_enroll:
+        cc_obj.current_students = db.query(StudentClassEnrollment).filter(
+            StudentClassEnrollment.class_id == cc_obj.class_id
+        ).count()
     db.commit()
     return {"status": "success", "message": f"Đã đăng ký thành công: {', '.join(new_enroll_ids)}"}
 
@@ -176,6 +196,19 @@ def unenroll_student(class_id: str, student_id: str, db: Session = Depends(get_d
     ).all()
     if not enrollments: raise HTTPException(status_code=404, detail="Không tìm thấy thông tin đăng ký học.")
     for e in enrollments: db.delete(e)
+    # Đồng bộ xóa ở bảng đăng ký chính thức
+    db.query(StudentClassEnrollment).filter(
+        StudentClassEnrollment.class_id.in_(classes_to_unenroll),
+        StudentClassEnrollment.student_id == student_id.strip().upper()
+    ).delete(synchronize_session=False)
+    db.flush()
+    # Cập nhật sĩ số theo số lượng đăng ký chính thức
+    for c_id in classes_to_unenroll:
+        cc_obj = db.query(CreditClass).filter(CreditClass.class_id == c_id).first()
+        if cc_obj:
+            cc_obj.current_students = db.query(StudentClassEnrollment).filter(
+                StudentClassEnrollment.class_id == c_id
+            ).count()
     db.commit()
     deleted_ids = [e.class_id for e in enrollments]
     return {"status": "success", "message": f"Đã hủy đăng ký thành công: {', '.join(deleted_ids)}"}

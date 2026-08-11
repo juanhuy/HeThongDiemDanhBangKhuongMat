@@ -94,67 +94,76 @@ def _parse_datetime(sched):
 
 
 def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_date: str = None) -> dict:
-    """Trả về dict: {"total_sessions", "report": [ ... ]}."""
+    """Trả về dict: {"total_sessions", "report": [ ... ]}.
+
+    Nguồn buổi học chuẩn là class_sessions (lịch thật camera/UI dùng);
+    vẫn gộp điểm danh từ class_schedules + attendance_histories (lịch cũ) theo ngày.
+    """
     now = datetime.now()
 
-    sched_query = db.query(ClassSchedule).filter(ClassSchedule.class_id == ma_lop_tc.strip())
+    # 1. Buổi học thật (class_sessions)
+    session_query = db.query(ClassSession).filter(ClassSession.class_id == ma_lop_tc.strip())
     if from_date:
-        sched_query = sched_query.filter(ClassSchedule.study_date >= from_date)
+        session_query = session_query.filter(ClassSession.session_date >= from_date)
     if to_date:
-        sched_query = sched_query.filter(ClassSchedule.study_date <= to_date)
-    schedules = sched_query.all()
-    schedule_ids = [s.schedule_id for s in schedules]
-    total_sessions = len(schedule_ids)
+        session_query = session_query.filter(ClassSession.session_date <= to_date)
+    sessions = session_query.order_by(ClassSession.session_date, ClassSession.start_time).all()
+    session_ids = [s.session_id for s in sessions]
+    total_sessions = len(session_ids)
+
+    # 2. Lịch cũ (class_schedules) để map attendance_history + đơn nghỉ phép theo ngày
+    schedules = db.query(ClassSchedule).filter(ClassSchedule.class_id == ma_lop_tc.strip()).all()
+    sched_date_map = {}   # schedule_id -> date
+    for s in schedules:
+        try:
+            sched_date_map[s.schedule_id] = _parse_datetime(s).date()
+        except Exception:
+            pass
+    schedule_ids = list(sched_date_map.keys())
 
     enrollments = db.query(StudentClassEnrollment).filter(
         StudentClassEnrollment.class_id == ma_lop_tc.strip()
     ).all()
-
     report = []
     if not enrollments:
         return {"total_sessions": total_sessions, "report": report}
 
     student_ids = [e.student_id for e in enrollments]
 
-    # Truy vấn gộp toàn bộ attendance của các SV này trong các buổi của lớp
-    att_records = []
+    # 3. Điểm danh theo buổi thật (attendance_records)
+    rec_map = {}   # (student_id, session_id) -> status
     if total_sessions > 0:
-        att_records = db.query(AttendanceHistory).filter(
+        att_rec_rows = db.query(AttendanceRecord).filter(
+            AttendanceRecord.student_id.in_(student_ids),
+            AttendanceRecord.session_id.in_(session_ids)
+        ).all()
+        for r in att_rec_rows:
+            rec_map[(r.student_id, r.session_id)] = r.status
+
+    # 4. Điểm danh theo lịch cũ (attendance_histories) map theo ngày
+    hist_map = {}   # (student_id, date) -> status
+    if schedule_ids:
+        att_hist_rows = db.query(AttendanceHistory).filter(
             AttendanceHistory.student_id.in_(student_ids),
             AttendanceHistory.schedule_id.in_(schedule_ids)
         ).all()
+        for r in att_hist_rows:
+            d = sched_date_map.get(r.schedule_id)
+            if d:
+                hist_map[(r.student_id, d)] = r.status
 
-    # Gộp toàn bộ đơn nghỉ phép của các SV này (các buổi của lớp)
-    leave_records = []
-    if total_sessions > 0:
+    # 5. Đơn nghỉ phép đang chờ duyệt (không tính vắng không phép)
+    pending_leave = set()   # (student_id, date)
+    if schedule_ids:
         leave_records = db.query(LeaveRequest).filter(
             LeaveRequest.student_id.in_(student_ids),
-            LeaveRequest.schedule_id.in_(schedule_ids)
+            LeaveRequest.schedule_id.in_(schedule_ids),
+            LeaveRequest.status == "Pending"
         ).all()
-
-    # Chuẩn bị map lookup
-    att_map = {}   # (student_id, schedule_id) -> status
-    for r in att_records:
-        att_map[(r.student_id, r.schedule_id)] = r.status
-
-    # Gộp cả điểm danh AI ghi ở attendance_records (nhánh class_sessions) để báo cáo không bị lệch.
-    rec_map = {}   # (student_id, session_date) -> status  (từ attendance_records)
-    session_rows = db.query(ClassSession).filter(ClassSession.class_id == ma_lop_tc.strip()).all()
-    if session_rows:
-        session_by_id = {s.session_id: s for s in session_rows}
-        att_rec_rows = db.query(AttendanceRecord).filter(
-            AttendanceRecord.student_id.in_(student_ids),
-            AttendanceRecord.session_id.in_(session_by_id.keys())
-        ).all()
-        for r in att_rec_rows:
-            sess = session_by_id.get(r.session_id)
-            if sess and sess.session_date:
-                rec_map[(r.student_id, sess.session_date)] = r.status or "Đúng giờ"
-
-    pending_leave = set()  # (student_id, schedule_id) đơn đang chờ duyệt
-    for lr in leave_records:
-        if lr.status == "Pending":
-            pending_leave.add((lr.student_id, lr.schedule_id))
+        for lr in leave_records:
+            d = sched_date_map.get(lr.schedule_id)
+            if d:
+                pending_leave.add((lr.student_id, d))
 
     for e in enrollments:
         student = e.student
@@ -162,12 +171,12 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
             continue
 
         co_mat = di_muon = co_phep = vang_kp = pending_cnt = 0
-        attended = 0
-        for s in schedules:
-            key = (student.student_id, s.schedule_id)
-            status = att_map.get(key)
+        for s in sessions:
+            key = (student.student_id, s.session_id)
+            status = rec_map.get(key)
+            if not status:
+                status = hist_map.get((student.student_id, s.session_date))
             if status:
-                attended += 1
                 ns = normalize_status(status)
                 if ns in {normalize_status(x) for x in CO_MAT}:
                     co_mat += 1
@@ -181,19 +190,10 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
                     co_mat += 1  # trạng thái lạ mặc định coi như có mặt
             else:
                 # Buổi đã qua chưa có bản ghi: chờ duyệt thì không tính vắng
-                if key in pending_leave:
+                if (student.student_id, s.session_date) in pending_leave:
                     pending_cnt += 1
-                else:
-                    sched_dt = None
-                    try:
-                        sched_dt = _parse_datetime(s).date()
-                    except Exception:
-                        sched_dt = None
-                    if sched_dt is not None and (student.student_id, sched_dt) in rec_map:
-                        # Đã được AI ghi nhận ở buổi (class_sessions) cùng ngày -> coi là có mặt
-                        co_mat += 1
-                    elif _parse_datetime(s) < now:
-                        vang_kp += 1
+                elif s.start_time < now:
+                    vang_kp += 1
 
         # Điểm chuyên cần: bắt đầu 10.0, trừ 0.5 đi muộn, trừ 1.0 vắng không phép
         score = round(max(0.0, 10.0 - (di_muon * 0.5) - (vang_kp * 1.0)), 1)

@@ -7,7 +7,7 @@ from typing import Optional
 from app.db.session import get_db
 from app.models import Classroom, ClassSession, AdministrativeClass, Semester
 
-# Bổ sung import Major tùy thuộc vào đường dẫn dự án của bạn
+# Bổ sung import Major tùy thuộc vào đường dẫn dự án
 # from app.models.major import Major 
 
 router = APIRouter()
