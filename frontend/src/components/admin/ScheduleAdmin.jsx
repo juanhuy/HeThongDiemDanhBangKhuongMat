@@ -9,6 +9,7 @@ const SHIFT_TIMES = {
   3: { label: 'Ca 3 (12h45 - 15h15)', start: '12:45', end: '15:15' },
   4: { label: 'Ca 4 (15h25 - 17h55)', start: '15:25', end: '17:55' },
   5: { label: 'Ca 5 (18h05 - 20h35, học kỳ dự thính)', start: '18:05', end: '20:35' },
+  0: { label: '⏱️ Ca tùy chỉnh (Giờ tự do / Tối / Đêm)', start: '', end: '' },
 };
 
 export default function ScheduleAdmin({ showToast }) {
@@ -26,6 +27,8 @@ export default function ScheduleAdmin({ showToast }) {
     ngay_hoc: new Date().toISOString().substring(0, 10),
     phong_hoc: '',
     ca_hoc: 1,
+    custom_start: '21:00',
+    custom_end: '23:59',
   });
 
   const fetchAll = async () => {
@@ -78,13 +81,23 @@ export default function ScheduleAdmin({ showToast }) {
         return;
       }
     }
+
+    const startVal = form.ca_hoc === 0 ? form.custom_start : SHIFT_TIMES[form.ca_hoc]?.start;
+    const endVal = form.ca_hoc === 0 ? form.custom_end : SHIFT_TIMES[form.ca_hoc]?.end;
+
+    if (!startVal) {
+      showToast?.('Vui lòng nhập giờ bắt đầu', 'danger');
+      return;
+    }
+
     try {
       await schedulesApi.addSchedule({
         ma_lop_tc: form.ma_lop_tc,
         ngay_hoc: form.ngay_hoc,
         phong_hoc: form.phong_hoc,
-        gio_bat_dau: SHIFT_TIMES[form.ca_hoc].start,
-        ca_hoc: form.ca_hoc,
+        gio_bat_dau: startVal.length === 5 ? `${startVal}:00` : startVal,
+        gio_ket_thuc: endVal ? (endVal.length === 5 ? `${endVal}:00` : endVal) : undefined,
+        ca_hoc: form.ca_hoc === 0 ? 12 : form.ca_hoc,
       });
       showToast?.('Thêm lịch học thành công');
       fetchAll();
@@ -121,9 +134,13 @@ export default function ScheduleAdmin({ showToast }) {
 
   const paginatedSchedules = filteredSchedules.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
+  const availableClasses = form.semester_id
+    ? classes.filter((c) => !c.semester_id || c.semester_id === form.semester_id)
+    : classes;
+
   const scheduleMetaData = {
-    semesters,
-    subjects: Array.from(new Map(classes.filter((item) => item.subject_id).map((item) => [item.subject_id, item])).values()),
+    subjects: Array.from(new Set(classes.map((c) => c.subject_id).filter(Boolean))).map((sub) => ({ id: sub, name: sub })),
+    semesters: semesters.map((s) => ({ id: s.semester_id, name: s.semester_id })),
   };
 
   const inputStyle = {
@@ -147,33 +164,24 @@ export default function ScheduleAdmin({ showToast }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Form thêm */}
       <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, padding: 18 }}>
-         <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Thêm lịch học</h2>
-        <form onSubmit={handleAdd} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, alignItems: 'end' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: '1rem', color: '#106fa6', fontWeight: 700 }}>Tạo buổi học mới (Hỗ trợ giờ bất kỳ)</h3>
+        <form onSubmit={handleAdd} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div>
             <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Học kỳ *</label>
             <select required value={form.semester_id} onChange={(e) => setForm({ ...form, semester_id: e.target.value, ma_lop_tc: '' })} style={inputStyle}>
               <option value="">-- Chọn học kỳ --</option>
               {semesters.map((sem) => (
-                <option key={sem.semester_id} value={sem.semester_id}>
-                  {sem.semester ? `Học kỳ ${sem.semester}` : sem.semester_id} {sem.academic_year ? `(${sem.academic_year})` : ''}
-                </option>
+                <option key={sem.semester_id} value={sem.semester_id}>{sem.semester_id}</option>
               ))}
             </select>
-            {form.semester_id && semesters.find((sem) => sem.semester_id === form.semester_id)?.start_date && semesters.find((sem) => sem.semester_id === form.semester_id)?.end_date && (
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                Khoảng: {semesters.find((sem) => sem.semester_id === form.semester_id).start_date} → {semesters.find((sem) => sem.semester_id === form.semester_id).end_date}
-              </div>
-            )}
           </div>
           <div>
             <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Lớp tín chỉ *</label>
             <select required value={form.ma_lop_tc} onChange={(e) => setForm({ ...form, ma_lop_tc: e.target.value })} style={inputStyle}>
               <option value="">-- Chọn lớp --</option>
-              {classes
-                .filter((c) => !form.semester_id || c.semester_id === form.semester_id)
-                .map((c) => (
-                  <option key={c.class_id} value={c.class_id}>{c.class_id}</option>
-                ))}
+              {availableClasses.map((c) => (
+                <option key={c.class_id} value={c.class_id}>{c.class_id} – {c.subject_id}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -190,15 +198,29 @@ export default function ScheduleAdmin({ showToast }) {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Ca</label>
+            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Ca học / Thời gian</label>
             <select value={form.ca_hoc} onChange={(e) => setForm({ ...form, ca_hoc: parseInt(e.target.value) })} style={inputStyle}>
               {Object.entries(SHIFT_TIMES).map(([value, shift]) => (
                 <option key={value} value={value}>{shift.label}</option>
               ))}
             </select>
           </div>
+
+          {form.ca_hoc === 0 && (
+            <>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Giờ bắt đầu *</label>
+                <input type="time" required value={form.custom_start} onChange={(e) => setForm({ ...form, custom_start: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Giờ kết thúc *</label>
+                <input type="time" required value={form.custom_end} onChange={(e) => setForm({ ...form, custom_end: e.target.value })} style={inputStyle} />
+              </div>
+            </>
+          )}
+
           <button type="submit" style={{ padding: '9px 16px', background: '#106fa6', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, cursor: 'pointer', height: 40 }}>
-            Thêm buổi
+            Thêm buổi học
           </button>
         </form>
       </div>

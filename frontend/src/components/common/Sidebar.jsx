@@ -1,7 +1,8 @@
 import React from 'react';
 import { 
   Home, User, UserCheck, Users, BookOpen, Calendar, Clock, 
-  Clipboard, FileText, Camera, ShieldAlert, Settings2, Building, Layers
+  Clipboard, FileText, Camera, ShieldAlert, Settings2, Building, Layers,
+  FolderOpen, Upload, ShieldCheck
 } from 'lucide-react';
 
 const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
@@ -9,6 +10,11 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
   const role = rawRole.toLowerCase();
   const isAdmin = role === 'admin';
   const isLecturer = role === 'giang_vien' || role === 'lecturer';
+
+  const openDocs = (view) => {
+    setActiveMenu('documents');
+    window.location.hash = view;
+  };
 
   const styles = {
     sidebar: {
@@ -79,6 +85,15 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           <div className={`ptit-sidebar-item ${activeMenu === 'demo' ? 'active' : ''}`} onClick={() => setActiveMenu('demo')}>
             <Settings2 size={16} /> Bảng điều khiển Demo
           </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'documents' ? 'active' : ''}`} onClick={() => openDocs('#/documents')}>
+            <FolderOpen size={16} /> Thư viện tài liệu
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'documents' ? 'active' : ''}`} onClick={() => openDocs('#/upload')}>
+            <Upload size={16} /> Đăng tải tài liệu
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'documents' ? 'active' : ''}`} onClick={() => openDocs('#/moderation')}>
+            <ShieldCheck size={16} /> Kiểm duyệt tài liệu
+          </div>
         </>
       );
     }
@@ -111,6 +126,12 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'summary_report' ? 'active' : ''}`} onClick={() => setActiveMenu('summary_report')}>
             <FileText size={16} /> Tổng kết & Cấm thi
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'documents' ? 'active' : ''}`} onClick={() => openDocs('#/documents')}>
+            <FolderOpen size={16} /> Thư viện tài liệu
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'documents' ? 'active' : ''}`} onClick={() => openDocs('#/upload')}>
+            <Upload size={16} /> Đăng tải tài liệu
           </div>
         </>
       );
@@ -145,6 +166,12 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
         </div>
         <div className={`ptit-sidebar-item ${activeMenu === 'refresh_biometrics' ? 'active' : ''}`} onClick={() => setActiveMenu('refresh_biometrics')}>
           <User size={16} /> Sinh trắc học Face ID
+        </div>
+        <div className={`ptit-sidebar-item ${activeMenu === 'documents' ? 'active' : ''}`} onClick={() => openDocs('#/documents')}>
+          <FolderOpen size={16} /> Thư viện tài liệu
+        </div>
+        <div className={`ptit-sidebar-item ${activeMenu === 'documents' ? 'active' : ''}`} onClick={() => openDocs('#/upload')}>
+          <Upload size={16} /> Đăng tải tài liệu
         </div>
       </>
     );

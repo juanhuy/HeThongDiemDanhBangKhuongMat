@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Camera, UploadCloud } from 'lucide-react';
-import { API_BASE } from '../../api/client';
+import { authFetch } from '../../api/client';
 
 export default function FaceBiometrics({ user, showToast }) {
   const [preview, setPreview] = useState('');
@@ -68,7 +68,7 @@ export default function FaceBiometrics({ user, showToast }) {
       const fd = new FormData();
       fd.append('mssv', mssv);
       fd.append('file', file);
-      const res = await fetch(`${API_BASE}/api/face-registration`, { method: 'POST', body: fd });
+      const res = await authFetch(`/api/face-registration`, { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         showToast?.(data.message || 'Đăng ký Face ID thành công – chờ duyệt');

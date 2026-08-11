@@ -1,4 +1,4 @@
-﻿# File: app/api/endpoints/schedules.py
+# File: app/api/endpoints/schedules.py
 from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field
 
 from app.db.session import get_db
 from app.models import ClassSession, Classroom, CreditClass, Semester
+from app.core.require import get_current_user, require_admin
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 class CheckConflictRequest(BaseModel):
     room_id: str = Field(..., description="Mã phòng học")
@@ -95,10 +96,11 @@ def auto_suggest_schedule(req: AutoSuggestRequest, db: Session = Depends(get_db)
     if not suggestions: return {"status": "failed", "message": "Không tìm thấy đề xuất."}
     return {"status": "success", "data": suggestions}
 
-@router.post("/schedules", summary="Add Schedule Session")
+@router.post("/schedules", summary="Add Schedule Session", dependencies=[Depends(require_admin)])
 def add_schedule(
     class_id: str = Form(..., alias="ma_lop_tc"), session_date: str = Form(..., alias="ngay_hoc"), 
     room_id: str = Form(..., alias="phong_hoc"), start_time: str = Form(..., alias="gio_bat_dau"),
+    end_time: Optional[str] = Form(None, alias="gio_ket_thuc"),
     shift: int = Form(1, alias="ca_hoc"), db: Session = Depends(get_db)
 ):
     """Thêm một buổi học thủ công vào danh sách lịch học của lớp."""
@@ -121,16 +123,65 @@ def add_schedule(
         time_str = start_time.strip() if len(start_time.strip()) == 8 else start_time.strip() + ":00"
         dt_time = datetime.strptime(time_str, "%H:%M:%S").time()
         dt_start = datetime.combine(dt_date, dt_time)
-        dt_end = dt_start + timedelta(hours=3)
+
+        if end_time and end_time.strip():
+            end_time_clean = end_time.strip() if len(end_time.strip()) == 8 else end_time.strip() + ":00"
+            dt_end_time = datetime.strptime(end_time_clean, "%H:%M:%S").time()
+            dt_end = datetime.combine(dt_date, dt_end_time)
+            if dt_end <= dt_start:
+                raise HTTPException(status_code=400, detail="Giờ kết thúc phải lớn hơn giờ bắt đầu.")
+        else:
+            dt_end = dt_start + timedelta(hours=3)
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=400, detail="Định dạng không hợp lệ.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Định dạng ngày/giờ không hợp lệ: {e}")
 
-    room_conflicts = db.query(ClassSession).filter(ClassSession.room_id == room_id.strip()).all()
-    for c in room_conflicts:
-        if dt_start < c.end_time and dt_end > c.start_time:
-            raise HTTPException(status_code=400, detail=f"Trùng lịch: Phòng {room_id} đã bận.")
+    # 1. Kiểm tra trùng phòng học
+    room_conflict = db.query(ClassSession).filter(
+        ClassSession.room_id == room_id.strip(),
+        ClassSession.session_date == dt_date,
+        ClassSession.start_time < dt_end,
+        ClassSession.end_time > dt_start
+    ).first()
+    if room_conflict:
+        s_str = room_conflict.start_time.strftime("%H:%M") if hasattr(room_conflict.start_time, 'strftime') else str(room_conflict.start_time)
+        e_str = room_conflict.end_time.strftime("%H:%M") if hasattr(room_conflict.end_time, 'strftime') else str(room_conflict.end_time)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Trùng lịch Phòng học: Phòng {room_id} đã bị sử dụng bởi lớp {room_conflict.class_id} ({s_str} - {e_str})."
+        )
+
+    # 2. Kiểm tra trùng lịch Giảng viên
+    if cc.lecturer_id:
+        lecturer_conflict = db.query(ClassSession).join(CreditClass).filter(
+            func.lower(CreditClass.lecturer_id) == cc.lecturer_id.strip().lower(),
+            ClassSession.session_date == dt_date,
+            ClassSession.start_time < dt_end,
+            ClassSession.end_time > dt_start
+        ).first()
+        if lecturer_conflict:
+            s_str = lecturer_conflict.start_time.strftime("%H:%M") if hasattr(lecturer_conflict.start_time, 'strftime') else str(lecturer_conflict.start_time)
+            e_str = lecturer_conflict.end_time.strftime("%H:%M") if hasattr(lecturer_conflict.end_time, 'strftime') else str(lecturer_conflict.end_time)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Trùng lịch Giảng viên: Giảng viên {cc.lecturer_id} đã có lịch dạy lớp {lecturer_conflict.class_id} tại phòng {lecturer_conflict.room_id} ({s_str} - {e_str})."
+            )
+
+    # 3. Kiểm tra trùng lịch của chính Lớp tín chỉ này
+    class_conflict = db.query(ClassSession).filter(
+        ClassSession.class_id == class_id.strip(),
+        ClassSession.session_date == dt_date,
+        ClassSession.start_time < dt_end,
+        ClassSession.end_time > dt_start
+    ).first()
+    if class_conflict:
+        s_str = class_conflict.start_time.strftime("%H:%M") if hasattr(class_conflict.start_time, 'strftime') else str(class_conflict.start_time)
+        e_str = class_conflict.end_time.strftime("%H:%M") if hasattr(class_conflict.end_time, 'strftime') else str(class_conflict.end_time)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Trùng lịch Lớp: Lớp tín chỉ {class_id} đã có buổi học tại phòng {class_conflict.room_id} ({s_str} - {e_str})."
+        )
 
     sched = ClassSession(
         class_id=class_id.strip(), room_id=room_id.strip(), session_date=dt_date,
@@ -140,12 +191,14 @@ def add_schedule(
     db.commit()
     return {"status": "success", "message": f"Đã thêm lịch học cho lớp {class_id} tại phòng {room_id}"}
 
+from sqlalchemy import func
+
 @router.get("/schedules", summary="List Schedules")
 def list_schedules(lecturer_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
     """Lấy danh sách tất cả các lịch học (Sessions)."""
     try:
         query = db.query(ClassSession)
-        if lecturer_id: query = query.join(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip())
+        if lecturer_id and isinstance(lecturer_id, str): query = query.join(CreditClass).filter(func.lower(CreditClass.lecturer_id) == lecturer_id.strip().lower())
         schedules = query.all()
         return {
             "status": "success",
@@ -337,7 +390,7 @@ class BatchSaveRequest(BaseModel):
     classes: List[str]
     schedules: List[ScheduleSessionInput]
 
-@router.post("/schedules/batch-save", summary="Lưu hàng loạt lịch học")
+@router.post("/schedules/batch-save", summary="Lưu hàng loạt lịch học", dependencies=[Depends(require_admin)])
 def batch_save_schedules(req: BatchSaveRequest, db: Session = Depends(get_db)):
     try:
         from app.models.class_schedule import ClassSchedule
@@ -389,7 +442,7 @@ def batch_save_schedules(req: BatchSaveRequest, db: Session = Depends(get_db)):
 class ResetSchedulesRequest(BaseModel):
     semester_id: str = Field(..., description="Mã học kỳ cần reset lịch")
 
-@router.post("/schedules/reset", summary="Reset toàn bộ lịch học của học kỳ")
+@router.post("/schedules/reset", summary="Reset toàn bộ lịch học của học kỳ", dependencies=[Depends(require_admin)])
 def reset_semester_schedules(req: ResetSchedulesRequest, db: Session = Depends(get_db)):
     """Xóa toàn bộ lịch học (sessions và schedules) của các lớp trong một học kỳ cụ thể."""
     try:

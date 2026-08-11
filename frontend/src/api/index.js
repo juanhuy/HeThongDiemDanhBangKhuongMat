@@ -9,4 +9,5 @@ export * as attendanceApi from "./attendance";
 export * as subjectsApi from "./subjects";
 export * as facultiesApi from "./faculties";
 export * as majorsApi from "./majors";
+export * as documentsApi from "./documents";
 export { timetableApi } from './timetable';

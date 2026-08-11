@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Search, ChevronDown, Plus, Trash2, Copy, Users, Wand2, Calendar, X, AlertTriangle, CheckSquare, Square, Clock } from 'lucide-react';
 
 import { listSubjects } from '../../../api/subjects';
-import { API_BASE } from '../../../api/client';
+import { API_BASE, authFetch } from '../../../api/client';
 import { createCreditClass } from '../../../api/creditClasses';
 
 export default function CreateClassModal({ onClose, onSuccess, metaData, showToast }) {
@@ -52,7 +52,7 @@ export default function CreateClassModal({ onClose, onSuccess, metaData, showToa
       try {
         const [subRes, roomRes] = await Promise.all([
           listSubjects(),
-          fetch(`${API_BASE}/api/admin/classrooms/`)
+          authFetch(`${API_BASE}/api/admin/classrooms/`)
         ]);
         if (subRes && subRes.data) setSubjectsList(subRes.data);
         else if (Array.isArray(subRes)) setSubjectsList(subRes);

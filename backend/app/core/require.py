@@ -57,6 +57,26 @@ def get_current_user(
     }
 
 
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_security),
+) -> dict | None:
+    """Dependency không bắt buộc đăng nhập (Token tùy chọn, không báo 401 nếu thiếu)."""
+    if credentials is None:
+        return None
+    payload = decode_token(credentials.credentials)
+    if payload is None:
+        return None
+    return {
+        "username": payload.get("sub", payload.get("username", "")),
+        "role": _normalize_role(payload.get("role", "sinh_vien")),
+        "mssv": payload.get("mssv"),
+        "lecturer_id": payload.get("lecturer_id"),
+        "ho_ten": payload.get("ho_ten"),
+        "lop_base": payload.get("lop_base"),
+    }
+
+
+
 def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Ban khong co quyen admin.")

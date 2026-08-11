@@ -50,12 +50,15 @@ def create_subject(client, token, subject_id=TEST_SUBJECT, name="Test môn", cre
 
 
 def create_credit_class(client, token, class_id=TEST_CLASS, subject_id=TEST_SUBJECT,
-                        semester=1, year="2025-2026", cohort="D22", max_sv=50, status="Active"):
+                        semester=1, year="2025-2026", cohort="D22", max_sv=50, status="Active",
+                        lecturer_id=None):
     data = {
         "ma_lop_tc": class_id, "ma_mon": subject_id,
         "hoc_ky": semester, "nam_hoc": year, "khoa": cohort,
         "si_so_toi_da": max_sv, "trang_thai": status,
     }
+    if lecturer_id:
+        data["ma_gv"] = lecturer_id
     return client.post("/api/lop_tin_chi", headers=auth(token), data=data)
 
 

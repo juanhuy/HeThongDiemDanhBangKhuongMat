@@ -1,12 +1,14 @@
 from .account import Account
 from .class_session import ClassSession
 from .attendance_record import AttendanceRecord
+from .attendance_history import AttendanceHistory
 from .user_profile import UserProfile
 from .student import Student
 from .lecturer import Lecturer
 from .subject import Subject
 from .credit_class import CreditClass, ExpectedClassMapping
 from .class_enrollments import ClassEnrollment
+from .student_class import StudentClassEnrollment
 from .classroom import Classroom
 from .class_schedule import ClassSchedule
 
@@ -18,6 +20,12 @@ from .administrative_class import AdministrativeClass
 from .faculty import Faculty
 from .major import Major
 
+from .leave_request import LeaveRequest
+from .audit_log import AuditLog
+from .notification import Notification
+from .system_setting import SystemSetting
+from .document import Document, DocumentComment, Flashcard
+
 __all__ = [
     "Account",
     "UserProfile",
@@ -27,14 +35,23 @@ __all__ = [
     "CreditClass",
     "ClassTargetAudience",
     "ClassEnrollment",
+    "StudentClassEnrollment",
     "Classroom",
     "ClassSchedule",
     "ClassSession",
     "AttendanceRecord",
+    "AttendanceHistory",
     "FaceFeature",
     "Semester",
     "LecturerBusyTime",
     "AdministrativeClass",
     "Faculty",
     "Major",
+    "LeaveRequest",
+    "AuditLog",
+    "Notification",
+    "SystemSetting",
+    "Document",
+    "DocumentComment",
+    "Flashcard",
 ]

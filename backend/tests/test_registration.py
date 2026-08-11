@@ -46,23 +46,34 @@ def test_register_duplicate(client, admin_token, registered):
 
 
 def test_register_duplicate_subject(client, admin_token):
-    """Tạo môn + 2 lớp cùng môn -> SV đăng ký lớp 2 bị chặn trùng môn."""
-    create_subject(client, admin_token)
-    create_credit_class(client, admin_token, class_id="TESTCLS02")
-    create_student(client, admin_token)
-    client.post("/api/sinh_vien_lop_tin_chi",
-                headers=auth(admin_token),
-                data={"ma_lop_tc": "TESTCLS02", "mssv": TEST_STUDENT})
+    """Tạo môn + 2 lớp cùng môn -> SV đăng ký lớp 2 bị chặn trùng môn.
+    Dùng bộ dữ liệu riêng (prefix DUP) để không đụng fixture `registered`
+    (module-scoped, chỉ được dọn cuối module)."""
+    SUB = "DUPSUB01"; CLS1 = "DUPCLS01"; CLS2 = "DUPCLS02"; STU = "DUPSV01"
+    client.post("/api/subjects/", headers=auth(admin_token),
+                json={"subject_id": SUB, "subject_name": "Môn trùng", "credits": 3})
+    for cid in (CLS1, CLS2):
+        client.post("/api/lop_tin_chi", headers=auth(admin_token),
+                    data={"ma_lop_tc": cid, "ma_mon": SUB, "hoc_ky": 1,
+                          "nam_hoc": "2025-2026", "khoa": "D22", "si_so_toi_da": 50, "trang_thai": "Active"})
+    client.post("/api/admin/students/", headers=auth(admin_token),
+                json={"student_id": STU, "full_name": "SV trùng", "email": "dupsv01@ptit.edu.vn",
+                      "administrative_class": "D22CQCNPM01", "major": "CNTT", "cohort": "D22"})
+    r0 = client.post("/api/sinh_vien_lop_tin_chi",
+                     headers=auth(admin_token),
+                     data={"ma_lop_tc": CLS2, "mssv": STU})
+    assert r0.status_code == 200, f"Đăng ký CLS2 thất bại: {r0.text}"
     r = client.post("/api/sinh_vien_lop_tin_chi",
                     headers=auth(admin_token),
-                    data={"ma_lop_tc": TEST_CLASS, "mssv": TEST_STUDENT})
+                    data={"ma_lop_tc": CLS1, "mssv": STU})
     assert r.status_code == 400
     assert "trùng môn" in r.json().get("detail", "").lower() or "đã đăng ký" in r.json().get("detail", "")
     # dọn
-    client.delete(f"/api/sinh_vien_lop_tin_chi/TESTCLS02/{TEST_STUDENT}", headers=auth(admin_token))
-    delete_class(client, admin_token, class_id="TESTCLS02")
-    delete_student(client, admin_token)
-    delete_subject(client, admin_token)
+    client.delete(f"/api/sinh_vien_lop_tin_chi/{CLS2}/{STU}", headers=auth(admin_token))
+    client.delete(f"/api/lop_tin_chi/{CLS2}", headers=auth(admin_token))
+    client.delete(f"/api/lop_tin_chi/{CLS1}", headers=auth(admin_token))
+    client.delete(f"/api/admin/students/{STU}", headers=auth(admin_token))
+    client.delete(f"/api/subjects/{SUB}", headers=auth(admin_token))
 
 
 def test_register_full_class(client, admin_token):

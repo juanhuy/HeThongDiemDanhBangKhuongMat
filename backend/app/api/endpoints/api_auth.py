@@ -30,27 +30,32 @@ def _build_user_payload(account: Account, db: Session) -> dict:
     student_info = None
     lecturer_info = None
     if role == "sinh_vien":
-        from app.models.student import UserProfile
+        from app.models.user_profile import UserProfile
         student = db.query(Student).join(UserProfile).filter(
             UserProfile.account_id == account.account_id
         ).first()
         if student:
             student_info = student
     elif role == "giang_vien":
-        from app.models.student import UserProfile
+        from app.models.user_profile import UserProfile
+        from sqlalchemy import func
         lecturer = db.query(Lecturer).join(UserProfile, Lecturer.profile_id == UserProfile.profile_id).filter(
             UserProfile.account_id == account.account_id
         ).first()
         if not lecturer:
-            lecturer = db.query(Lecturer).filter(Lecturer.lecturer_id == account.username).first()
+            lecturer = db.query(Lecturer).filter(
+                func.lower(Lecturer.lecturer_id) == account.username.strip().lower()
+            ).first()
         if lecturer:
             lecturer_info = lecturer
+
+    lecturer_id_val = lecturer_info.lecturer_id if lecturer_info else (account.username.upper() if role == "giang_vien" else None)
 
     user_data = {
         "username": account.username,
         "role": role,
         "mssv": student_info.student_id if student_info else None,
-        "lecturer_id": lecturer_info.lecturer_id if lecturer_info else None,
+        "lecturer_id": lecturer_id_val,
         "ho_ten": (
             student_info.full_name if student_info else
             (lecturer_info.full_name if lecturer_info else account.username)
@@ -137,7 +142,7 @@ def register(username: str = Form(...), password: str = Form(...), mssv: str = F
 
     if student:
         if not student.profile:
-            from app.models.student import UserProfile
+            from app.models.user_profile import UserProfile
             profile = UserProfile(
                 account_id=new_account.account_id,
                 full_name=student.student_id

@@ -39,7 +39,8 @@ import {
   ScheduleAdmin,
   AdminHomeDashboard,
 } from './components/admin';
-import { API_BASE, apiFetch, getStoredUser, getToken, clearSession } from './api/client';
+import DocumentSystem from './components/documents/DocumentSystem';
+import { API_BASE, apiFetch, getStoredUser, getToken, clearSession, setOnUnauthorized, authFetch } from './api/client';
 import { attendanceApi } from './api';
 
 const styles = {
@@ -124,11 +125,6 @@ function App() {
     }, 4000);
   };
 
-  useEffect(() => {
-    setOnUnauthorized(handleLogout);
-    return () => setOnUnauthorized(null);
-  }, [handleLogout]);
-
   const handleMarkAllAsRead = () => {
     apiFetch(`${API_BASE}/api/auth/notifications/read-all`, { method: "POST" }).catch(() => {});
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -190,7 +186,7 @@ function App() {
   const fetchLecturerProfile = async (lecturer_id) => {
     if (!lecturer_id) return;
     try {
-      const res = await fetch(`${API_BASE}/api/admin/lecturers/${lecturer_id}`);
+      const res = await authFetch(`${API_BASE}/api/admin/lecturers/${lecturer_id}`);
       if (res.ok) {
         const data = await res.json();
         setLecturerProfile(data);
@@ -277,6 +273,12 @@ function App() {
     localStorage.removeItem('ptit_active_menu');
     showToast('Đã đăng xuất khỏi hệ thống.');
   };
+
+  // Đăng ký callback tự động logout khi API trả 401 (phải đặt sau handleLogout)
+  useEffect(() => {
+    setOnUnauthorized(handleLogout);
+    return () => setOnUnauthorized(null);
+  }, [handleLogout]);
 
   useEffect(() => {
     localStorage.setItem('ptit_active_menu', activeMenu);
@@ -375,6 +377,10 @@ function App() {
         return <PendingFaces showToast={showToast} />;
       case 'schedule':
         return <ScheduleAdmin showToast={showToast} />;
+
+      // —— Document System (SV + GV + Admin chia sẻ tài liệu) ——
+      case 'documents':
+        return <DocumentSystem user={user} showToast={showToast} />;
 
       default:
         return (

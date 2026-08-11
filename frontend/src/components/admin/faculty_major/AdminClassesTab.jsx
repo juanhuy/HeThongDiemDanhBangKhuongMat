@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, X, BarChart2, CheckCircle, Users, Filter } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { authFetch } from '../../../api/client';
 
 export default function AdminClassesTab({ API_BASE, showToast, majors, faculties }) {
   const [classes, setClasses] = useState([]);
@@ -34,8 +35,8 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
     try {
       setLoading(true);
       const [clsRes, stRes] = await Promise.all([
-        fetch(`${API_BASE}/api/administrative-classes`),
-        fetch(`${API_BASE}/api/admin/students/`)
+        authFetch(`${API_BASE}/api/administrative-classes`),
+        authFetch(`${API_BASE}/api/admin/students/`)
       ]);
       if (clsRes.ok) {
         const resJson = await clsRes.json();
@@ -134,7 +135,7 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/api/administrative-classes`, {
+      const res = await authFetch(`${API_BASE}/api/administrative-classes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
@@ -161,7 +162,7 @@ export default function AdminClassesTab({ API_BASE, showToast, majors, faculties
     try {
       await Promise.all(
         selectedStudents.map(sId => 
-          fetch(`${API_BASE}/api/admin/students/${sId}`, {
+          authFetch(`${API_BASE}/api/admin/students/${sId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ administrative_class: selectedClassForAdd.class_id })

@@ -3,6 +3,7 @@ import { Building, Layers, Users } from 'lucide-react';
 import FacultiesTab from './FacultiesTab';
 import MajorsTab from './MajorsTab';
 import AdminClassesTab from './AdminClassesTab';
+import { authFetch } from '../../../api/client';
 
 const styles = {
   tabBtn: { padding: "10px 20px", border: "none", borderBottom: "2px solid transparent", background: "transparent", cursor: "pointer", fontWeight: "600", fontSize: "1rem", color: "#64748b", display: "flex", alignItems: "center", gap: "8px", transition: "all 0.2s" },
@@ -21,8 +22,8 @@ const FacultyMajorManagement = ({ API_BASE = 'http://localhost:8000', showToast 
     try {
       setLoading(true);
       const [facRes, majRes] = await Promise.all([
-        fetch(`${API_BASE}/api/faculties/`),
-        fetch(`${API_BASE}/api/majors/`)
+        authFetch(`${API_BASE}/api/faculties/`),
+        authFetch(`${API_BASE}/api/majors/`)
       ]);
       if (facRes.ok) setFaculties(await facRes.json());
       if (majRes.ok) setMajors(await majRes.json());

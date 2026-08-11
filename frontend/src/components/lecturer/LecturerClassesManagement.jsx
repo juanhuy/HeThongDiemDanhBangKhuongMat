@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { creditClassesApi, schedulesApi } from '../../api';
-import { API_BASE } from '../../api/client';
+import { API_BASE, authFetch } from '../../api/client';
 
 const dayLabels = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
 
@@ -33,7 +33,7 @@ export default function LecturerClassesManagement({ user, showToast }) {
   const [manualSessionId, setManualSessionId] = useState('');
   const [manualMessage, setManualMessage] = useState('');
 
-  const lecturerId = user?.lecturer_id;
+  const lecturerId = user?.lecturer_id || user?.username;
 
   useEffect(() => {
     if (!lecturerId) return;
@@ -114,13 +114,13 @@ export default function LecturerClassesManagement({ user, showToast }) {
       setDetailLoading(true);
       try {
         if (activeDetailTab === 'students') {
-          const res = await fetch(`${API_BASE}/api/credit-classes/${encodeURIComponent(selectedClass.classData.class_id)}/students`);
+          const res = await authFetch(`${API_BASE}/api/credit-classes/${encodeURIComponent(selectedClass.classData.class_id)}/students`);
           const data = await res.json();
           setStudents(Array.isArray(data?.data) ? data.data : []);
         }
 
         if (activeDetailTab === 'stats') {
-          const res = await fetch(`${API_BASE}/api/credit-classes/${encodeURIComponent(selectedClass.classData.class_id)}/attendance/report`);
+          const res = await authFetch(`${API_BASE}/api/credit-classes/${encodeURIComponent(selectedClass.classData.class_id)}/attendance/report`);
           const data = await res.json();
           setAttendanceReport(Array.isArray(data?.report) ? data.report : []);
         }
@@ -149,7 +149,7 @@ export default function LecturerClassesManagement({ user, showToast }) {
       formData.append('trang_thai', manualStatus);
       formData.append('nguoi_xac_nhan', user?.lecturer_id || 'Giảng viên');
 
-      const res = await fetch(`${API_BASE}/api/attendance/manual-checkin`, {
+      const res = await authFetch(`${API_BASE}/api/attendance/manual-checkin`, {
         method: 'POST',
         body: formData,
       });

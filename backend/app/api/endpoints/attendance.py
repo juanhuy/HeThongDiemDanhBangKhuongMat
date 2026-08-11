@@ -1,15 +1,16 @@
 # File: app/api/endpoints/attendance.py
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Optional
 
 from app.db.session import get_db
 from app.models import ClassSession, ClassEnrollment, AttendanceRecord
+from app.core.require import get_current_user, require_roles
 
 router = APIRouter()
 
-@router.get("/credit-classes/{class_id}/attendance/report", summary="Get Class Attendance Report")
+@router.get("/credit-classes/{class_id}/attendance/report", summary="Get Class Attendance Report", dependencies=[Depends(require_roles("giang_vien", "admin"))])
 def get_class_attendance_report(class_id: str, db: Session = Depends(get_db)):
     """Xuất báo cáo điểm danh chi tiết cho một lớp tín chỉ."""
     try:
@@ -50,7 +51,7 @@ def get_class_attendance_report(class_id: str, db: Session = Depends(get_db)):
         return {"status": "success", "report": report}
     except Exception as err: raise HTTPException(status_code=500, detail=f"Lỗi: {err}")
 
-@router.post("/attendance/manual-checkin", summary="Teacher Manual Checkin")
+@router.post("/attendance/manual-checkin", summary="Teacher Manual Checkin", dependencies=[Depends(require_roles("giang_vien", "admin"))])
 def teacher_manual_checkin(
     mssv: str = Form(...), session_id: int = Form(...), trang_thai: str = Form(...),
     nguoi_xac_nhan: Optional[str] = Form(None), db: Session = Depends(get_db)
@@ -70,9 +71,52 @@ def teacher_manual_checkin(
         return {"status": "success", "message": "Thành công."}
     except Exception as e: db.rollback(); raise HTTPException(status_code=500, detail=f"Lỗi: {e}")
 
-@router.get("/attendance", summary="Get Recent Attendance Logs")
-def get_recent_attendance_logs(db: Session = Depends(get_db)):
-    """Lấy danh sách 50 bản ghi điểm danh gần nhất."""
-    recent_logs = db.query(AttendanceRecord).order_by(AttendanceRecord.recorded_at.desc()).limit(50).all()
-    logs_data = [{"id": l.record_id, "mssv": l.student_id, "session_id": l.session_id, "trang_thai": l.status, "recorded_at": l.recorded_at} for l in recent_logs]
-    return {"status": "success", "logs": logs_data}
+from app.models.account import Account
+
+@router.get("/attendance", summary="Get Recent Attendance Logs", dependencies=[Depends(get_current_user)])
+def get_recent_attendance_logs(
+    mssv: Optional[str] = Query(None, description="Lọc theo MSSV."),
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái."),
+    ma_lop_tc: Optional[str] = Query(None, description="Lọc theo mã lớp tín chỉ."),
+    from_date: Optional[str] = Query(None, description="Từ ngày (YYYY-MM-DD)."),
+    to_date: Optional[str] = Query(None, description="Đến ngày (YYYY-MM-DD)."),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lấy danh sách bản ghi điểm danh gần nhất (hỗ trợ lọc theo SV/lớp/ngày)."""
+    query = db.query(AttendanceRecord)
+
+    # Ràng buộc quyền: Sinh viên chỉ xem log của chính mình
+    user_role = (current_user.get("role") or "").lower()
+    if user_role in ("sinh_vien", "student"):
+        user_mssv = (current_user.get("username") or "").upper()
+        if mssv and mssv.strip().upper() != user_mssv:
+            raise HTTPException(status_code=403, detail="Sinh viên chỉ được phép xem nhật ký điểm danh của chính mình.")
+        mssv = user_mssv
+
+    if mssv:
+        query = query.filter(AttendanceRecord.student_id == mssv.strip().upper())
+    if status:
+        query = query.filter(AttendanceRecord.status == status.strip())
+    if ma_lop_tc:
+        query = query.join(ClassSession, AttendanceRecord.session_id == ClassSession.session_id)\
+                     .filter(ClassSession.class_id == ma_lop_tc.strip())
+    if from_date:
+        query = query.filter(AttendanceRecord.recorded_at >= f"{from_date} 00:00:00")
+    if to_date:
+        query = query.filter(AttendanceRecord.recorded_at <= f"{to_date} 23:59:59")
+
+    total = query.count()
+    rows = query.order_by(AttendanceRecord.recorded_at.desc()).offset(offset).limit(limit).all()
+    logs_data = [{
+        "id": l.record_id,
+        "mssv": l.student_id,
+        "fullname": l.student.profile.full_name if (l.student and l.student.profile) else "N/A",
+        "lop_base": l.student.administrative_class if l.student else "N/A",
+        "ma_buoi_hoc": l.session_id,
+        "timestamp": l.recorded_at.strftime("%Y-%m-%d %H:%M:%S") if l.recorded_at else "N/A",
+        "trang_thai": l.status,
+    } for l in rows]
+    return {"logs": logs_data, "total": total, "offset": offset, "limit": limit}

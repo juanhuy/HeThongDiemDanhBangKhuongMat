@@ -1,5 +1,11 @@
 import os
 import sys
+
+# Thêm đường dẫn gốc vào sys.path TRƯỚC khi import các module dùng `config`
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,11 +18,6 @@ from fastapi import Request
 # Đã bỏ api_schedules ở đây vì nó đã được gom vào api_router mới
 from app.api.endpoints import api_timetable 
 
-# Thêm đường dẫn gốc để import config
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
 from config.settings import settings
 from app.db.session import engine, Base
 from app.core.require import require_admin, get_current_user
@@ -27,8 +28,15 @@ import app.models
 # Tạo bảng (Nếu Database trống thì sẽ tự động tạo bảng)
 Base.metadata.create_all(bind=engine)
 
-# Tự động cập nhật cấu trúc cơ sở dữ liệu nếu cột lecturer_id chưa tồn tại
+# Tự động đồng bộ schema: thêm cột thiếu theo model (merge main + phu)
 from sqlalchemy import text
+from sync_schema import sync_database_schema
+try:
+    sync_database_schema(engine)
+except Exception as e:
+    print(f">>> DATABASE UPDATE ERROR: {e}")
+
+# Tự động cập nhật cấu trúc cơ sở dữ liệu nếu cột lecturer_id chưa tồn tại
 try:
     with engine.begin() as conn:
         res = conn.execute(text("SHOW COLUMNS FROM credit_classes LIKE 'lecturer_id'"))
@@ -38,51 +46,6 @@ try:
             conn.execute(text("ALTER TABLE credit_classes ADD CONSTRAINT fk_credit_classes_lecturers FOREIGN KEY (lecturer_id) REFERENCES lecturers(lecturer_id) ON DELETE SET NULL"))
 except Exception as e:
     print(f">>> DATABASE UPDATE ERROR: {e}")
-
-# Tự động thêm các cột mới phục vụ chuẩn hóa đăng ký học phần (an toàn nếu cột đã tồn tại)
-_db_alter_statements = [
-    ("subjects", "semester", "semester INT NULL", "semester INT"),
-    ("subjects", "prerequisites", "prerequisites VARCHAR(255) NULL", "prerequisites VARCHAR(255)"),
-    ("credit_classes", "semester", "semester INT NULL", "semester INT"),
-    ("credit_classes", "academic_year", "academic_year VARCHAR(20) NULL", "academic_year VARCHAR(20)"),
-    ("credit_classes", "cohort", "cohort VARCHAR(20) NULL", "cohort VARCHAR(20)"),
-    ("credit_classes", "max_students", "max_students INT DEFAULT 50", "max_students INT DEFAULT 50"),
-    ("credit_classes", "current_students", "current_students INT DEFAULT 0", "current_students INT DEFAULT 0"),
-    ("credit_classes", "status", "status VARCHAR(20) DEFAULT 'Active'", "status VARCHAR(20) DEFAULT 'Active'"),
-]
-try:
-    with engine.begin() as conn:
-        for table, column, _mysql, _sqlite in _db_alter_statements:
-            try:
-                res = conn.execute(text(f"SHOW COLUMNS FROM {table} LIKE '{column}'"))
-                if not res.fetchone():
-                    print(f">>> DATABASE UPDATE: Adding column {table}.{column}...")
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {_mysql}"))
-            except Exception as col_err:
-                print(f">>> DATABASE UPDATE ERROR ({table}.{column}): {col_err}")
-except Exception as e:
-    print(f">>> DATABASE UPDATE ERROR: {e}")
-
-# Tự động thêm cột thời gian (created_at/updated_at) nếu còn thiếu
-_timestamp_columns = [
-    ("accounts", "updated_at", "DATETIME NULL"),
-    ("students", "created_at", "DATETIME NULL"),
-    ("students", "updated_at", "DATETIME NULL"),
-    ("credit_classes", "created_at", "DATETIME NULL"),
-    ("credit_classes", "updated_at", "DATETIME NULL"),
-]
-try:
-    with engine.begin() as conn:
-        for table, column, ddl in _timestamp_columns:
-            try:
-                res = conn.execute(text(f"SHOW COLUMNS FROM {table} LIKE '{column}'"))
-                if not res.fetchone():
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
-                    conn.execute(text(f"UPDATE {table} SET {column}=NOW() WHERE {column} IS NULL"))
-            except Exception as col_err:
-                print(f">>> DATABASE UPDATE ERROR ({table}.{column}): {col_err}")
-except Exception as e:
-    print(f">>> DATABASE UPDATE ERROR (timestamps): {e}")
 
 app = FastAPI(
     title="AI Attendance API",
@@ -124,7 +87,8 @@ from app.api.endpoints import (
     api_auth,
     api_ai,
     api_faculty,
-    api_major
+    api_major,
+    api_documents,
 )
 
 try:
@@ -174,6 +138,7 @@ include_optional_router(api_admin_lecturers, prefix="/api/admin/lecturers", tags
 include_optional_router(api_admin_classrooms, prefix="/api/admin/classrooms", tags=["Admin - Quản lý Phòng học"])
 if api_demo is not None:
     include_optional_router(api_demo, prefix="/api/admin/demo", tags=["Admin - Bảng điều khiển Demo"])
+include_optional_router(api_documents, prefix="/api/documents", tags=["Tài liệu & Chia sẻ"])
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():

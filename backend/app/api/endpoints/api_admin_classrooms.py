@@ -9,21 +9,22 @@ from pydantic import ValidationError
 from app.db.session import get_db
 from app.schemas.classroom import ClassroomCreate, ClassroomUpdate, ClassroomResponse, ImportResponse
 from app.crud import crud_classroom as crud
+from app.core.require import get_current_user, require_admin, require_roles
 
 router = APIRouter()
 
-@router.get("/", response_model=List[ClassroomResponse])
+@router.get("/", response_model=List[ClassroomResponse], dependencies=[Depends(require_roles("giang_vien","admin"))])
 def read_all_classrooms(skip: int = 0, limit: int = 200, search: Optional[str] = None, status_filter: Optional[str] = None, db: Session = Depends(get_db)):
     return crud.get_classrooms(db, skip=skip, limit=limit, search=search, status=status_filter)
 
-@router.get("/{room_id}", response_model=ClassroomResponse)
+@router.get("/{room_id}", response_model=ClassroomResponse, dependencies=[Depends(require_roles("giang_vien","admin"))])
 def read_classroom_by_id(room_id: str, db: Session = Depends(get_db)):
     db_room = crud.get_classroom(db, room_id=room_id)
     if not db_room:
         raise HTTPException(status_code=404, detail="Khong tim thay phong hoc")
     return db_room
 
-@router.post("/", response_model=ClassroomResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ClassroomResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_new_classroom(classroom: ClassroomCreate, db: Session = Depends(get_db)):
     # Bỏ qua check trùng ID nếu FE không gửi room_id lên
     if classroom.room_id:
@@ -34,7 +35,7 @@ def create_new_classroom(classroom: ClassroomCreate, db: Session = Depends(get_d
     # FIX LỖI 1: Sửa "classroom=classroom" thành "obj_in=classroom"
     return crud.create_classroom(db=db, obj_in=classroom)
 
-@router.put("/{room_id}", response_model=ClassroomResponse)
+@router.put("/{room_id}", response_model=ClassroomResponse, dependencies=[Depends(require_admin)])
 def update_existing_classroom(room_id: str, classroom_in: ClassroomUpdate, db: Session = Depends(get_db)):
     # FIX LỖI 2: Phải tìm db_room ra trước
     db_room = crud.get_classroom(db, room_id=room_id)
@@ -44,14 +45,14 @@ def update_existing_classroom(room_id: str, classroom_in: ClassroomUpdate, db: S
     # Sau đó mới gọi hàm update truyền db_obj vào
     return crud.update_classroom(db=db, db_obj=db_room, obj_in=classroom_in)
 
-@router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 def delete_existing_classroom(room_id: str, db: Session = Depends(get_db)):
     db_room = crud.delete_classroom(db, room_id=room_id)
     if not db_room:
         raise HTTPException(status_code=404, detail="Khong tim thay phong hoc")
     return None
 
-@router.post("/import", response_model=ImportResponse, status_code=status.HTTP_200_OK)
+@router.post("/import", response_model=ImportResponse, status_code=status.HTTP_200_OK, dependencies=[Depends(require_admin)])
 async def import_classrooms_from_csv(
     file: UploadFile = File(...), 
     db: Session = Depends(get_db)

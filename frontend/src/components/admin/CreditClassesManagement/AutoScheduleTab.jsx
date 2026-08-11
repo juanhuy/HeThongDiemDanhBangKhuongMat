@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Rocket, SlidersHorizontal, Building2, CalendarDays, FileDown, Trash2 } from 'lucide-react';
-import { API_BASE } from '../../../api/client';
+import { API_BASE, authFetch } from '../../../api/client';
 import { listRooms } from '../../../api/rooms';
 import styles from './Styles';
 
@@ -99,7 +99,7 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
       });
 
       const payload = { semester_id: selectedSemesterId, avoid_evening_shift: params.avoidEvening, allow_block_scheduling: params.blockScheduling, classes: classRequests };
-      const response = await fetch(`${API_BASE}/api/schedules/auto-suggest-batch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const response = await authFetch(`${API_BASE}/api/schedules/auto-suggest-batch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json();
       
       if (data.status === 'success' && data.data) {
@@ -136,7 +136,7 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
       });
       
       const payload = { classes: classIds, schedules: flatSchedules };
-      const response = await fetch(`${API_BASE}/api/schedules/batch-save`, { 
+      const response = await authFetch(`${API_BASE}/api/schedules/batch-save`, { 
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) 
       });
       const data = await response.json();
@@ -158,7 +158,7 @@ export default function AutoScheduleTab({ classes = [], lecturers = [], semester
     
     setIsResetting(true);
     try {
-      const response = await fetch(`${API_BASE}/api/schedules/reset`, { 
+      const response = await authFetch(`${API_BASE}/api/schedules/reset`, { 
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semester_id: selectedSemesterId }) 
       });
       const data = await response.json();

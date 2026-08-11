@@ -59,3 +59,11 @@ body {
   border-left: 4px solid #1d92d1;
   padding-left: 12px;
 }
+
+@keyframes ptit-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: ptit-spin 1s linear infinite;
+}

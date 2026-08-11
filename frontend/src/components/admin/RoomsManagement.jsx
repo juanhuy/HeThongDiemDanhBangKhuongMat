@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Plus, Trash2, Edit, X, BookOpen, Upload, Activity, Video, CheckCircle, AlertTriangle, Eye, PieChart as PieChartIcon, BarChart2 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { API_BASE } from '../../api/client';
+import { API_BASE, authFetch } from '../../api/client';
 
 const styles = {
   btn: { padding: "8px 16px", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600", fontSize: "0.9rem", color: "#fff", transition: "all 0.2s" },
@@ -94,7 +94,7 @@ const RoomsManagement = ({ showToast }) => {
     
     try {
       showToast?.('Đang import dữ liệu...', 'info');
-      const res = await fetch(`${API_BASE}/api/admin/classrooms/import`, { method: 'POST', body: formData });
+      const res = await authFetch(`${API_BASE}/api/admin/classrooms/import`, { method: 'POST', body: formData });
       const result = await res.json();
       if (res.ok) {
         showToast?.(`Import thành công ${result.success_count} dòng. Lỗi ${result.error_count} dòng.`);
@@ -113,7 +113,7 @@ const RoomsManagement = ({ showToast }) => {
   const fetchClassrooms = async (search = classroomSearch) => {
     try {
       const url = `${API_BASE}/api/admin/classrooms/?skip=0&limit=100${search ? `&search=${encodeURIComponent(search)}` : ''}`;
-      const response = await fetch(url);
+      const response = await authFetch(url);
       if (response.ok) {
         const result = await response.json();
         setClassroomsList(result.items ? result.items : result || []);
@@ -138,8 +138,8 @@ const RoomsManagement = ({ showToast }) => {
     e.preventDefault();
     try {
       const isEdit = !!editingRoomId;
-      const url = isEdit ? `http://localhost:8000/api/admin/classrooms/${editingRoomId}` : `http://localhost:8000/api/admin/classrooms/`;
-      const res = await fetch(url, { method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(classroomForm) });
+      const url = isEdit ? `${API_BASE}/api/admin/classrooms/${editingRoomId}` : `${API_BASE}/api/admin/classrooms/`;
+      const res = await authFetch(url, { method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(classroomForm) });
       if (res.ok) {
         showToast?.(isEdit ? 'Cập nhật phòng học thành công!' : 'Thêm phòng học thành công!');
         setIsClassroomModalOpen(false);
@@ -154,7 +154,7 @@ const RoomsManagement = ({ showToast }) => {
   const handleDeleteClassroom = async (id) => {
     if (!window.confirm(`Bạn có chắc muốn xóa phòng ${id}?`)) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/admin/classrooms/${id}`, { method: 'DELETE' });
+      const res = await authFetch(`${API_BASE}/api/admin/classrooms/${id}`, { method: 'DELETE' });
       if (res.ok) { showToast?.('Đã xóa thành công!'); fetchClassrooms(classroomSearch); } 
       else { const err = await res.json(); showToast?.(err.detail, 'danger'); }
     } catch (err) { showToast?.('Lỗi kết nối API', 'danger'); }

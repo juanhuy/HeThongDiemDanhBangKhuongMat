@@ -83,3 +83,13 @@ export function formBody(fields) {
   });
   return fd;
 }
+
+// Fetch có kèm token (drop-in thay cho fetch khi gọi API có phân quyền).
+// Trả về Response như fetch thường, để code cũ (res.ok / res.json()) vẫn hoạt động.
+export async function authFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return fetch(url, { ...options, headers });
+}
+

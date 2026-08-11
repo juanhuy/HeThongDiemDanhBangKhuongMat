@@ -13,12 +13,10 @@ from app.core.audit import log_audit
 
 router = APIRouter()
 
-router = APIRouter()
-
 # =========================================================================
 # 1. API Lấy danh sách môn học
 # =========================================================================
-@router.get("/", response_model=List[SubjectResponse])
+@router.get("/", response_model=List[SubjectResponse], dependencies=[Depends(get_current_user)])
 def read_subjects(
     skip: int = 0, 
     limit: int = 100, 
@@ -34,7 +32,7 @@ def read_subjects(
 # =========================================================================
 # 2. API Xem chi tiết 1 môn học
 # =========================================================================
-@router.get("/{subject_id}", response_model=SubjectResponse)
+@router.get("/{subject_id}", response_model=SubjectResponse, dependencies=[Depends(get_current_user)])
 def read_subject_by_id(subject_id: str, db: Session = Depends(get_db)):
     """Lấy thông tin chi tiết của một môn học"""
     db_obj = crud.get_subject_by_id(db, subject_id=subject_id)
@@ -46,53 +44,57 @@ def read_subject_by_id(subject_id: str, db: Session = Depends(get_db)):
 # =========================================================================
 # 3. API Tạo mới môn học
 # =========================================================================
-@router.post("/", response_model=SubjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=SubjectResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_subject(
     subject: SubjectCreate, 
     db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Thêm môn học mới"""
     db_obj = crud.get_subject_by_id(db, subject_id=subject.subject_id)
     if db_obj:
         raise HTTPException(status_code=400, detail="Mã môn học đã tồn tại")
     created = crud.create_subject(db=db, subject=subject)
-    if current_user:
-        log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
-                  action="CREATE", target="subjects", target_id=subject.subject_id, detail=f"Tạo môn học {subject.subject_name}")
+    log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
+              action="CREATE", target="subjects", target_id=subject.subject_id, detail=f"Tạo môn học {subject.subject_name}")
     return created
 
 
 # =========================================================================
 # 4. API Cập nhật môn học
 # =========================================================================
-@router.put("/{subject_id}", response_model=SubjectResponse)
+@router.put("/{subject_id}", response_model=SubjectResponse, dependencies=[Depends(require_admin)])
 def update_subject(
     subject_id: str, 
     subject: SubjectUpdate, 
     db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Cập nhật thông tin môn học"""
     db_obj = crud.update_subject(db, subject_id=subject_id, subject_update=subject)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Không tìm thấy môn học")
-    if current_user:
-        log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
-                  action="UPDATE", target="subjects", target_id=subject_id,
-                  detail=f"Cập nhật môn học: {subject.model_dump(exclude_unset=True)}")
+    log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
+              action="UPDATE", target="subjects", target_id=subject_id,
+              detail=f"Cập nhật môn học: {subject.model_dump(exclude_unset=True)}")
     return db_obj
 
 
 # =========================================================================
 # 5. API Xóa môn học
 # =========================================================================
-@router.delete("/{subject_id}")
+@router.delete("/{subject_id}", dependencies=[Depends(require_admin)])
 def delete_subject(
     subject_id: str, 
     db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
+    from app.models.credit_class import CreditClass
+    # Chặn xóa khi còn lớp tín chỉ tham chiếu (thay vì lỗi FK khó hiểu)
+    remaining = db.query(CreditClass).filter(CreditClass.subject_id == subject_id.strip()).count()
+    if remaining > 0:
+        raise HTTPException(status_code=400,
+                            detail=f"Không thể xóa môn học {subject_id}: còn {remaining} lớp tín chỉ đang sử dụng.")
     db_obj = crud.delete_subject(db, subject_id=subject_id)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Không tìm thấy môn học")
@@ -105,7 +107,7 @@ def delete_subject(
 # =========================================================================
 # 6. API Import môn học từ CSV
 # =========================================================================
-@router.post("/import/csv")
+@router.post("/import/csv", dependencies=[Depends(require_admin)])
 async def import_subjects_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     from app.models.faculty import Faculty
     try:
@@ -158,6 +160,10 @@ async def import_subjects_csv(file: UploadFile = File(...), db: Session = Depend
                 subject_name=str(row.get('subject_name', '')).strip(),
                 theory_credits=theory,
                 practical_credits=practical,
+                credits=theory + practical,
+                theory_periods=theory * 15,
+                practical_periods=practical * 45,
+                total_periods=(theory * 15) + (practical * 45),
                 faculty_id=resolved_faculty_id,
                 is_active=str(row.get('is_active', 'True')).strip().lower() in ['true', '1', 't', 'yes']
             )

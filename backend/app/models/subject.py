@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, Computed, ForeignKey, DateTime
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 from sqlalchemy.sql import func
@@ -18,11 +18,11 @@ class Subject(Base):
     subject_name = Column(String(150), nullable=False)
     theory_credits = Column(Integer, default=0)
     practical_credits = Column(Integer, default=0)
-    credits = Column(Integer, Computed("theory_credits + practical_credits"))
-    
-    theory_periods = Column(Integer, Computed("theory_credits * 15"))
-    practical_periods = Column(Integer, Computed("practical_credits * 45"))
-    total_periods = Column(Integer, Computed("(theory_credits * 15) + (practical_credits * 45)"))
+    credits = Column(Integer, default=0)
+
+    theory_periods = Column(Integer, default=0)
+    practical_periods = Column(Integer, default=0)
+    total_periods = Column(Integer, default=0)
 
     semester = Column(Integer, nullable=True) # Học kỳ dự kiến 1..9
     prerequisites = Column(String(255), nullable=True) # Các mã môn tiên quyết

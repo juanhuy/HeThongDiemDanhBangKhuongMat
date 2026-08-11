@@ -10,7 +10,7 @@ export default function ManualCheckin({ user, showToast }) {
   const [status, setStatus] = useState('Present');
   const [loading, setLoading] = useState(false);
 
-  const lecturerId = user?.lecturer_id;
+  const lecturerId = user?.lecturer_id || user?.username;
 
   useEffect(() => {
     (async () => {

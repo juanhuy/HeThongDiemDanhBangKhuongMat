@@ -616,25 +616,35 @@ class DatabaseService:
         """Xác thực tài khoản và trả về thông tin người dùng"""
         conn = self.get_connection()
         try:
-            pw_hash = self.hash_password(password)
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT tk.username, tk.role, s.student_id, p.full_name, s.administrative_class 
+                    SELECT tk.username, tk.role, s.student_id, p.full_name, s.administrative_class,
+                           tk.password_hash, tk.is_active
                     FROM accounts tk
                     LEFT JOIN user_profiles p ON tk.account_id = p.account_id
                     LEFT JOIN students s ON p.profile_id = s.profile_id
-                    WHERE tk.username = %s AND tk.password_hash = %s AND tk.is_active = True
-                """, (username.strip().lower(), pw_hash))
+                    WHERE tk.username = %s AND tk.is_active = True
+                """, (username.strip().lower(),))
                 row = cursor.fetchone()
-                if row:
-                    return {
-                        "username": row[0],
-                        "role": row[1],
-                        "mssv": row[2],
-                        "ho_ten": row[3],
-                        "lop_base": row[4]
-                    }
-                return None
+                if not row:
+                    return None
+                stored_hash = row[5] or ""
+                import bcrypt
+                try:
+                    valid = bcrypt.checkpw(password.encode('utf-8')[:72], stored_hash.encode('utf-8'))
+                except (ValueError, TypeError):
+                    # Hỗ trợ hash sha256 legacy
+                    import hashlib
+                    valid = hashlib.sha256(password.encode('utf-8')).hexdigest() == stored_hash
+                if not valid:
+                    return None
+                return {
+                    "username": row[0],
+                    "role": row[1],
+                    "mssv": row[2],
+                    "ho_ten": row[3],
+                    "lop_base": row[4]
+                }
         except Exception as e:
             print(f"Loi xac thuc nguoi dung: {e}")
             return None

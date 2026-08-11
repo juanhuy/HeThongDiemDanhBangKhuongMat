@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.schemas import StudentCreate, StudentUpdate, StudentResponse
 from app.crud import crud_student as crud
 from app.core.student_status import ACADEMIC_STATUS_ACTIVE
-from app.core.require import get_current_user
+from app.core.require import get_current_user, require_admin, require_roles
 from app.core.audit import log_audit
 
 router = APIRouter()
@@ -17,7 +17,8 @@ router = APIRouter()
 # =========================================================================
 # 1. API Lấy danh sách sinh viên
 # =========================================================================
-@router.get("/", response_model=List[StudentResponse])
+@router.get("", response_model=List[StudentResponse], dependencies=[Depends(require_roles("giang_vien", "admin"))])
+@router.get("/", response_model=List[StudentResponse], dependencies=[Depends(require_roles("giang_vien", "admin"))])
 def get_all_students(
     skip: int = 0, limit: int = 100, 
     search: Optional[str] = None, 
@@ -32,7 +33,7 @@ def get_all_students(
 # =========================================================================
 # 2. API Lấy chi tiết hồ sơ sinh viên
 # =========================================================================
-@router.get("/{student_id}", response_model=StudentResponse)
+@router.get("/{student_id}", response_model=StudentResponse, dependencies=[Depends(require_roles("giang_vien", "admin"))])
 def get_student_detail(student_id: str, db: Session = Depends(get_db)):
     """Xem chi tiết hồ sơ một sinh viên"""
     db_student = crud.get_student(db, student_id=student_id)
@@ -44,53 +45,51 @@ def get_student_detail(student_id: str, db: Session = Depends(get_db)):
 # =========================================================================
 # 3. API Thêm mới một sinh viên
 # =========================================================================
-@router.post("/", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=StudentResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_new_student(
     student: StudentCreate, 
     db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Thêm mới một sinh viên (Tự động tạo Account -> UserProfile -> Student)"""
     db_student = crud.get_student(db, student_id=student.student_id)
     if db_student:
         raise HTTPException(status_code=400, detail="Mã sinh viên đã tồn tại")
     created = crud.create_student(db=db, student=student)
-    if current_user:
-        log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
-                  action="CREATE", target="students", target_id=student.student_id, detail=f"Tạo sinh viên {student.full_name}")
+    log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
+              action="CREATE", target="students", target_id=student.student_id, detail=f"Tạo sinh viên {student.full_name}")
     return created
 
 
 # =========================================================================
 # 4. API Cập nhật thông tin sinh viên
 # =========================================================================
-@router.put("/{student_id}", response_model=StudentResponse)
+@router.put("/{student_id}", response_model=StudentResponse, dependencies=[Depends(require_admin)])
 def update_existing_student(
     student_id: str, 
     student_in: StudentUpdate, 
     db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Cập nhật thông tin sinh viên (Tự động cập nhật UserProfile và khóa tài khoản nếu cần)"""
     db_student = crud.get_student(db, student_id=student_id)
     if not db_student:
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
     updated = crud.update_student(db=db, db_student=db_student, student_update=student_in)
-    if current_user:
-        log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
-                  action="UPDATE", target="students", target_id=student_id,
-                  detail=f"Cập nhật sinh viên: {student_in.model_dump(exclude_unset=True)}")
+    log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
+              action="UPDATE", target="students", target_id=student_id,
+              detail=f"Cập nhật sinh viên: {student_in.model_dump(exclude_unset=True)}")
     return updated
 
 
 # =========================================================================
 # 5. API Xóa sinh viên
 # =========================================================================
-@router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 def delete_existing_student(
     student_id: str, 
     db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Xóa một sinh viên và tài khoản liên quan"""
     db_student = crud.get_student(db, student_id=student_id)
@@ -104,16 +103,15 @@ def delete_existing_student(
             db.delete(account)
             
     crud.delete_student(db=db, student_id=student_id)
-    if current_user:
-        log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
-                  action="DELETE", target="students", target_id=student_id, detail="Xóa sinh viên và tài khoản")
+    log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
+              action="DELETE", target="students", target_id=student_id, detail="Xóa sinh viên và tài khoản")
     return None
 
 
 # =========================================================================
 # 6. API Export danh sách sinh viên ra file Excel
 # =========================================================================
-@router.get("/export/excel")
+@router.get("/export/excel", dependencies=[Depends(require_roles("giang_vien", "admin"))])
 def export_students_to_excel(db: Session = Depends(get_db)):
     """Xuất toàn bộ danh sách sinh viên ra file Excel"""
     students = crud.get_students(db, skip=0, limit=10000) 
@@ -145,8 +143,8 @@ def export_students_to_excel(db: Session = Depends(get_db)):
 # =========================================================================
 # 7. API Import danh sách sinh viên hàng loạt từ file Excel / CSV
 # =========================================================================
-@router.post("/import", status_code=status.HTTP_201_CREATED)
-@router.post("/import/excel", status_code=status.HTTP_201_CREATED)
+@router.post("/import", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
+@router.post("/import/excel", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def import_students_from_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Import danh sách sinh viên hàng loạt từ file Excel"""
     if not file.filename.endswith(('.xls', '.xlsx', '.csv')):

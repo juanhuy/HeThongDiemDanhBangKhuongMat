@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, StopCircle, UploadCloud } from 'lucide-react';
-import { attendanceApi } from '../../api';
+import { attendanceApi, roomsApi } from '../../api';
 
 export default function CameraDashboard({ showToast, onAttendanceLogged }) {
-  const [cameraRoom, setCameraRoom] = useState('A2-301');
+  const [cameraRoom, setCameraRoom] = useState('TEST-301');
+  const [rooms, setRooms] = useState([]);
   const [useWebcam, setUseWebcam] = useState(false);
   const [webcamStream, setWebcamStream] = useState(null);
   const [detectionLogs, setDetectionLogs] = useState([]);
@@ -14,6 +15,25 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
   const intervalRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await roomsApi.listRooms();
+        const roomList = Array.isArray(res) ? res : (res?.items || res?.data || []);
+        if (roomList.length > 0) {
+          setRooms(roomList);
+          if (roomList.some(r => r.room_id === 'TEST-301')) {
+            setCameraRoom('TEST-301');
+          } else {
+            setCameraRoom(roomList[0].room_id);
+          }
+        }
+      } catch (e) {
+        console.error('Lỗi tải phòng học:', e);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -131,11 +151,24 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#106fa6', margin: 0 }}>Điểm danh Camera</h2>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Phòng:</label>
-          <input
+          <select
             value={cameraRoom}
             onChange={(e) => setCameraRoom(e.target.value)}
-            style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, width: 120 }}
-          />
+            style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: 6, minWidth: 140, fontWeight: 600, color: '#0369a1' }}
+          >
+            {rooms.length === 0 ? (
+              <option value={cameraRoom}>{cameraRoom}</option>
+            ) : (
+              rooms.map((r) => (
+                <option key={r.room_id} value={r.room_id}>
+                  {r.room_id} {r.room_name ? `(${r.room_name})` : ''}
+                </option>
+              ))
+            )}
+            {rooms.length > 0 && !rooms.some(r => r.room_id === cameraRoom) && (
+              <option value={cameraRoom}>{cameraRoom}</option>
+            )}
+          </select>
           {!useWebcam ? (
             <button onClick={startWebcam} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#106fa6', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, cursor: 'pointer' }}>
               <Camera size={16} /> Bật webcam

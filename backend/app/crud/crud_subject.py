@@ -22,11 +22,20 @@ def get_subject_by_id(db: Session, subject_id: str):
         .first()
     )
 
+def _fill_calculated_fields(subject_data: dict):
+    """Tự tính credits & số tiết từ tín chỉ lý thuyết/thực hành."""
+    theory = int(subject_data.get('theory_credits') or 0)
+    practical = int(subject_data.get('practical_credits') or 0)
+    subject_data['credits'] = theory + practical
+    subject_data['theory_periods'] = theory * 15
+    subject_data['practical_periods'] = practical * 45
+    subject_data['total_periods'] = (theory * 15) + (practical * 45)
+
+
 def create_subject(db: Session, subject: SubjectCreate):
     subject_data = subject.model_dump()
-    theory = subject_data.get('theory_credits', 0)
-    practical = subject_data.get('practical_credits', 0)
-    
+    _fill_calculated_fields(subject_data)
+
     db_subject = Subject(**subject_data)
     db.add(db_subject)
     db.commit()
@@ -42,7 +51,16 @@ def update_subject(db: Session, subject_id: str, subject_update: schemas.Subject
     update_data = subject_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_obj, key, value)
-        
+    
+    # Nếu có thay đổi tín chỉ lý thuyết/thực hành thì tính lại credits & số tiết
+    if 'theory_credits' in update_data or 'practical_credits' in update_data:
+        theory = int(db_obj.theory_credits or 0)
+        practical = int(db_obj.practical_credits or 0)
+        db_obj.credits = theory + practical
+        db_obj.theory_periods = theory * 15
+        db_obj.practical_periods = practical * 45
+        db_obj.total_periods = (theory * 15) + (practical * 45)
+
     db.commit()
     db.refresh(db_obj)
     return db_obj

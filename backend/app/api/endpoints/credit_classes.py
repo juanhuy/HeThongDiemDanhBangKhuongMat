@@ -1,5 +1,6 @@
-﻿# File: app/api/endpoints/credit_classes.py
+# File: app/api/endpoints/credit_classes.py
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
@@ -8,11 +9,11 @@ import math
 import uuid
 
 from app.db.session import get_db
-from app.db.session import get_db
 from app.schemas.credit_class import CreditClassCreate, CreditClassUpdate, AutoGenerateRequest, SaveDraftRequest
 from app.models import Subject, CreditClass, Lecturer, ExpectedClassMapping, AdministrativeClass
+from app.core.require import get_current_user, require_admin
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 class BulkStatusUpdate(BaseModel):
     class_ids: List[str]
@@ -22,6 +23,20 @@ def format_class_group(c: CreditClass) -> str:
     if c.sub_group_number is not None: return f"{c.sub_group_number:02d}"
     if c.group_number is not None: return f"{c.group_number:02d}"
     return ""
+
+
+def parse_class_group(class_group) -> tuple:
+    """Chuyển '01' -> (group_number=1, sub_group_number=None); 'Tổ 1' -> (None, sub_group_number=1)."""
+    if not class_group:
+        return None, None
+    s = str(class_group).strip()
+    import re
+    m = re.search(r'(?:tổ|to)\s*(\d+)', s, re.IGNORECASE)
+    if m:
+        return None, int(m.group(1))
+    if s.isdigit():
+        return int(s), None
+    return None, None
 
 @router.post("/credit-classes/preview-groups", summary="Preview Auto Generate Classes")
 def preview_auto_generate_classes(req: AutoGenerateRequest):
@@ -56,7 +71,7 @@ def preview_auto_generate_classes(req: AutoGenerateRequest):
         "data": preview_result
     }
 
-@router.post("/credit-classes/batch", summary="Save Generated Classes")
+@router.post("/credit-classes/batch", summary="Save Generated Classes", dependencies=[Depends(require_admin)])
 def save_generated_classes(req: SaveDraftRequest, db: Session = Depends(get_db)):
     """Lưu hàng loạt các lớp học từ bản preview vào CSDL."""
     saved_classes = []
@@ -97,7 +112,7 @@ def save_generated_classes(req: SaveDraftRequest, db: Session = Depends(get_db))
     db.commit()
     return {"status": "success", "message": "Thành công", "saved_ids": saved_classes}
 
-@router.post("/credit-classes", status_code=status.HTTP_201_CREATED, summary="Add Credit Class")
+@router.post("/credit-classes", status_code=status.HTTP_201_CREATED, summary="Add Credit Class", dependencies=[Depends(require_admin)])
 def add_credit_class(data: CreditClassCreate, db: Session = Depends(get_db)):
     """Tạo mới một lớp tín chỉ đơn lẻ."""
     if not db.query(Subject).filter(Subject.subject_id == data.subject_id.strip()).first():
@@ -117,10 +132,12 @@ def add_credit_class(data: CreditClassCreate, db: Session = Depends(get_db)):
             random_suffix = str(uuid.uuid4()).split("-")[0][:6].upper()
             generated_class_id = f"{data.subject_id.strip()}_{data.semester_id}_{random_suffix}"
 
+    group_number, sub_group_number = parse_class_group(data.class_group)
     new_cc = CreditClass(
         class_id=generated_class_id, parent_class_id=data.parent_class_id, subject_id=data.subject_id.strip(),
         lecturer_id=data.lecturer_id.strip() if data.lecturer_id else None, semester_id=data.semester_id,
-        class_group=data.class_group.strip() if data.class_group else None, class_type=data.class_type,
+        class_type=data.class_type,
+        group_number=group_number if group_number is not None else 1, sub_group_number=sub_group_number,
         start_week=data.start_week, end_week=data.end_week, max_students=data.max_students, status=data.status
     )
     db.add(new_cc)
@@ -149,15 +166,15 @@ def list_credit_classes(
     query = db.query(CreditClass).options(
         joinedload(CreditClass.subject), joinedload(CreditClass.lecturer), joinedload(CreditClass.expected_mappings), joinedload(CreditClass.schedules), joinedload(CreditClass.sessions)
     )
-    if semester_id: query = query.filter(CreditClass.semester_id == semester_id.strip())
-    if subject_id: query = query.filter(CreditClass.subject_id == subject_id.strip())
-    if lecturer_id: query = query.filter(CreditClass.lecturer_id == lecturer_id.strip())
-    if status: query = query.filter(CreditClass.status == status.strip())
-    if administrative_class_id: 
+    if semester_id and isinstance(semester_id, str): query = query.filter(CreditClass.semester_id == semester_id.strip())
+    if subject_id and isinstance(subject_id, str): query = query.filter(CreditClass.subject_id == subject_id.strip())
+    if lecturer_id and isinstance(lecturer_id, str): query = query.filter(func.lower(CreditClass.lecturer_id) == lecturer_id.strip().lower())
+    if status and isinstance(status, str): query = query.filter(CreditClass.status == status.strip())
+    if administrative_class_id and isinstance(administrative_class_id, str): 
         query = query.join(ExpectedClassMapping, CreditClass.class_id == ExpectedClassMapping.credit_class_id).filter(ExpectedClassMapping.admin_class_id == administrative_class_id.strip())
-    if major_id: 
+    if major_id and isinstance(major_id, str): 
         # Check if ExpectedClassMapping is already joined to avoid duplicate join
-        if not administrative_class_id:
+        if not (administrative_class_id and isinstance(administrative_class_id, str)):
             query = query.join(ExpectedClassMapping, CreditClass.class_id == ExpectedClassMapping.credit_class_id)
         query = query.join(AdministrativeClass, ExpectedClassMapping.admin_class_id == AdministrativeClass.class_id).filter(AdministrativeClass.major_id == major_id.strip())
 
@@ -247,7 +264,7 @@ def update_bulk_status(req: BulkStatusUpdate, db: Session = Depends(get_db)):
     }
 
 
-@router.put("/credit-classes/{class_id}", summary="Update Credit Class")
+@router.put("/credit-classes/{class_id}", summary="Update Credit Class", dependencies=[Depends(require_admin)])
 def update_credit_class(class_id: str, data: CreditClassUpdate, db: Session = Depends(get_db)):
     """Cập nhật các thông số của một lớp học tín chỉ."""
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
@@ -324,7 +341,12 @@ def update_credit_class(class_id: str, data: CreditClassUpdate, db: Session = De
         else:
             cc.lecturer_id = None
     if data.semester_id: cc.semester_id = data.semester_id.strip()
-    if data.class_group is not None: cc.class_group = data.class_group.strip() if data.class_group.strip() else None
+    if data.class_group is not None:
+        gn, sgn = parse_class_group(data.class_group)
+        if gn is not None:
+            cc.group_number = gn
+        if sgn is not None:
+            cc.sub_group_number = sgn
     if data.class_type is not None: cc.class_type = data.class_type.strip()
     if data.start_week is not None: cc.start_week = data.start_week
     if data.end_week is not None: cc.end_week = data.end_week
@@ -341,7 +363,7 @@ def update_credit_class(class_id: str, data: CreditClassUpdate, db: Session = De
     db.refresh(cc)
     return {"status": "success", "message": f"Đã cập nhật thành công lớp {cc.class_id}", "data": {"class_id": cc.class_id, "status": cc.status}}
 
-@router.delete("/credit-classes/{class_id}", summary="Delete Credit Class")
+@router.delete("/credit-classes/{class_id}", summary="Delete Credit Class", dependencies=[Depends(require_admin)])
 def delete_credit_class(class_id: str, db: Session = Depends(get_db)):
     """Xóa một lớp tín chỉ ra khỏi hệ thống."""
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()

@@ -8,35 +8,37 @@ from app.db.session import get_db
 from app.schemas.faculty import FacultyCreate, FacultyUpdate, FacultyResponse
 from app.crud import crud_faculty as crud
 from app.models.faculty import Faculty
+from app.core.require import get_current_user, require_admin
 
 router = APIRouter()
 
-@router.get("/", response_model=List[FacultyResponse])
+@router.get("", response_model=List[FacultyResponse], dependencies=[Depends(get_current_user)])
+@router.get("/", response_model=List[FacultyResponse], dependencies=[Depends(get_current_user)])
 def get_all_faculties(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_faculties(db, skip=skip, limit=limit)
 
-@router.get("/{faculty_id}", response_model=FacultyResponse)
+@router.get("/{faculty_id}", response_model=FacultyResponse, dependencies=[Depends(get_current_user)])
 def get_faculty(faculty_id: str, db: Session = Depends(get_db)):
     db_obj = crud.get_faculty(db, faculty_id=faculty_id)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Không tìm thấy Khoa")
     return db_obj
 
-@router.post("/", response_model=FacultyResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=FacultyResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_faculty(faculty: FacultyCreate, db: Session = Depends(get_db)):
     db_obj = crud.get_faculty(db, faculty_id=faculty.faculty_id)
     if db_obj:
         raise HTTPException(status_code=400, detail="Mã Khoa đã tồn tại")
     return crud.create_faculty(db=db, faculty=faculty)
 
-@router.put("/{faculty_id}", response_model=FacultyResponse)
+@router.put("/{faculty_id}", response_model=FacultyResponse, dependencies=[Depends(require_admin)])
 def update_faculty(faculty_id: str, faculty_update: FacultyUpdate, db: Session = Depends(get_db)):
     db_obj = crud.get_faculty(db, faculty_id=faculty_id)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Không tìm thấy Khoa")
     return crud.update_faculty(db=db, db_faculty=db_obj, faculty_update=faculty_update)
 
-@router.post("/import/csv")
+@router.post("/import/csv", dependencies=[Depends(require_admin)])
 async def import_faculties_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         contents = await file.read()

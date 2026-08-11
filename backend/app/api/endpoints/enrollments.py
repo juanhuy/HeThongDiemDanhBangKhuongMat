@@ -5,8 +5,28 @@ from datetime import datetime
 
 from app.db.session import get_db
 from app.models import CreditClass, ClassEnrollment, Student, ClassSchedule
+from app.core.require import get_current_user
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+def _schedule_time_range(sched):
+    """Trả về (weekday_mon0, start_minutes, end_minutes) hoặc None nếu không xác định được.
+    Hỗ trợ cả lịch theo ngày (study_date+start_time) lẫn lịch template (day_of_week+start_shift)."""
+    try:
+        if sched.study_date is not None and sched.start_time is not None:
+            start = sched.start_time.hour * 60 + sched.start_time.minute
+            return sched.study_date.weekday(), start, start + 180
+        if sched.day_of_week is not None and sched.start_shift is not None:
+            dow = int(sched.day_of_week)
+            weekday = 6 if dow == 8 else dow - 2  # Mon=0
+            start = (6 + int(sched.start_shift)) * 60
+            end_shift = int(sched.end_shift or sched.start_shift)
+            end = (6 + end_shift + 1) * 60
+            return weekday, start, end
+    except Exception:
+        pass
+    return None
 
 @router.get("/credit-classes/{class_id}/students", summary="Get Students In Class")
 def get_students_in_class(class_id: str, db: Session = Depends(get_db)):
@@ -115,8 +135,16 @@ def enroll_student(class_id: str, student_id: str = Form(...), db: Session = Dep
     if new_sessions and enrolled_class_ids:
         enrolled_sessions = db.query(ClassSchedule).filter(ClassSchedule.class_id.in_(enrolled_class_ids)).all()
         for ns in new_sessions:
+            ns_info = _schedule_time_range(ns)
+            if ns_info is None:
+                continue
+            ns_weekday, ns_start, ns_end = ns_info
             for es in enrolled_sessions:
-                if ns.start_time < es.end_time and ns.end_time > es.start_time:
+                es_info = _schedule_time_range(es)
+                if es_info is None:
+                    continue
+                es_weekday, es_start, es_end = es_info
+                if ns_weekday == es_weekday and ns_start < es_end and ns_end > es_start:
                     raise HTTPException(status_code=400, detail=f"Trùng lịch học! Lớp {ns.class_id} bị trùng với {es.class_id}.")
 
     for c_id in new_enroll_ids:

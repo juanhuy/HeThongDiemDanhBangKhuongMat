@@ -24,7 +24,7 @@ class CreditClass(Base):
 
     subject_id = Column(String(20), ForeignKey('subjects.subject_id', ondelete='CASCADE'), nullable=False)
     lecturer_id = Column(String(20), ForeignKey('lecturers.lecturer_id', ondelete='CASCADE'), nullable=True)
-    semester_id = Column(String(20), ForeignKey('semesters.semester_id', ondelete='CASCADE'), nullable=False)
+    semester_id = Column(String(20), ForeignKey('semesters.semester_id', ondelete='CASCADE'), nullable=True)
     semester = Column(Integer, nullable=True) # Học kỳ của lớp (1, 2, 3, Hè=8/9)
     academic_year = Column(String(20), nullable=True) # Niên khóa học (VD: 2025-2026)
     cohort = Column(String(20), nullable=True) # Khóa được phép đăng ký (VD: D22)

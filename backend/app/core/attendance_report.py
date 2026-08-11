@@ -8,7 +8,7 @@
     Có phép  : "Có phép"
     Vắng KP  : "Vắng không phép", "Vắng"
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 import unicodedata
@@ -16,6 +16,8 @@ import unicodedata
 from app.models.class_schedule import ClassSchedule
 from app.models.student_class import StudentClassEnrollment
 from app.models.attendance_history import AttendanceHistory
+from app.models.attendance_record import AttendanceRecord
+from app.models.class_session import ClassSession
 from app.models.leave_request import LeaveRequest
 
 # --- Trạng thái điểm danh (chuẩn) ---
@@ -56,13 +58,39 @@ def _cam_thi_threshold() -> float:
 
 
 def _parse_datetime(sched):
-    try:
-        clean_time = str(sched.start_time).strip()
+    """Trả về datetime của buổi học. Hỗ trợ cả 2 kiểu lịch sau merge:
+    - Lịch theo ngày: study_date + start_time
+    - Lịch template theo thứ: day_of_week + start_shift (không có ngày cụ thể)
+    """
+    study_date = getattr(sched, "study_date", None)
+    start_time = getattr(sched, "start_time", None)
+    if study_date is not None and start_time is not None:
+        clean_time = str(start_time).strip()
         if len(clean_time) == 5:
             clean_time += ":00"
-        return datetime.strptime(f"{sched.study_date} {clean_time}", "%Y-%m-%d %H:%M:%S")
-    except Exception:
-        return datetime.combine(sched.study_date, sched.start_time)
+        try:
+            return datetime.strptime(f"{study_date} {clean_time}", "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            try:
+                return datetime.combine(study_date, start_time)
+            except Exception:
+                pass
+
+    # Lịch template (day_of_week 2-8, start_shift): ước lượng giờ theo quy ước shift = giờ - 6
+    dow = getattr(sched, "day_of_week", None)
+    shift = getattr(sched, "start_shift", None)
+    if dow is not None and shift is not None:
+        try:
+            today = datetime.now().date()
+            offset = 6 if int(dow) == 8 else int(dow) - 2  # Mon=0
+            days_ahead = (offset - today.weekday()) % 7
+            d = today + timedelta(days=days_ahead)
+            return datetime(d.year, d.month, d.day, min(6 + int(shift), 23), 0)
+        except Exception:
+            pass
+
+    # Không xác định được thời gian -> coi là đã qua để không làm crash báo cáo
+    return datetime.now()
 
 
 def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_date: str = None) -> dict:
@@ -109,6 +137,20 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
     for r in att_records:
         att_map[(r.student_id, r.schedule_id)] = r.status
 
+    # Gộp cả điểm danh AI ghi ở attendance_records (nhánh class_sessions) để báo cáo không bị lệch.
+    rec_map = {}   # (student_id, session_date) -> status  (từ attendance_records)
+    session_rows = db.query(ClassSession).filter(ClassSession.class_id == ma_lop_tc.strip()).all()
+    if session_rows:
+        session_by_id = {s.session_id: s for s in session_rows}
+        att_rec_rows = db.query(AttendanceRecord).filter(
+            AttendanceRecord.student_id.in_(student_ids),
+            AttendanceRecord.session_id.in_(session_by_id.keys())
+        ).all()
+        for r in att_rec_rows:
+            sess = session_by_id.get(r.session_id)
+            if sess and sess.session_date:
+                rec_map[(r.student_id, sess.session_date)] = r.status or "Đúng giờ"
+
     pending_leave = set()  # (student_id, schedule_id) đơn đang chờ duyệt
     for lr in leave_records:
         if lr.status == "Pending":
@@ -141,8 +183,17 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
                 # Buổi đã qua chưa có bản ghi: chờ duyệt thì không tính vắng
                 if key in pending_leave:
                     pending_cnt += 1
-                elif _parse_datetime(s) < now:
-                    vang_kp += 1
+                else:
+                    sched_dt = None
+                    try:
+                        sched_dt = _parse_datetime(s).date()
+                    except Exception:
+                        sched_dt = None
+                    if sched_dt is not None and (student.student_id, sched_dt) in rec_map:
+                        # Đã được AI ghi nhận ở buổi (class_sessions) cùng ngày -> coi là có mặt
+                        co_mat += 1
+                    elif _parse_datetime(s) < now:
+                        vang_kp += 1
 
         # Điểm chuyên cần: bắt đầu 10.0, trừ 0.5 đi muộn, trừ 1.0 vắng không phép
         score = round(max(0.0, 10.0 - (di_muon * 0.5) - (vang_kp * 1.0)), 1)

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Layers, UploadCloud, Plus, X, Search, Edit2 } from 'lucide-react';
+import { authFetch } from '../../api/client';
 
 const MajorsManagement = ({ API_BASE, showToast }) => {
   const [majors, setMajors] = useState([]);
@@ -19,7 +20,7 @@ const MajorsManagement = ({ API_BASE, showToast }) => {
   const fetchMajors = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/api/majors/`);
+      const res = await authFetch(`${API_BASE}/api/majors/`);
       if (res.ok) {
         const data = await res.json();
         setMajors(data);
@@ -36,7 +37,7 @@ const MajorsManagement = ({ API_BASE, showToast }) => {
 
   const fetchFaculties = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/faculties/`);
+      const res = await authFetch(`${API_BASE}/api/faculties/`);
       if (res.ok) {
         const data = await res.json();
         setFaculties(data);
@@ -57,7 +58,7 @@ const MajorsManagement = ({ API_BASE, showToast }) => {
       const url = isEdit ? `${API_BASE}/api/majors/${editingId}` : `${API_BASE}/api/majors/`;
       const method = isEdit ? "PUT" : "POST";
 
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -108,7 +109,7 @@ const MajorsManagement = ({ API_BASE, showToast }) => {
     form.append("file", file);
     try {
       showToast("Đang import dữ liệu...", "info");
-      const res = await fetch(`${API_BASE}/api/majors/import/csv`, {
+      const res = await authFetch(`${API_BASE}/api/majors/import/csv`, {
         method: "POST",
         body: form
       });

@@ -36,11 +36,11 @@ class FaceAnalyzer:
         self.threshold = ai_config.get("threshold", 0.65)
         self.det_size = tuple(ai_config.get("det_size", [480, 480]))
         
-        # Khởi tạo mô hình InsightFace với cấu hình CUDA tối ưu hiệu năng tối đa (không bật CUDA Graph cho detector do kích thước động)
+        # Khởi tạo mô hình InsightFace với cấu hình CUDA tối ưu hiệu năng (sử dụng DEFAULT algo search để tránh độ trễ cuDNN EXHAUSTIVE)
         cuda_options = {
             "device_id": "0",
             "arena_extend_strategy": "kNextPowerOfTwo",
-            "cudnn_conv_algo_search": "EXHAUSTIVE",
+            "cudnn_conv_algo_search": "DEFAULT",
             "do_copy_in_default_stream": "1",
             "cudnn_conv_use_max_workspace": "1",
             "use_tf32": "1",
@@ -48,12 +48,15 @@ class FaceAnalyzer:
         }
         self.app = FaceAnalysis(
             name=ai_config.get("model_name", "buffalo_l"), 
-            providers=[("CUDAExecutionProvider", cuda_options), "CPUExecutionProvider"]
+            providers=[("CUDAExecutionProvider", cuda_options), "CPUExecutionProvider"],
+            # Chỉ tải detection + recognition. Bỏ qua age/gender/landmark_2d_106/1k3d68
+            # để giảm thời gian xử lý mỗi frame theo thời gian thực.
+            allowed_modules=["detection", "recognition"]
         )
         self.app.prepare(ctx_id=0, det_size=self.det_size)
         
         try:
-            print(f"-> He thong AI dang chay tren backend: {self.app.backend.get_provider()}")
+            print(f"-> He thong AI dang chay tren backend: {self.app.models['detection'].session.get_providers()[0]}")
         except Exception:
             print("-> Dang kiem tra cau hinh phan cung...")
             
@@ -64,8 +67,23 @@ class FaceAnalyzer:
         from core.liveness_detection import LivenessDetector
         self.liveness_detector = LivenessDetector()
         
+        # Cache liveness theo MSSV để không chạy lại mô hình Silent-Face (CPU) mỗi frame
+        # cho cùng một người đã được kiểm tra gần đây. Giúp giảm độ trễ theo thời gian thực.
+        self._liveness_cache = {}
+        self.liveness_interval = float(ai_config.get("liveness_interval", 2.0))
+        
         # Load database ngay khi khởi động
         self.load_database()
+
+        # Thực hiện GPU Warmup để pre-allocate VRAM & CUDA streams
+        try:
+            warmup_img = np.zeros((self.det_size[1], self.det_size[0], 3), dtype=np.uint8)
+            self.app.get(warmup_img)
+            if hasattr(self, 'liveness_detector') and self.liveness_detector.session is not None:
+                self.liveness_detector.is_real_face(warmup_img, [50, 50, 200, 200])
+            print("-> [GPU Warmup] Đã khởi tạo và làm nóng GPU CUDA thành công.")
+        except Exception as warmup_err:
+            print(f"-> [GPU Warmup] Cảnh báo warmup: {warmup_err}")
         
         # Các biến phục vụ luồng nhận dạng song song (AI Worker)
         self.current_frame = None
@@ -145,6 +163,7 @@ class FaceAnalyzer:
             from app.models.student import Student
             from app.models.account import Account
             from app.models.user_profile import UserProfile
+            from app.models.face_feature import FaceFeature
             
             db = SessionLocal()
             try:
@@ -260,6 +279,7 @@ class FaceAnalyzer:
             
         faces = self.app.get(img)
         results = []
+        now = time.time()
         
         for face in faces:
             bbox = face.bbox
@@ -269,31 +289,56 @@ class FaceAnalyzer:
             # ĐÃ FIX BUG: Khai báo biến current_embedding
             current_embedding = face.normed_embedding 
             
+            # Khớp FAISS trước (rẻ) để biết có phải người đã biết không
+            best_name = "Unknown"
+            best_score = 0.0
+            is_known = False
+            matched_mssv = None
+            
+            if self.index is not None and len(self.known_embeddings) > 0:
+                import faiss
+                query_vector = np.array([current_embedding]).astype('float32')
+                faiss.normalize_L2(query_vector)
+                scores, indices = self.index.search(query_vector, 1)
+                
+                best_idx = indices[0][0]
+                best_score = float(scores[0][0])
+                
+                if best_idx != -1 and best_score > self.threshold:
+                    raw_name = self.known_names[best_idx]
+                    matched_mssv = raw_name.split("_")[0] if "_" in raw_name else raw_name
+                    best_name = matched_mssv
+                    is_known = True
+            
             # Kiểm tra Liveness (chống giả mạo)
-            is_real, liveness_score = self.liveness_detector.is_real_face(img, bbox)
+            # - Người đã biết & mới kiểm tra gần đây: tái sử dụng kết quả cache để tránh chi phí CPU mỗi frame.
+            # - Khuôn mặt lạ/giả mạo: không cache để luôn kiểm tra lại.
+            is_real = True
+            liveness_score = 1.0
+            cache_key = matched_mssv if is_known else None
+            
+            cached = self._liveness_cache.get(cache_key) if cache_key else None
+            if cached and now - cached["ts"] < self.liveness_interval:
+                is_real = cached["is_real"]
+                liveness_score = cached["score"]
+            else:
+                is_real, liveness_score = self.liveness_detector.is_real_face(img, bbox)
+                if is_real and cache_key:
+                    self._liveness_cache[cache_key] = {"ts": now, "is_real": True, "score": liveness_score}
             
             if not is_real:
                 best_name = "Spoof/Fake"
                 best_score = float(liveness_score)
                 is_known = False
+                # Không giữ cache cho khuôn mặt giả mạo (luôn kiểm tra lại frame kế tiếp)
+                if cache_key:
+                    self._liveness_cache.pop(cache_key, None)
             else:
-                best_name = "Unknown"
-                best_score = 0.0
-                is_known = False
-                
-                if self.index is not None and len(self.known_embeddings) > 0:
-                    import faiss
-                    query_vector = np.array([current_embedding]).astype('float32')
-                    faiss.normalize_L2(query_vector)
-                    scores, indices = self.index.search(query_vector, 1)
-                    
-                    best_idx = indices[0][0]
-                    best_score = float(scores[0][0])
-                    
-                    if best_idx != -1 and best_score > self.threshold:
-                        raw_name = self.known_names[best_idx]
-                        best_name = raw_name.split("_")[0] if "_" in raw_name else raw_name
-                        is_known = True
+                if not is_known:
+                    best_score = 0.0
+                # Nếu là người đã biết nhưng FAISS không cho kết quả thì giữ Unknown
+                if cache_key is None:
+                    best_name = "Unknown"
             
             results.append({
                 "box": (x1, y1, x2, y2),
@@ -302,6 +347,12 @@ class FaceAnalyzer:
                 "is_known": is_known,
                 "is_real": is_real
             })
+        
+        # Dọn cache cũ để tránh phình bộ nhớ trong phiên chạy dài
+        if len(self._liveness_cache) > 256:
+            cutoff = now - max(self.liveness_interval, 5.0)
+            for k in [k for k, v in self._liveness_cache.items() if v["ts"] < cutoff]:
+                self._liveness_cache.pop(k, None)
             
         return results
 

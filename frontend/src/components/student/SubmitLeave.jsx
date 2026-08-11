@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { API_BASE } from '../../api/client';
+import { API_BASE, authFetch } from '../../api/client';
 
 export default function SubmitLeave({ user, showToast }) {
   const [sessionId, setSessionId] = useState('');
@@ -19,10 +19,10 @@ export default function SubmitLeave({ user, showToast }) {
       setLoading(true);
       const fd = new FormData();
       fd.append('mssv', mssv);
-      fd.append('session_id', sessionId);
-      fd.append('reason', reason);
-      fd.append('proof', proof);
-      const res = await fetch(`${API_BASE}/api/leave-requests`, { method: 'POST', body: fd });
+      fd.append('ma_buoi_hoc', sessionId);
+      fd.append('ly_do', reason);
+      fd.append('minh_chung', proof);
+      const res = await authFetch(`${API_BASE}/api/student/leave_request`, { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         showToast?.('Gửi đơn nghỉ phép thành công');

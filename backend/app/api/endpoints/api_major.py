@@ -9,35 +9,37 @@ from app.schemas.major import MajorCreate, MajorUpdate, MajorResponse
 from app.crud import crud_major as crud
 from app.models.major import Major
 from app.models.faculty import Faculty
+from app.core.require import get_current_user, require_admin
 
 router = APIRouter()
 
-@router.get("/", response_model=List[MajorResponse])
+@router.get("", response_model=List[MajorResponse], dependencies=[Depends(get_current_user)])
+@router.get("/", response_model=List[MajorResponse], dependencies=[Depends(get_current_user)])
 def get_all_majors(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_majors(db, skip=skip, limit=limit)
 
-@router.get("/{major_id}", response_model=MajorResponse)
+@router.get("/{major_id}", response_model=MajorResponse, dependencies=[Depends(get_current_user)])
 def get_major(major_id: str, db: Session = Depends(get_db)):
     db_obj = crud.get_major(db, major_id=major_id)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Không tìm thấy Ngành")
     return db_obj
 
-@router.post("/", response_model=MajorResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=MajorResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_major(major: MajorCreate, db: Session = Depends(get_db)):
     db_obj = crud.get_major(db, major_id=major.major_id)
     if db_obj:
         raise HTTPException(status_code=400, detail="Mã Ngành đã tồn tại")
     return crud.create_major(db=db, major=major)
 
-@router.put("/{major_id}", response_model=MajorResponse)
+@router.put("/{major_id}", response_model=MajorResponse, dependencies=[Depends(require_admin)])
 def update_major(major_id: str, major_update: MajorUpdate, db: Session = Depends(get_db)):
     db_obj = crud.get_major(db, major_id=major_id)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Không tìm thấy Ngành")
     return crud.update_major(db=db, db_major=db_obj, major_update=major_update)
 
-@router.post("/import/csv")
+@router.post("/import/csv", dependencies=[Depends(require_admin)])
 async def import_majors_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         contents = await file.read()

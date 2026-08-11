@@ -2,6 +2,9 @@ ai:
   model_name: "buffalo_l"
   det_size: [480, 480]
   threshold: 0.65
+  # Khoảng thời gian (giây) tái sử dụng kết quả liveness cho cùng một người đã biết,
+  # tránh chạy lại mô hình Silent-Face trên CPU mỗi frame -> giảm độ trễ thời gian thực.
+  liveness_interval: 2.0
 
 camera:
   device_id: 0

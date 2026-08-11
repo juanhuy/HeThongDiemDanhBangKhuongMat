@@ -11,11 +11,18 @@ export const CameraMonitor = ({ store }) => {
             <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 <span style={{ fontSize: "0.8rem", fontWeight: "600", color: "#54738c" }}>Camera tại phòng:</span>
-                <input
-                  style={{ ...styles.input, padding: "4px 8px", width: "100px" }}
+                <select
+                  style={{ ...styles.input, padding: "4px 8px", width: "160px", fontWeight: "600", color: "#0369a1" }}
                   value={cameraRoom}
                   onChange={(e) => setCameraRoom(e.target.value)}
-                />
+                >
+                  <option value="TEST-301">TEST-301 (Phòng Test)</option>
+                  <option value="A2-301">A2-301</option>
+                  <option value="A2-302">A2-302</option>
+                  {cameraRoom && !["TEST-301", "A2-301", "A2-302"].includes(cameraRoom) && (
+                    <option value={cameraRoom}>{cameraRoom}</option>
+                  )}
+                </select>
               </div>
 
               <div style={{ display: "flex", gap: "10px" }}>

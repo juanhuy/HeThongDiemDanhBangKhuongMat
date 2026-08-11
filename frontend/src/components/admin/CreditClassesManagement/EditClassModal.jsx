@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Clock, MapPin, ChevronDown, Search, BookOpen, Edit2, Info } from 'lucide-react';
-import { API_BASE } from '../../../api/client';
+import { API_BASE, authFetch } from '../../../api/client';
 
 // =====================================================================
 // COMPONENT SEARCHABLE SELECT
@@ -134,7 +134,7 @@ export default function EditClassModal({
       setLoadingDetail(true);
       let detailData = null;
       try {
-        const detailRes = await fetch(`${API_BASE}/api/credit-classes/${classId}`);
+        const detailRes = await authFetch(`${API_BASE}/api/credit-classes/${classId}`);
         if (detailRes.ok) {
           detailData = await detailRes.json();
           if (detailData.status === 'success' && detailData.data) {
@@ -156,9 +156,9 @@ export default function EditClassModal({
         }
 
         const [lecRes, roomRes, semRes] = await Promise.all([
-          fetch(`${API_BASE}/api/admin/lecturers/`),
-          fetch(`${API_BASE}/api/admin/classrooms/`),
-          fetch(`${API_BASE}/api/semesters`)
+          authFetch(`${API_BASE}/api/admin/lecturers/`),
+          authFetch(`${API_BASE}/api/admin/classrooms/`),
+          authFetch(`${API_BASE}/api/semesters`)
         ]);
         
         if (lecRes.ok) {
@@ -202,7 +202,7 @@ export default function EditClassModal({
   const fetchSchedules = async () => {
     setLoadingSchedules(true);
     try {
-      const res = await fetch(`${API_BASE}/api/schedules`);
+      const res = await authFetch(`${API_BASE}/api/schedules`);
       const data = await res.json();
       if (res.ok && data.schedules) {
         const classSchedules = data.schedules.filter(s => s.class_id === classId);
@@ -347,7 +347,7 @@ export default function EditClassModal({
     }
     setIsSavingAll(true);
     try {
-      const resClass = await fetch(`${API_BASE}/api/credit-classes/${classId}`, {
+      const resClass = await authFetch(`${API_BASE}/api/credit-classes/${classId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -368,7 +368,7 @@ export default function EditClassModal({
         form.append('ca_hoc', s.shift);
         form.append('loai_lich', s.loai_lich);
 
-        const resSchedule = await fetch(`${API_BASE}/api/schedules`, { method: 'POST', body: form });
+        const resSchedule = await authFetch(`${API_BASE}/api/schedules`, { method: 'POST', body: form });
         if (!resSchedule.ok) {
            const errData = await resSchedule.json();
            throw new Error(`Lỗi lưu lịch ngày ${s.session_date}: ${errData.detail || 'Không rõ nguyên nhân'}`);

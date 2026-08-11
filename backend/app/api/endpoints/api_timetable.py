@@ -8,8 +8,9 @@ from app.models import (
     CreditClass, ClassEnrollment, ClassSession, ClassSchedule,
     Student, Lecturer, Subject, Classroom, ExpectedClassMapping
 )
+from app.core.require import get_current_user
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 DAY_NAMES = {2: "Thứ 2", 3: "Thứ 3", 4: "Thứ 4", 5: "Thứ 5", 6: "Thứ 6", 7: "Thứ 7", 8: "Chủ Nhật"}
 
@@ -233,13 +234,12 @@ def student_timetable(
     week_start: Optional[str] = Query(None, description="YYYY-MM-DD (bất kỳ ngày trong tuần)"),
     db: Session = Depends(get_db),
 ):
-    sid = student_id.strip().upper()
-    enrollments = (
-        db.query(ClassEnrollment)
-        .filter(ClassEnrollment.student_id == sid)
-        .all()
-    )
-    class_ids = [e.class_id for e in enrollments]
+    from app.models import StudentClassEnrollment
+    from sqlalchemy import func
+    sid = student_id.strip()
+    e1 = db.query(ClassEnrollment).filter(func.lower(ClassEnrollment.student_id) == sid.lower()).all()
+    e2 = db.query(StudentClassEnrollment).filter(func.lower(StudentClassEnrollment.student_id) == sid.lower()).all()
+    class_ids = list(set([e.class_id for e in e1] + [e.class_id for e in e2]))
     ws = None
     if week_start:
         try:

@@ -58,6 +58,17 @@ def get_auth_config():
     return auth_cfg
 
 
+_DEFAULT_SECRET = "ptit-diem-danh-jwt-secret-key-doi-ngay-khi-deploy"
+
+
+def _resolve_secret(auth_cfg) -> str:
+    """Lấy JWT secret; nếu rỗng (config.yaml có secret_key: "") thì dùng mặc định, không ký bằng secret rỗng."""
+    secret = auth_cfg.get("secret_key") or ""
+    if isinstance(secret, str) and secret.strip():
+        return secret
+    return _DEFAULT_SECRET
+
+
 def create_access_token(payload: dict) -> str:
     """Tạo JWT access token với thời hạn cấu hình trong config.yaml.
 
@@ -80,7 +91,7 @@ def create_access_token(payload: dict) -> str:
 
     return jwt.encode(
         to_encode,
-        auth_cfg.get("secret_key", "ptit-diem-danh-jwt-secret-key-doi-ngay-khi-deploy"),
+        _resolve_secret(auth_cfg),
         algorithm=auth_cfg.get("algorithm", "HS256"),
     )
 
@@ -91,7 +102,7 @@ def decode_token(token: str) -> dict | None:
     try:
         payload = jwt.decode(
             token,
-            auth_cfg.get("secret_key", "ptit-diem-danh-jwt-secret-key-doi-ngay-khi-deploy"),
+            _resolve_secret(auth_cfg),
             algorithms=[auth_cfg.get("algorithm", "HS256")],
         )
         return payload

@@ -17,7 +17,8 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "backend"))
 
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.account import Account  # noqa: E402
-from app.models.student import Student, UserProfile  # noqa: E402
+from app.models.student import Student  # noqa: E402
+from app.models.user_profile import UserProfile  # noqa: E402
 from app.models.lecturer import Lecturer  # noqa: E402
 from app.models.subject import Subject  # noqa: E402
 from app.models.credit_class import CreditClass  # noqa: E402
@@ -45,12 +46,17 @@ def ensure_lecturer(db, lecturer_id, full_name, email, department):
     if not lec:
         lec = Lecturer(
             lecturer_id=lecturer_id,
-            full_name=full_name,
-            email=email,
-            phone_number="0900.000.001",
             department=department,
+            teaching_status="Active",
         )
         db.add(lec)
+        db.flush()
+    # Đảm bảo giảng viên có UserProfile (full_name/email nay đọc từ profile)
+    if lec.profile_id is None:
+        profile = UserProfile(full_name=full_name, personal_email=email, phone_number="0900.000.001")
+        db.add(profile)
+        db.flush()
+        lec.profile_id = profile.profile_id
         db.flush()
     return lec
 
@@ -60,6 +66,8 @@ def ensure_subject(db, subject_id, name, credits, semester, prereq=None):
     if not sub:
         sub = Subject(
             subject_id=subject_id, subject_name=name, credits=credits,
+            theory_credits=credits, practical_credits=0,
+            theory_periods=credits * 15, practical_periods=0, total_periods=credits * 15,
             semester=semester, prerequisites=prereq or None,
         )
         db.add(sub)
@@ -89,9 +97,9 @@ def ensure_student(db, mssv, full_name, administrative_class, cohort, major):
     db.flush()
     st = Student(
         student_id=mssv, profile_id=profile.profile_id,
-        administrative_class=administrative_class,
-        major=major, specialization="Công nghệ phần mềm",
-        department="Khoa CNTT", cohort=cohort,
+        administrative_class_id=administrative_class,
+        specialization="Công nghệ phần mềm",
+        cohort=cohort,
         training_program="Đại học chính quy", academic_status="Đang học",
     )
     db.add(st)
@@ -141,10 +149,9 @@ def main():
         print("=== 2. Giảng viên ===")
         gv = ensure_lecturer(db, "GV001", "Nguyễn Văn Hùng", "hungnv@ptit.edu.vn", "Bộ môn CNTT")
         gv2 = ensure_lecturer(db, "GV002", "Trần Thị Mai", "maitt@ptit.edu.vn", "Bộ môn Hệ thống thông tin")
-        try:
-            gv.account_id = gv_account.account_id
-        except Exception:
-            pass
+        # Liên kết tài khoản giangvien -> hồ sơ GV001 (qua UserProfile)
+        if gv.profile and gv.profile.account_id is None:
+            gv.profile.account_id = gv_account.account_id
         db.commit()
 
         print("=== 3. Môn học (kèm tiên quyết) ===")

@@ -31,11 +31,12 @@ def _next_lecturer_sequence(db: Session, year: int | None = None) -> int:
 
 
 def get_lecturer(db: Session, lecturer_id: str):
+    from sqlalchemy import func
     return (
         db.query(Lecturer)
-        .options(joinedload(Lecturer.faculty)) # Ép JOIN bảng Khoa
-        .options(joinedload(Lecturer.profile)) # để query nhanh hơn
-        .filter(Lecturer.lecturer_id == lecturer_id)
+        .options(joinedload(Lecturer.faculty))
+        .options(joinedload(Lecturer.profile))
+        .filter(func.lower(Lecturer.lecturer_id) == lecturer_id.strip().lower())
         .first()
     )
 
@@ -159,12 +160,10 @@ def delete_lecturer(db: Session, lecturer_id: str):
     db_lecturer = get_lecturer(db, lecturer_id)
     if not db_lecturer:
         return None
-    # Xoá tài khoản liên kết (nếu có)
-    if hasattr(db_lecturer, 'account_id') and db_lecturer.account_id:
-        account = db.query(Account).filter(Account.account_id == db_lecturer.account_id).first()
-        if account:
-            account.is_active = False
-            db.add(account)
+    # Khóa tài khoản liên kết (qua profile.account) thay vì xóa cứng
+    if getattr(db_lecturer, 'profile', None) and getattr(db_lecturer.profile, 'account', None):
+        db_lecturer.profile.account.is_active = False
+        db.add(db_lecturer.profile.account)
     db.delete(db_lecturer)
     db.commit()
     return db_lecturer

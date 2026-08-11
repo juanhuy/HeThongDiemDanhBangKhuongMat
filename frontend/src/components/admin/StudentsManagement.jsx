@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { studentsApi, facultiesApi, majorsApi } from '../../api';
 import { buildManualStudentPayload } from '../../utils/studentFormUtils';
-import { API_BASE } from '../../api/client';
+import { API_BASE, authFetch } from '../../api/client';
 import { Search, Plus, Edit, X, Upload, CheckCircle, AlertTriangle, PieChart as PieChartIcon, BarChart2, Check, Menu, Filter, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, SortAsc, SortDesc, Users, UserPlus, ScanFace, Trash2, GraduationCap, Briefcase } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
@@ -210,7 +210,7 @@ export default function StudentsManagement({ showToast }) {
     formData.append('file', file);
     try {
       showToast?.('Đang import dữ liệu...', 'info');
-      const res = await fetch(`${API_BASE}/api/admin/students/import/excel`, { method: 'POST', body: formData });
+      const res = await authFetch(`${API_BASE}/api/admin/students/import/excel`, { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Lỗi import');
       showToast?.(data.message || 'Import thành công', 'success');
@@ -238,7 +238,7 @@ export default function StudentsManagement({ showToast }) {
   const openProfileModal = async (id) => {
     try {
       showToast?.('Đang tải hồ sơ...', 'info');
-      const res = await fetch(`${API_BASE}/api/admin/students/${id}`);
+      const res = await authFetch(`${API_BASE}/api/admin/students/${id}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Lỗi tải thông tin');
 
@@ -302,7 +302,7 @@ export default function StudentsManagement({ showToast }) {
     setCapturedImage(null);
     if (streamRef.current) stopCamera();
     try {
-      const res = await fetch(`${API_BASE}/api/${student.student_id || student.mssv}/faces`);
+      const res = await authFetch(`${API_BASE}/api/${student.student_id || student.mssv}/faces`);
       const data = await res.json();
       if (res.ok) setFaceStatus(data);
     } catch (err) { console.error(err); }
@@ -313,7 +313,7 @@ export default function StudentsManagement({ showToast }) {
     formData.append('file', file);
     try {
       showToast?.('Đang xử lý hình ảnh...', 'info');
-      const res = await fetch(`${API_BASE}/api/${faceStudent.student_id || faceStudent.mssv}/faces`, { method: 'POST', body: formData });
+      const res = await authFetch(`${API_BASE}/api/${faceStudent.student_id || faceStudent.mssv}/faces`, { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Lỗi phân tích khuôn mặt');
       showToast?.('Đã lưu sinh trắc học thành công', 'success');
@@ -341,7 +341,7 @@ export default function StudentsManagement({ showToast }) {
   const handleDeleteFace = async () => {
     if (!window.confirm('Xóa dữ liệu khuôn mặt của sinh viên này?')) return;
     try {
-      const res = await fetch(`${API_BASE}/api/${faceStudent.student_id || faceStudent.mssv}/faces`, { method: 'DELETE' });
+      const res = await authFetch(`${API_BASE}/api/${faceStudent.student_id || faceStudent.mssv}/faces`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.detail || 'Lỗi xóa khuôn mặt');

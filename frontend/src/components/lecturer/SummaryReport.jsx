@@ -7,7 +7,7 @@ export default function SummaryReport({ user, showToast }) {
   const [report, setReport] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const lecturerId = user?.lecturer_id;
+  const lecturerId = user?.lecturer_id || user?.username;
 
   useEffect(() => {
     (async () => {

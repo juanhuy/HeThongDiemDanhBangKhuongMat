@@ -133,8 +133,6 @@ class LivenessDetector:
                 exp_logits = np.exp(logits - np.max(logits))
                 probs = exp_logits / np.sum(exp_logits)
                 
-                print(f"-> [Liveness] RAW Probs: {probs}")
-                
                 # Theo chuẩn của mô hình Silent-Face-Anti-Spoofing: 
                 # Index 0: Fake (Print attack)
                 # Index 1: Real / Live Face (Người thật) -> Dùng probs[1]!

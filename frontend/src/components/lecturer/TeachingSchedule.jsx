@@ -13,7 +13,7 @@ export default function TeachingSchedule({ user, showToast }) {
   });
   const [viewMode, setViewMode] = useState('grid'); // grid | list
 
-  const lecturerId = user?.lecturer_id;
+  const lecturerId = user?.lecturer_id || user?.username;
 
   useEffect(() => {
     (async () => {

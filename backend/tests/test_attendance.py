@@ -7,7 +7,8 @@ from fixtures import auth, create_subject, create_credit_class, TEST_CLASS, TEST
 @pytest.fixture(scope="module", autouse=True)
 def setup(client, admin_token):
     create_subject(client, admin_token)
-    create_credit_class(client, admin_token)
+    # Gán giảng viên GV001 cho lớp test để GV (giangvien) thấy được lịch của lớp
+    create_credit_class(client, admin_token, lecturer_id="GV001")
     yield
     from fixtures import delete_class, delete_subject
     # chỉ dọn nếu còn
@@ -46,7 +47,7 @@ def test_manual_checkin_valid_class(client, admin_token, lecturer_token):
     from datetime import datetime, timedelta
     date = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d")
     client.post("/api/lich_hoc_chi_tiet", headers=auth(admin_token),
-                data={"ma_lop_tc": TEST_CLASS, "ngay_hoc": date, "phong_hoc": "A1-999", "gio_hoc": "18:00"})
+                data={"ma_lop_tc": TEST_CLASS, "ngay_hoc": date, "phong_hoc": "A1-999", "gio_bat_dau": "18:00:00"})
     # lấy schedule_id
     scheds = client.get(f"/api/lich_hoc_chi_tiet?class_id={TEST_CLASS}", headers=auth(lecturer_token)).json()["schedules"]
     assert scheds, "Chưa tạo được lịch"
