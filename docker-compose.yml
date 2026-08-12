@@ -1,0 +1,79 @@
+# ============================================================
+# Full-stack Docker — Hệ Thống Điểm Danh Bằng Khuôn Mặt
+# Các cổng TÁCH BIỆT với hệ thống native:
+#   MySQL    -> 3307 (native đang dùng 3306)
+#   Backend  -> 8001 (native đang dùng 8000)
+#   Frontend -> 5174 (native đang dùng 5173)
+#
+# Chạy:  docker compose up -d --build
+# Mở:    http://localhost:5174   (tài khoản admin / 123456)
+# ============================================================
+services:
+  db:
+    image: mysql:8.0
+    container_name: ptit_diem_danh_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-19082004}
+      MYSQL_DATABASE: ptit_diem_danh
+      MYSQL_USER: ${MYSQL_USER:-app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-app123456}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-19082004}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ptit_diem_danh_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-19082004}
+      DB_NAME: ptit_diem_danh
+      DB_ENCRYPTION_KEY: ${DB_ENCRYPTION_KEY:-docker_fallback_key_2026}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-docker_jwt_secret_change_me}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: 480
+      # Server bind (đọc từ config.yaml, nhưng env này giữ cho rõ ràng)
+      SERVER_HOST: 0.0.0.0
+    ports:
+      - "8001:8000"
+    volumes:
+      - registered_images:/app/backend/app/database/registered_images
+      - face_database:/app/face_database
+      - documents:/app/backend/database/documents
+      - logs:/app/logs
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # RỖNG -> dùng đường dẫn tương đối /api, Nginx proxy sang backend
+        VITE_API_BASE: ""
+    container_name: ptit_diem_danh_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5174:80"
+
+volumes:
+  mysql_data:
+  registered_images:
+  face_database:
+  documents:
+  logs:

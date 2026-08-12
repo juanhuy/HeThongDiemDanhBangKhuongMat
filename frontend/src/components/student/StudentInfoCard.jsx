@@ -1,20 +1,19 @@
 import React from 'react';
-import { Info } from 'lucide-react';
+import { Info, User } from 'lucide-react';
 
 const StudentInfoCard = ({ studentProfile }) => {
   const styles = {
     card: {
       backgroundColor: "#ffffff",
       border: "1px solid #d0e0eb",
-      borderRadius: "10px",
+      borderRadius: "12px",
       overflow: "hidden",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+      boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
     },
     cardHeader: {
-      backgroundColor: "#ffffff",
+      background: "linear-gradient(135deg, #1d92d1, #0f6fa8)",
       padding: "12px 20px",
-      borderBottom: "1px solid #e2edf5",
-      color: "#106fa6",
+      color: "#ffffff",
       fontWeight: "600",
       fontSize: "0.95rem",
       display: "flex",
@@ -25,34 +24,70 @@ const StudentInfoCard = ({ studentProfile }) => {
       padding: "20px"
     },
     infoGrid: {
-      display: "grid",
-      gridTemplateColumns: "100px 1fr",
-      gap: "1.5rem",
-      alignItems: "start"
-    },
-    avatarCol: {
       display: "flex",
       flexDirection: "column",
-      gap: "10px"
+      alignItems: "center",
+      gap: "16px"
     },
-    dataColumn: {
+    avatar: {
+      width: "88px",
+      height: "88px",
+      borderRadius: "50%",
+      background: "linear-gradient(135deg, #e2edf5, #cfe3f2)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      border: "3px solid #1d92d1"
+    },
+    nameLine: {
+      fontSize: "1.1rem",
+      fontWeight: "700",
+      color: "#0b517a",
+      textAlign: "center"
+    },
+    mssvLine: {
+      fontSize: "0.85rem",
+      color: "#64748b",
+      textAlign: "center"
+    },
+    divider: {
+      height: "1px",
+      backgroundColor: "#e2edf5",
+      margin: "14px 0"
+    },
+    infoList: {
+      width: "100%",
       display: "flex",
       flexDirection: "column",
-      gap: "10px",
-      fontSize: "0.85rem"
+      gap: "12px",
+      minWidth: 0
     },
-    dataRow: {
+    infoRow: {
       display: "flex",
-      gap: "6px"
+      alignItems: "center",
+      justifyContent: "space-between",
+      fontSize: "0.88rem",
+      gap: "12px"
     },
-    dataLabel: {
-      color: "var(--text-muted)",
-      minWidth: "120px",
+    infoLabel: {
+      color: "#64748b",
       flexShrink: 0
     },
-    dataValue: {
+    infoValue: {
       fontWeight: "600",
-      color: "var(--text-main)"
+      color: "#2b3a4a",
+      textAlign: "right",
+      wordBreak: "break-word",
+      overflowWrap: "anywhere"
+    },
+    statusPill: {
+      display: "inline-block",
+      padding: "2px 10px",
+      borderRadius: "12px",
+      fontSize: "0.75rem",
+      fontWeight: "700",
+      backgroundColor: "#d1fae5",
+      color: "#15803d"
     }
   };
 
@@ -63,27 +98,36 @@ const StudentInfoCard = ({ studentProfile }) => {
       </div>
       <div style={styles.cardBody}>
         <div style={styles.infoGrid}>
-          <div style={styles.avatarCol}>
-            <div style={{ width: "100px", height: "120px", backgroundColor: "#e2edf5", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: "2rem", color: "#1d92d1" }}>👤</span>
-            </div>
+          <div style={styles.avatar}>
+            <User size={40} color="#1d92d1" />
           </div>
-          <div style={styles.dataColumn}>
-            <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Mã SV:</span>
-              <span style={styles.dataValue}>{studentProfile.mssv}</span>
+          <div>
+            <div style={styles.nameLine}>{studentProfile.ho_ten || "—"}</div>
+            <div style={styles.mssvLine}>MSSV: {studentProfile.mssv || "—"}</div>
+          </div>
+
+          <div style={styles.divider} />
+
+          <div style={styles.infoList}>
+            <div className="ptit-info-row">
+              <span className="ptit-info-label">Lớp chuyên ngành</span>
+              <span className="ptit-info-value">{studentProfile.lop_base || "N/A"}</span>
             </div>
-            <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Tên sinh viên:</span>
-              <span style={styles.dataValue}>{studentProfile.ho_ten}</span>
+            <div className="ptit-info-row">
+              <span className="ptit-info-label">Ngày sinh</span>
+              <span className="ptit-info-value">{studentProfile.ngay_sinh || "N/A"}</span>
             </div>
-            <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Lớp chuyên ngành:</span>
-              <span style={styles.dataValue}>{studentProfile.lop_base || "N/A"}</span>
+            <div className="ptit-info-row">
+              <span className="ptit-info-label">Giới tính</span>
+              <span className="ptit-info-value">{studentProfile.gioi_tinh || "N/A"}</span>
             </div>
-            <div style={styles.dataRow}>
-              <span style={styles.dataLabel}>Trạng thái:</span>
-              <span style={{ ...styles.dataValue, color: "#22c55e" }}>Đang học</span>
+            <div className="ptit-info-row">
+              <span className="ptit-info-label">Email</span>
+              <span className="ptit-info-value">{studentProfile.email || "N/A"}</span>
+            </div>
+            <div className="ptit-info-row">
+              <span className="ptit-info-label">Trạng thái</span>
+              <span className="ptit-info-value">{studentProfile.academic_status || "Đang học"}</span>
             </div>
           </div>
         </div>

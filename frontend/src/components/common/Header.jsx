@@ -1,8 +1,8 @@
 import React from 'react';
-import { Bell, LogOut, KeyRound } from 'lucide-react';
-import { apiFetch } from '../../api/client';
+import { Bell, LogOut, KeyRound, Menu } from 'lucide-react';
+import { apiFetch, API_BASE } from '../../api/client';
 
-const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead }) => {
+const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead, isMobile, onToggleMenu }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [showPwd, setShowPwd] = React.useState(false);
   const [curPwd, setCurPwd] = React.useState('');
@@ -12,8 +12,6 @@ const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead 
   const [pwdErr, setPwdErr] = React.useState(false);
   const [savingPwd, setSavingPwd] = React.useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
-
-  const API_BASE = "http://127.0.0.1:8000";
 
   const submitPassword = async (e) => {
     e.preventDefault();
@@ -168,8 +166,19 @@ const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead 
   return (
     <header style={styles.header}>
       <div style={styles.headerLeft}>
+        {isMobile && (
+          <button
+            onClick={() => onToggleMenu && onToggleMenu()}
+            style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: "6px", display: "flex", alignItems: "center" }}
+            aria-label="Mở menu"
+          >
+            <Menu size={24} />
+          </button>
+        )}
         <div style={styles.headerLogoIcon}>🎓</div>
-        <span style={{ fontWeight: 700, fontSize: "1rem" }}>CỔNG THÔNG TIN SINH VIÊN - PTIT</span>
+        <span style={{ fontWeight: 700, fontSize: isMobile ? "0.9rem" : "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {isMobile ? "PTIT - SV" : "CỔNG THÔNG TIN SINH VIÊN - PTIT"}
+        </span>
       </div>
       <div style={styles.headerRight}>
         <div style={{ position: "relative" }}>
@@ -246,10 +255,12 @@ const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead 
         </div>
 
         <div style={styles.studentProfileSummary}>
-          <div style={styles.studentNameHeader}>
-            <span style={{ fontWeight: 600 }}>{studentProfile.ho_ten}</span>
-            <span style={{ fontSize: "0.75rem", opacity: 0.9 }}>{studentProfile.mssv}</span>
-          </div>
+          {!isMobile && (
+            <div style={styles.studentNameHeader}>
+              <span style={{ fontWeight: 600 }}>{studentProfile.ho_ten}</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.9 }}>{studentProfile.mssv}</span>
+            </div>
+          )}
           <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
             <span style={{ color: "#1d92d1", fontWeight: "bold", fontSize: "1rem" }}>
               {studentProfile.ho_ten ? studentProfile.ho_ten.charAt(0) : 'H'}
@@ -257,25 +268,29 @@ const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead 
           </div>
         </div>
         
-        <button 
-          onClick={() => setShowPwd(true)} 
-          style={styles.btnLogout}
-          title="Đổi mật khẩu"
-        >
-          <KeyRound size={16} />
-          <span>Đổi mật khẩu</span>
-        </button>
+        {!isMobile && (
+          <button 
+            onClick={() => setShowPwd(true)} 
+            style={styles.btnLogout}
+            title="Đổi mật khẩu"
+          >
+            <KeyRound size={16} />
+            <span>Đổi mật khẩu</span>
+          </button>
+        )}
 
-        <button 
-          onClick={() => { if (window.confirm("Bạn có chắc muốn đăng xuất khỏi hệ thống?")) onLogout(); }} 
-          style={styles.btnLogout}
-          title="Đăng xuất"
-          onMouseEnter={(e) => e.target.style.backgroundColor = "rgba(255, 255, 255, 0.15)"}
-          onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-        >
-          <LogOut size={16} />
-          <span>Đăng xuất</span>
-        </button>
+        {!isMobile && (
+          <button 
+            onClick={() => { if (window.confirm("Bạn có chắc muốn đăng xuất khỏi hệ thống?")) onLogout(); }} 
+            style={styles.btnLogout}
+            title="Đăng xuất"
+            onMouseEnter={(e) => e.target.style.backgroundColor = "rgba(255, 255, 255, 0.15)"}
+            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+          >
+            <LogOut size={16} />
+            <span>Đăng xuất</span>
+          </button>
+        )}
       </div>
 
       {showPwd && (

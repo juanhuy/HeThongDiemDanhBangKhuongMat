@@ -67,3 +67,69 @@ body {
 .spin {
   animation: ptit-spin 1s linear infinite;
 }
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ============================================================
+   Card thông tin responsive — tự co giãn theo bề rộng màn hình
+   ============================================================ */
+.ptit-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.ptit-info-row > span {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ptit-info-value {
+  font-weight: 600;
+  color: #2b3a4a;
+  text-align: right;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+}
+
+.ptit-info-label {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* Trên màn hình rất hẹp: label ở trên, value xuống dưới (không tràn ngang) */
+@media (max-width: 480px) {
+  .ptit-info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .ptit-info-value {
+    text-align: left;
+    width: 100%;
+    font-size: 0.95rem;
+  }
+  .ptit-info-label {
+    font-size: 0.8rem;
+  }
+}
+
+/* Card không bao giờ vượt quá màn hình */
+.ptit-card {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar } from 'lucide-react';
+import { Calendar, X } from 'lucide-react';
 
 import Header from './components/common/Header';
 import Sidebar from './components/common/Sidebar';
@@ -19,7 +19,6 @@ import {
 } from './components/student';
 
 import {
-  TeachingSchedule,
   ManualCheckin,
   SummaryReport,
   LeaveRequests,
@@ -93,6 +92,7 @@ function App() {
   const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
   const [activeMenu, setActiveMenu] = useState(() => localStorage.getItem('ptit_active_menu') || 'home');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 900);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [studentProfile, setStudentProfile] = useState(null);
   const [lecturerProfile, setLecturerProfile] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -353,8 +353,6 @@ function App() {
       // —— Lecturer ——
       case 'lecturer_class_management':
         return <LecturerClassesManagement user={user} showToast={showToast} />;
-      case 'teaching_schedule':
-        return <TeachingSchedule user={user} showToast={showToast} />;
       case 'manual_checkin':
         return <ManualCheckin user={user} showToast={showToast} />;
       case 'summary_report':
@@ -402,6 +400,11 @@ function App() {
         );
     }
   };
+  const handleMenuSelect = (menu) => {
+    setActiveMenu(menu);
+    setMobileMenuOpen(false);
+  };
+
   return (
     <div style={styles.appWrapper}>
       <Header 
@@ -409,6 +412,8 @@ function App() {
         onLogout={handleLogout} 
         notifications={notifications}
         onMarkAllAsRead={handleMarkAllAsRead}
+        isMobile={isMobile}
+        onToggleMenu={() => setMobileMenuOpen(true)}
       />
       
       <div style={isMobile ? { ...styles.mainLayout, gridTemplateColumns: "1fr" } : styles.mainLayout}>
@@ -421,18 +426,46 @@ function App() {
         )}
 
         <main style={{ ...styles.contentArea, padding: isMobile ? "1rem" : "1.5rem 2rem" }}>
-          {isMobile && (
-            <div style={{ marginBottom: "1rem" }}>
-              <Sidebar 
-                activeMenu={activeMenu} 
-                setActiveMenu={setActiveMenu} 
-                user={user}
-              />
-            </div>
-          )}
           {renderContent()}
         </main>
       </div>
+
+      {isMobile && mobileMenuOpen && (
+        <>
+          <div
+            onClick={() => setMobileMenuOpen(false)}
+            style={{
+              position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)",
+              zIndex: 999, animation: "fadeIn 0.2s ease-out"
+            }}
+          />
+          <div style={{
+            position: "fixed", top: 0, left: 0, bottom: 0, width: "280px",
+            backgroundColor: "#ffffff", zIndex: 1000, overflowY: "auto",
+            boxShadow: "4px 0 16px rgba(0,0,0,0.15)",
+            animation: "slideInLeft 0.25s ease-out"
+          }}>
+            <div style={{
+              display: "flex", justifyContent: "flex-end", padding: "8px",
+              borderBottom: "1px solid #eef3f7"
+            }}>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: "6px", color: "#64748b" }}
+                aria-label="Đóng menu"
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <Sidebar 
+              activeMenu={activeMenu} 
+              setActiveMenu={handleMenuSelect} 
+              user={user}
+            />
+          </div>
+        </>
+      )}
+
       <Toast toast={toast} />
       <ChatWidget />
     </div>

@@ -414,6 +414,13 @@ async def recognize_uploaded_image(
                 if student_info:
                     ho_ten = student_info.profile.full_name if student_info.profile else getattr(student_info, 'full_name', 'N/A')
                     lop_base = student_info.administrative_class or "N/A"
+                else:
+                    # Nhận diện được mặt nhưng chưa ghi nhận điểm danh (vd: không có
+                    # buổi học/lịch phù hợp lúc đó). Vẫn hiển thị đúng tên SV.
+                    _st = db.query(Student).filter(Student.student_id == mssv).first()
+                    if _st:
+                        ho_ten = _st.profile.full_name if _st.profile else getattr(_st, 'full_name', 'N/A')
+                        lop_base = _st.administrative_class or "N/A"
                 trang_thai = msg
                 _attendance_cache[key] = {
                     "ts": time.time(),

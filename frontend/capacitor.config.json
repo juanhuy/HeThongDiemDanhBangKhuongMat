@@ -1,0 +1,11 @@
+{
+  "appId": "com.ptit.diemdanh",
+  "appName": "Diem Danh PTIT",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "cleartext": true
+  }
+}

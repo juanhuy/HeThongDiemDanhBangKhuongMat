@@ -15,3 +15,6 @@ env/
 .vscode/
 # Cấu hình bí mật môi trường
 config/.env
+
+# Model InsightFace (quá lớn >100MB, không push lên GitHub)
+models-insightface/

@@ -1,0 +1,21 @@
+# Build context cho Docker — loại bỏ file không cần thiết
+.venv/
+venv/
+env/
+__pycache__/
+**/__pycache__/
+*.pyc
+node_modules/
+.git/
+.gitignore
+.android/
+android/
+.vscode/
+logs/
+*.log
+config/.env
+frontend/.env
+frontend/dist/
+frontend/android/
+backend/tests/__pycache__/
+.idea/

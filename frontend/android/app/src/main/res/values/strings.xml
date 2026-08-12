@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Diem Danh PTIT</string>
+    <string name="title_activity_main">Diem Danh PTIT</string>
+    <string name="package_name">com.ptit.diemdanh</string>
+    <string name="custom_url_scheme">com.ptit.diemdanh</string>
+</resources>

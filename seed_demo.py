@@ -139,11 +139,11 @@ def main():
     db = SessionLocal()
     try:
         print("=== 1. Tài khoản demo ===")
-        ensure_account(db, "admin", "admin123", "admin")
+        ensure_account(db, "admin", "123456", "admin")
         gv_account = ensure_account(db, "giangvien", "123456", "giang_vien")
         for mssv in ["N22DCCN160", "N22DCCN161", "N22DCCN162"]:
             ensure_account(db, mssv, "123456", "sinh_vien")
-        print("  admin / admin123 | giangvien / 123456 | N22DCCN160 / 123456")
+        print("  admin / 123456 | giangvien / 123456 | N22DCCN160 / 123456")
         db.commit()
 
         print("=== 2. Giảng viên ===")
@@ -204,7 +204,7 @@ def main():
         print("=" * 62)
         print()
         print(">>> LUỒNG CHẠY DEMO (trình diễn với thầy cô):")
-        print("  1. Mở frontend http://localhost:5173 và đăng nhập ADMIN (admin / admin123).")
+        print("  1. Mở frontend http://localhost:5173 và đăng nhập ADMIN (admin / 123456).")
         print("  2. Tab 'Bảng điều khiển Demo': bật/tắt từng quy tắc để trình diễn 'nới' & 'chặt'.")
         print("  3. Đăng nhập giảng viên giangvien/123456 -> Quản lý lớp, điểm danh nhanh, xin nghỉ phép.")
         print("  4. Đăng nhập sinh viên N22DCCN160/123456 -> xem 'Lớp học của tôi', 'Đăng ký học phần',")
@@ -215,13 +215,26 @@ def main():
         print("     Nếu ngoài khung giờ, dùng 'Điểm danh nhanh' (giảng viên) để minh họa.")
         print("  7. Báo cáo tổng kết/cấm thi: tab 'Tổng kết & Cấm thi' (giảng viên) -> xuất file Excel.")
         print()
-        print("  TÀI KHOẢN: admin/admin123 · giangvien/123456 · N22DCCN160/123456 · N22DCCN161/123456")
+        print("  TÀI KHOẢN: admin/123456 · giangvien/123456 · N22DCCN160/123456 · N22DCCN161/123456")
     except Exception as e:
         db.rollback()
         print(f"LỖI khi seed dữ liệu: {e}")
         raise
     finally:
         db.close()
+
+
+def needs_seed():
+    """Kiểm tra DB đã có tài khoản chưa (dùng cho Docker entrypoint)."""
+    try:
+        from app.models.account import Account
+        db = SessionLocal()
+        try:
+            return db.query(Account).first() is None
+        finally:
+            db.close()
+    except Exception:
+        return True
 
 
 if __name__ == "__main__":
