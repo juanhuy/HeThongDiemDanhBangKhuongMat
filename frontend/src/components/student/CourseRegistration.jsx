@@ -27,23 +27,26 @@ export default function CourseRegistration({ user, showToast }) {
   const [regFilterTo, setRegFilterTo] = useState('');
 
   const [scheduleModal, setScheduleModal] = useState({ open: false, clsInfo: null });
+  const [regInfo, setRegInfo] = useState(null);
 
   const mssv = user?.mssv || user?.username?.toUpperCase();
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [openRes, enrolledRes, studentRes, acRes, majRes, facRes] = await Promise.all([
+      const [openRes, enrolledRes, studentRes, acRes, majRes, facRes, regRes] = await Promise.all([
         creditClassesApi.listOpenCreditClasses(),
         mssv ? creditClassesApi.getStudentCreditClasses(mssv) : Promise.resolve({ classes: [] }),
         mssv ? apiFetch(`/api/admin/students/${mssv}`).catch(() => null) : Promise.resolve(null),
         apiFetch('/api/administrative-classes').catch(() => []),
         apiFetch('/api/majors/').catch(() => []),
-        apiFetch('/api/faculties/').catch(() => [])
+        apiFetch('/api/faculties/').catch(() => []),
+        apiFetch('/api/registration/info').catch(() => null)
       ]);
       setAvailableClasses(openRes.data || openRes.classes || []);
       setStudentClasses(enrolledRes.data || enrolledRes.classes || []);
       setStudentInfo(studentRes);
+      setRegInfo(regRes);
 
       const acList = acRes.data || acRes.items || acRes || [];
       setAdminClasses(Array.isArray(acList) ? acList : []);
@@ -319,9 +322,14 @@ export default function CourseRegistration({ user, showToast }) {
          </div>
       )}
 
-      {/* TỰA ĐỀ CHUẨN PTIT */}
+      {/* TỰA ĐỀ CHUẨN PTIT (dữ liệu thật từ hệ thống) */}
       <div style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '12px 20px', marginBottom: 20, color: '#0369a1', fontWeight: 600, fontSize: '0.9rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        ⚙️ ĐĂNG KÝ MÔN HỌC HỌC KỲ 1 - NĂM HỌC 2026 - 2027
+        ⚙️ ĐĂNG KÝ MÔN HỌC HỌC KỲ {regInfo?.semester ?? '?'} - NĂM HỌC {regInfo?.academic_year ?? '—'}
+        {' '}· Mở {regInfo?.open_date ? regInfo.open_date : '—'} đến {regInfo?.close_date ? regInfo.close_date : '—'}
+        {' '}
+        <span style={{ color: regInfo?.is_open ? '#16a34a' : '#dc2626', fontWeight: 700 }}>
+          {regInfo?.is_open ? '● ĐANG MỞ' : '● ĐÃ ĐÓNG'}
+        </span>
       </div>
 
       <div style={{ marginBottom: 20, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>

@@ -77,12 +77,20 @@ export async function resolveApiBase() {
 
 const STORAGE_TOKEN_KEY = "ptit_token";
 const STORAGE_USER_KEY = "ptit_user";
+const STORAGE_REFRESH_KEY = "ptit_refresh_token";
 
 export const getToken = () => localStorage.getItem(STORAGE_TOKEN_KEY);
 
 export const setToken = (token) => {
   if (token) localStorage.setItem(STORAGE_TOKEN_KEY, token);
   else localStorage.removeItem(STORAGE_TOKEN_KEY);
+};
+
+export const getRefreshToken = () => localStorage.getItem(STORAGE_REFRESH_KEY);
+
+export const setRefreshToken = (token) => {
+  if (token) localStorage.setItem(STORAGE_REFRESH_KEY, token);
+  else localStorage.removeItem(STORAGE_REFRESH_KEY);
 };
 
 export const getStoredUser = () => {
@@ -94,15 +102,41 @@ export const getStoredUser = () => {
   }
 };
 
-export const storeSession = (token, user) => {
+export const storeSession = (token, user, refreshToken) => {
   setToken(token);
+  setRefreshToken(refreshToken);
   if (user) localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(user));
 };
 
 export const clearSession = () => {
-  localStorage.removeItem(STORAGE_TOKEN_KEY);
+  setToken(null);
+  setRefreshToken(null);
   localStorage.removeItem(STORAGE_USER_KEY);
 };
+
+// ---- REFRESH TOKEN: tự cấp lại access token khi hết hạn (401) ----
+let _refreshing = null;
+
+async function _refreshAccessToken() {
+  if (_refreshing) return _refreshing;
+  _refreshing = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) throw new Error("NO_REFRESH_TOKEN");
+    await resolveApiBase();
+    const fd = new FormData();
+    fd.append("refresh_token", refreshToken);
+    const res = await fetch(`${API_BASE}/api/auth/refresh`, { method: "POST", body: fd });
+    if (!res.ok) throw new Error("REFRESH_FAILED");
+    const data = await res.json();
+    setToken(data.access_token);
+    setRefreshToken(data.refresh_token);
+    if (data.user) localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
+    return true;
+  })().finally(() => {
+    _refreshing = null;
+  });
+  return _refreshing;
+}
 
 let globalOnUnauthorized = null;
 export const setOnUnauthorized = (fn) => {
@@ -121,7 +155,21 @@ export async function apiFetch(path, options = {}) {
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(url, { ...rest, headers });
+  let res = await fetch(url, { ...rest, headers });
+
+  // Access token hết hạn -> thử refresh 1 lần rồi gọi lại
+  if (res.status === 401) {
+    const refreshed = await _refreshAccessToken().catch(() => false);
+    if (refreshed) {
+      const retryHeaders = new Headers(rest.headers || {});
+      const newToken = getToken();
+      if (newToken) retryHeaders.set("Authorization", `Bearer ${newToken}`);
+      if (rest.body && !(rest.body instanceof FormData) && !retryHeaders.has("Content-Type")) {
+        retryHeaders.set("Content-Type", "application/json");
+      }
+      res = await fetch(url, { ...rest, headers: retryHeaders });
+    }
+  }
 
   if (res.status === 401) {
     clearSession();
@@ -168,6 +216,21 @@ export async function authFetch(url, options = {}) {
   const headers = new Headers(options.headers || {});
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  return fetch(resolvedUrl, { ...options, headers });
+  let res = await fetch(resolvedUrl, { ...options, headers });
+
+  // Access token hết hạn -> refresh 1 lần rồi gọi lại
+  if (res.status === 401) {
+    const refreshed = await _refreshAccessToken().catch(() => false);
+    if (refreshed) {
+      const retryHeaders = new Headers(options.headers || {});
+      const newToken = getToken();
+      if (newToken) retryHeaders.set("Authorization", `Bearer ${newToken}`);
+      res = await fetch(resolvedUrl, { ...options, headers: retryHeaders });
+    } else {
+      clearSession();
+      if (typeof globalOnUnauthorized === "function") globalOnUnauthorized();
+    }
+  }
+  return res;
 }
 

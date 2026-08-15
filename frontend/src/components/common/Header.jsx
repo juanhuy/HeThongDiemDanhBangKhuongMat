@@ -1,6 +1,6 @@
 import React from 'react';
 import { Bell, LogOut, KeyRound, Menu } from 'lucide-react';
-import { apiFetch, API_BASE } from '../../api/client';
+import { authFetch, API_BASE } from '../../api/client';
 
 const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead, isMobile, onToggleMenu }) => {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -23,8 +23,8 @@ const Header = ({ studentProfile, onLogout, notifications = [], onMarkAllAsRead,
       const fd = new FormData();
       fd.append("current_password", curPwd);
       fd.append("new_password", newPwd);
-      const res = await apiFetch(`${API_BASE}/api/auth/change-password`, { method: "POST", body: fd });
-      const data = await res.json();
+      const res = await authFetch(`${API_BASE}/api/auth/change-password`, { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setPwdMsg("Đổi mật khẩu thành công!"); setPwdErr(false);
         setCurPwd(''); setNewPwd(''); setNewPwd2('');

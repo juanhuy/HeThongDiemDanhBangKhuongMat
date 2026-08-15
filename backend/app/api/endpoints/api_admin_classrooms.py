@@ -47,6 +47,14 @@ def update_existing_classroom(room_id: str, classroom_in: ClassroomUpdate, db: S
 
 @router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 def delete_existing_classroom(room_id: str, db: Session = Depends(get_db)):
+    # Chặn xóa khi phòng đang được dùng trong buổi học / lịch học
+    from app.models import ClassSession, ClassSchedule
+    n_sess = db.query(ClassSession).filter(ClassSession.room_id == room_id.strip()).count()
+    n_sched = db.query(ClassSchedule).filter(
+        (ClassSchedule.room_id == room_id.strip()) | (ClassSchedule.room == room_id.strip())).count()
+    if n_sess + n_sched > 0:
+        raise HTTPException(status_code=400,
+                            detail=f"Không thể xóa phòng {room_id}: đang được dùng trong {n_sess + n_sched} buổi/lịch học.")
     db_room = crud.delete_classroom(db, room_id=room_id)
     if not db_room:
         raise HTTPException(status_code=404, detail="Khong tim thay phong hoc")

@@ -188,14 +188,25 @@ def handle_chat(db, current_user: dict, message: str, history: list) -> tuple:
         f"Lịch sử:\n{history_text}\n\nCâu hỏi mới của người dùng: {message}\n"
         "Hãy trả lời bằng tiếng Việt có dấu."
     )
+    # Nhắc lại ở CUỐI user prompt để không bị mất khi Ollama cắt prompt từ đầu
+    # (context dài làm tràn cửa sổ -> mất lệnh "trả lời tiếng Việt" trong system).
+    user_prompt += "\nQUAN TRỌNG: Chỉ được trả lời bằng tiếng Việt có dấu, không dùng tiếng Trung, tiếng Anh hay bất kỳ ngôn ngữ nào khác."
 
     llm = _get_llm()
     if llm and llm.available():
         try:
             reply = llm.chat(system, user_prompt, temperature=0.3, max_tokens=600)
             if reply and reply.strip():
-                return reply.strip(), False
+                # Lớp an toàn cuối: nếu vẫn lẫn ký tự Trung Quốc (Hán) thì bỏ qua
+                # bản dị và dùng câu trả lời quy tắc tiếng Việt.
+                if not _has_han_characters(reply):
+                    return reply.strip(), False
         except Exception:
             pass
 
     return _fallback_reply(message, context, role), True
+
+
+def _has_han_characters(text: str) -> bool:
+    """Kiểm tra chuỗi có chứa ký tự Trung Quốc (Hán tự) không."""
+    return any('\u4e00' <= ch <= '\u9fff' for ch in (text or ""))

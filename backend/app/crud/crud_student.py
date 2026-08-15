@@ -13,7 +13,7 @@ from app.core.student_status import (
 def get_student(db: Session, student_id: str):
     return db.query(Student).filter(Student.student_id == student_id.strip().upper()).first()
 
-def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = None, status: str = None, lecturer_id: str = None):
+def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = None, status: str = None, lecturer_id: str = None, cohort: str = None, faculty_id: str = None, administrative_class: str = None):
     query = db.query(Student)
     
     if lecturer_id:
@@ -28,6 +28,13 @@ def get_students(db: Session, skip: int = 0, limit: int = 100, search: str = Non
     if status:
         # Lọc theo trạng thái học tập (chuẩn hoá để nhận cả giá trị tiếng Anh cũ)
         query = query.filter(Student.academic_status == normalize_academic_status(status))
+    if cohort:
+        # Lọc theo khóa (linh hoạt: 'D22' hoặc '2022-2027')
+        query = query.filter(Student.cohort.ilike(f"%{cohort.strip()}%"))
+    if faculty_id:
+        query = query.filter(Student.faculty_id == faculty_id.strip())
+    if administrative_class:
+        query = query.filter(Student.administrative_class_id == administrative_class.strip())
         
     # Loại bỏ bản ghi trùng lặp (nếu sinh viên đăng ký nhiều lớp của cùng giảng viên)
     if lecturer_id:

@@ -10,6 +10,10 @@ class SubjectBase(BaseModel):
     practical_credits: int = Field(default=0, example=1) # Đổi thành tín chỉ thực hành
     semester: Optional[int] = None
     prerequisites: Optional[str] = None
+    predecessors: Optional[str] = None
+    corequisites: Optional[str] = None
+    major_ids: Optional[str] = None
+    subject_type: Optional[str] = "Bắt buộc"
     faculty_id: Optional[str] = None
     is_active: bool = True
 
@@ -23,6 +27,10 @@ class SubjectUpdate(BaseModel):
     practical_credits: Optional[int] = None
     semester: Optional[int] = None
     prerequisites: Optional[str] = None
+    predecessors: Optional[str] = None
+    corequisites: Optional[str] = None
+    major_ids: Optional[str] = None
+    subject_type: Optional[str] = None
     faculty_id: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -41,6 +49,10 @@ class SubjectResponse(BaseModel):
     credits: Optional[int] = 0
     semester: Optional[int] = None
     prerequisites: Optional[str] = None
+    predecessors: Optional[str] = None
+    corequisites: Optional[str] = None
+    major_ids: Optional[str] = None
+    subject_type: Optional[str] = "Bắt buộc"
     faculty_id: Optional[str] = None
     is_active: bool
     created_at: Optional[datetime] = None

@@ -24,18 +24,33 @@ def get_all_students(
     search: Optional[str] = None, 
     status: Optional[str] = None, 
     lecturer_id: Optional[str] = None,
+    cohort: Optional[str] = None,
+    faculty_id: Optional[str] = None,
+    administrative_class: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Lấy danh sách sinh viên (Hỗ trợ phân trang, tìm kiếm theo tên/MSSV, lọc trạng thái, lọc giảng viên phụ trách)"""
-    return crud.get_students(db, skip=skip, limit=limit, search=search, status=status, lecturer_id=lecturer_id)
+    """Lấy danh sách sinh viên (Phân trang, tìm kiếm, lọc trạng thái/GV/KHÓA/KHOA/LỚP HC)"""
+    return crud.get_students(db, skip=skip, limit=limit, search=search, status=status,
+                             lecturer_id=lecturer_id, cohort=cohort, faculty_id=faculty_id,
+                             administrative_class=administrative_class)
 
 
 # =========================================================================
 # 2. API Lấy chi tiết hồ sơ sinh viên
 # =========================================================================
-@router.get("/{student_id}", response_model=StudentResponse, dependencies=[Depends(require_roles("giang_vien", "admin"))])
-def get_student_detail(student_id: str, db: Session = Depends(get_db)):
-    """Xem chi tiết hồ sơ một sinh viên"""
+@router.get("/{student_id}", response_model=StudentResponse)
+def get_student_detail(student_id: str, db: Session = Depends(get_db),
+                       current_user: dict = Depends(get_current_user)):
+    """Xem chi tiết hồ sơ một sinh viên.
+
+    - Admin / Giảng viên: xem bất kỳ SV.
+    - Sinh viên: chỉ xem hồ sơ của CHÍNH MÌNH.
+    """
+    role = (current_user.get("role") or "").lower()
+    if role == "sinh_vien":
+        own = (current_user.get("mssv") or "").strip().upper()
+        if not own or own != student_id.strip().upper():
+            raise HTTPException(status_code=403, detail="Sinh viên chỉ xem được hồ sơ của chính mình.")
     db_student = crud.get_student(db, student_id=student_id)
     if not db_student:
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
@@ -95,7 +110,19 @@ def delete_existing_student(
     db_student = crud.get_student(db, student_id=student_id)
     if not db_student:
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
-    
+
+    # Chặn xóa khi SV còn dữ liệu liên quan (đăng ký lớp / điểm danh) — tránh mất dữ liệu oan
+    from app.models import StudentClassEnrollment, ClassEnrollment, AttendanceRecord
+    n_enroll = db.query(StudentClassEnrollment).filter(
+        StudentClassEnrollment.student_id == student_id.strip().upper()).count()
+    n_legacy = db.query(ClassEnrollment).filter(
+        ClassEnrollment.student_id == student_id.strip().upper()).count()
+    n_att = db.query(AttendanceRecord).filter(
+        AttendanceRecord.student_id == student_id.strip().upper()).count()
+    if n_enroll + n_legacy + n_att > 0:
+        raise HTTPException(status_code=400,
+                            detail=f"Không thể xóa sinh viên {student_id}: còn {n_enroll + n_legacy} lớp đăng ký và {n_att} bản ghi điểm danh. Hãy hủy đăng ký trước.")
+
     if db_student.profile and db_student.profile.account_id:
         from app.models.account import Account
         account = db.query(Account).filter(Account.account_id == db_student.profile.account_id).first()

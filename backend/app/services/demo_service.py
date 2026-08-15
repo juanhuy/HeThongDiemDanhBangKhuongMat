@@ -20,6 +20,7 @@ _DEFAULT = {
     "bypass_credit_limit": False,
     "bypass_eligibility": False,
     "bypass_duplicate_subject": False,
+    "bypass_curriculum": False,  # bỏ qua kiểm tra CTĐT (môn thuộc ngành)
     # --- Các quy tắc linh hoạt, có thể bật/tắt để test bằng tay ---
     "allow_unenroll_after_attendance": False,  # cho phép hủy đăng ký dù đã điểm danh
     "allow_after_hours_leave": False,          # cho phép nộp đơn nghỉ sau giờ học

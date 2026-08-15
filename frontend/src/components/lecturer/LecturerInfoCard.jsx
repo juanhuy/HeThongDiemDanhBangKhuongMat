@@ -182,7 +182,7 @@ const LecturerInfoCard = ({ lecturerProfile }) => {
             <div style={styles.firstColumn}>
               <div style={styles.dataRow}>
                 <span style={styles.dataLabel}>Khoa:</span>
-                <span style={styles.dataValue}>{lecturerProfile.department || "N/A"}</span>
+                <span style={styles.dataValue}>{lecturerProfile.department || lecturerProfile.faculty_name || "N/A"}</span>
               </div>
               <div style={styles.dataRow}>
                 <span style={styles.dataLabel}>Học hàm/Học vị:</span>

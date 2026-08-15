@@ -15,7 +15,8 @@ import {
   SubmitLeave,
   FaceBiometrics,
   StudentTimetable,
-  StudentInfoCard
+  StudentInfoCard,
+  MyReport
 } from './components/student';
 
 import {
@@ -28,6 +29,7 @@ import {
 import LecturerClassesManagement from './components/lecturer/LecturerClassesManagement';
 import LivePresencePanel from './components/lecturer/LivePresencePanel';
 import AdminAnalytics from './components/admin/AdminAnalytics';
+import AdminReports from './components/admin/AdminReports';
 import {
   CreditClassesManagement,
   LecturersManagement,
@@ -152,36 +154,30 @@ function App() {
   const fetchStudentProfile = async (userData) => {
     const mssv = userData?.mssv;
     if (!mssv) return;
-    // Endpoint /api/admin/students chỉ dành cho Admin; sinh viên/giảng viên
-    // dùng profile fallback hiển thị từ dữ liệu đăng nhập.
-    const role = (userData?.role || '').toLowerCase();
-    if (role !== 'admin') return;
     try {
-      const res = await apiFetch(`${API_BASE}/api/admin/students/${mssv}`);
-      if (res.ok) {
-        const data = await res.json();
-        setStudentProfile({
-          mssv: data.student_id,
-          ho_ten: data.full_name,
-          lop_base: data.administrative_class || 'N/A',
-          email: data.email || 'N/A',
-          sdt: data.phone_number || 'N/A',
-          ngay_sinh: data.date_of_birth || 'N/A',
-          gioi_tinh: data.gender || 'N/A',
-          cmnd: data.citizen_id || 'N/A',
-          dan_toc: data.ethnicity || 'N/A',
-          ton_giao: data.religion || 'N/A',
-          quoc_tich: data.nationality || 'N/A',
-          noi_sinh: data.place_of_birth || 'N/A',
-          dia_chi: data.address || 'N/A',
-          major: data.major || 'N/A',
-          specialization: data.specialization || 'N/A',
-          department: data.department || 'N/A',
-          cohort: data.cohort || 'N/A',
-          training_program: data.training_program || 'N/A',
-          academic_status: data.academic_status || 'Đang học',
-        });
-      }
+      // Backend cho SV xem hồ sơ CHÍNH MÌNH; GV/Admin xem được mọi SV.
+      const data = await apiFetch(`/api/admin/students/${mssv}`);
+      setStudentProfile({
+        mssv: data.student_id,
+        ho_ten: data.full_name,
+        lop_base: data.administrative_class || 'N/A',
+        email: data.email || 'N/A',
+        sdt: data.phone_number || 'N/A',
+        ngay_sinh: data.date_of_birth || 'N/A',
+        gioi_tinh: data.gender || 'N/A',
+        cmnd: data.citizen_id || 'N/A',
+        dan_toc: data.ethnicity || 'N/A',
+        ton_giao: data.religion || 'N/A',
+        quoc_tich: data.nationality || 'N/A',
+        noi_sinh: data.place_of_birth || 'N/A',
+        dia_chi: data.address || 'N/A',
+        major: data.major || 'N/A',
+        specialization: data.specialization || 'N/A',
+        department: data.department || 'N/A',
+        cohort: data.cohort || 'N/A',
+        training_program: data.training_program || 'N/A',
+        academic_status: data.academic_status || 'Đang học',
+      });
     } catch (e) {
       console.error('Lỗi khi tải thông tin sinh viên:', e);
     }
@@ -349,6 +345,8 @@ function App() {
         return <FaceBiometrics user={userForStudent} showToast={showToast} />;
       case 'timetable':
         return <StudentTimetable user={userForStudent} showToast={showToast} />;
+      case 'my_report':
+        return <MyReport user={userForStudent} showToast={showToast} />;
 
       // —— Lecturer ——
       case 'lecturer_class_management':
@@ -387,6 +385,8 @@ function App() {
         return <ScheduleAdmin showToast={showToast} />;
       case 'demo':
         return <DemoControlsPanel showToast={showToast} />;
+      case 'admin_reports':
+        return <AdminReports showToast={showToast} />;
 
       // —— Document System (SV + GV + Admin chia sẻ tài liệu) ——
       case 'documents':

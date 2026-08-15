@@ -83,6 +83,31 @@ def create_access_token(payload: dict) -> str:
     to_encode = {
         "sub": payload.get("sub", ""),
         "role": payload.get("role", "sinh_vien"),
+        "token_type": "access",
+        "exp": expires_at,
+    }
+    for key in ("username", "mssv", "lecturer_id", "ho_ten", "lop_base"):
+        if key in payload:
+            to_encode[key] = payload[key]
+
+    return jwt.encode(
+        to_encode,
+        _resolve_secret(auth_cfg),
+        algorithm=auth_cfg.get("algorithm", "HS256"),
+    )
+
+
+def create_refresh_token(payload: dict) -> str:
+    """Tạo JWT REFRESH token — thời hạn dài (mặc định 7 ngày), chỉ dùng để
+    cấp lại access token mới, không được dùng cho các API thông thường."""
+    auth_cfg = get_auth_config()
+    expire_days = int(auth_cfg.get("refresh_expire_days", 7) or 7)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=expire_days)
+
+    to_encode = {
+        "sub": payload.get("sub", ""),
+        "role": payload.get("role", "sinh_vien"),
+        "token_type": "refresh",
         "exp": expires_at,
     }
     for key in ("username", "mssv", "lecturer_id", "ho_ten", "lop_base"):
@@ -108,3 +133,11 @@ def decode_token(token: str) -> dict | None:
         return payload
     except JWTError:
         return None
+
+
+def decode_refresh_token(token: str) -> dict | None:
+    """Giải mã và kiểm tra token có đúng là REFRESH token không."""
+    payload = decode_token(token)
+    if payload and payload.get("token_type") == "refresh":
+        return payload
+    return None

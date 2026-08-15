@@ -4,7 +4,10 @@ from app.db.session import get_db
 from app.models.account import Account
 from app.models.student import Student
 from app.models.lecturer import Lecturer
-from app.core.security import create_access_token, get_password_hash, verify_password, password_needs_rehash
+from app.core.security import (
+    create_access_token, create_refresh_token, decode_refresh_token,
+    get_password_hash, verify_password, password_needs_rehash,
+)
 from app.core.rate_limit import is_locked, record_failure, record_success
 from fastapi import Request
 
@@ -93,7 +96,7 @@ def login(username: str = Form(...), password: str = Form(...), db: Session = De
     record_success(client_ip, username.strip().lower())
 
     user_data = _build_user_payload(account, db)
-    access_token = create_access_token({
+    claims = {
         "sub": account.username,
         "role": user_data["role"],
         "username": user_data["username"],
@@ -101,16 +104,60 @@ def login(username: str = Form(...), password: str = Form(...), db: Session = De
         "lecturer_id": user_data["lecturer_id"],
         "ho_ten": user_data["ho_ten"],
         "lop_base": user_data["lop_base"],
-    })
+    }
+    access_token = create_access_token(claims)
+    refresh_token = create_refresh_token(claims)
 
     return {
         "status": "success",
         "message": "Dang nhap thanh cong.",
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "expires_in": 60 * 60 * 8,
         "user": user_data,
     }
+
+
+@router.post("/refresh")
+def refresh_access_token(refresh_token: str = Form(...), db: Session = Depends(get_db)):
+    """Cấp lại access token (và refresh token mới) bằng refresh token.
+
+    - Refresh token phải còn hạn và đúng loại (token_type=refresh).
+    - Không được dùng access token để gọi endpoint này.
+    """
+    payload = decode_refresh_token(refresh_token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Refresh token không hợp lệ hoặc đã hết hạn.")
+
+    username = payload.get("sub", "").strip().lower()
+    account = db.query(Account).filter(Account.username == username).first()
+    if not account or account.is_active is False:
+        raise HTTPException(status_code=401, detail="Tài khoản không tồn tại hoặc đã bị khoá.")
+
+    user_data = _build_user_payload(account, db)
+    claims = {
+        "sub": account.username,
+        "role": user_data["role"],
+        "username": user_data["username"],
+        "mssv": user_data["mssv"],
+        "lecturer_id": user_data["lecturer_id"],
+        "ho_ten": user_data["ho_ten"],
+        "lop_base": user_data["lop_base"],
+    }
+    return {
+        "status": "success",
+        "access_token": create_access_token(claims),
+        "refresh_token": create_refresh_token(claims),  # rotation: refresh mới, cũ tự hết hạn
+        "token_type": "bearer",
+        "user": user_data,
+    }
+
+
+@router.post("/logout")
+def logout(current_user: dict = Depends(get_current_user)):
+    """Đăng xuất. JWT stateless nên client tự xoá token; không cần revoke phía server."""
+    return {"status": "success", "message": "Đã đăng xuất."}
 
 
 @router.post("/register")

@@ -33,6 +33,8 @@ attendance:
   log_file: "./logs/attendance_log.csv"
   # Ghi phạm vi không đạt để CẤM THI (tỷ lệ vắng %)
   cam_thi_threshold: 20
+  # Ngưỡng CẢNH BÁO (tỷ lệ vắng %): SV vắng từ ngưỡng này -> cảnh báo trước khi cấm thi
+  warning_threshold: 10
 
 registration:
   # Học kỳ & niên khóa đang mở đăng ký (Lớp tín chỉ phải khớp mới được đăng ký)
@@ -56,6 +58,7 @@ demo:
   bypass_credit_limit: false
   bypass_eligibility: false
   bypass_duplicate_subject: false
+  bypass_curriculum: false
   allow_unenroll_after_attendance: false
   allow_after_hours_leave: false
   allow_override_present_leave: false
@@ -71,15 +74,35 @@ auth:
   algorithm: "HS256"
   expire_minutes: 480
   token_type: "bearer"
+  # REFRESH TOKEN: thời hạn (ngày). Access token ngắn hạn, refresh token dài hạn.
+  refresh_expire_days: 7
 
 liveness:
   enabled: true
-  # Ngưỡng score "người thật" (Silent-Face probs[1])
+  # Ngưỡng score "người thật" (Silent-Face probs[real_index])
   ai_threshold: 0.35
+  # CHỈ MỤC LỚP "NGƯỜI THẬT" trong output model.
+  #  - silent_face.onnx trong repo này: 2 = người thật (in ảnh=0, replay=1)
+  #  - model chính thức MiniFASNet: 1 = người thật (print=0, replay=2)
+  # -> Đổi theo model bạn dùng, test bằng ảnh mặt thật trước khi deploy.
+  real_index: 2
   # Ngưỡng khi người dùng quay đầu làm thử thách (KHÔNG hạ quá thấp để tránh bị qua mặt)
   challenge_threshold: 0.30
   # Ngưỡng phương sai Laplacian cho chế độ heuristic (fallback)
   heuristic_min: 80
+  # Ngưỡng trên Laplacian — mặt thật sắc nét ở 80x80 thường 2000-5000,
+  # nên đặt cao để KHÔNG chặn nhầm người thật (chỉ bắt phản sáng cực mạnh).
+  heuristic_max: 10000
+  # ĐA KHUNG HÌNH: gom nhiều frame liên tiếp rồi mới quyết định thật/giả
+  # (chống ảnh in/video replay hiệu quả hơn so với 1 frame)
+  multi_frame: true
+  min_frames: 2            # số frame tối thiểu cần gom trước khi ra kết luận (2 = nhanh, vẫn chống giả cơ bản)
+  real_ratio: 0.5          # tỷ lệ frame "thật" tối thiểu để xác nhận là người thật
+  window_seconds: 3.0      # chỉ gom các frame trong khoảng thời gian này (giây)
+  # Ngưỡng "đứng yên tuyệt đối": nếu các frame gần như giống hệt nhau
+  # (diff pixel trung bình < ngưỡng) dù model nói "thật" -> nghi ảnh in/ảnh chụp cầm giữ yên
+  # Đặt thấp (0.3) để tránh từ chối nhầm người thật hơi cử động.
+  still_threshold: 0.3
 
 # LLM local cho Hệ thống Tài liệu (tóm tắt/trích xuất học thuật + flashcard)
 # Chạy Ollama:  ~/.local/ollama/bin/ollama serve   rồi   ollama pull qwen2.5:7b
@@ -94,6 +117,10 @@ llm:
   # Nếu rỗng hoặc giống model chính -> chỉ dùng 1 model.
   model_base: "qwen2.5:7b"
   timeout: 180
+  # Kích thước cửa sổ ngữ cảnh (token). Nếu quá nhỏ, Ollama cắt bớt prompt khi
+  # hội thoại dài -> mất lệnh "trả lời tiếng Việt" -> model trả về tiếng Trung.
+  # qwen2.5:7b hỗ trợ tối đa 32768.
+  num_ctx: 16384
 
 # Kiểm duyệt tự động tài liệu
 moderation:

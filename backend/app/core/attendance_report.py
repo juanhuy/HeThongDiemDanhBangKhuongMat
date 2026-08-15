@@ -20,11 +20,13 @@ from app.models.attendance_record import AttendanceRecord
 from app.models.class_session import ClassSession
 from app.models.leave_request import LeaveRequest
 
-# --- Trạng thái điểm danh (chuẩn) ---
-CO_MAT = {"Đúng giờ", "Có mặt", "Co mat", "Co Mat"}
-DI_MUON = {"Đi muộn", "Di muon", "Di muộn"}
-CO_PHEP = {"Có phép", "Co phep"}
-VANG_KP = {"Vắng không phép", "Vắng", "Vang khong phep", "Vang"}
+# --- Trạng thái điểm danh (chuẩn hóa chung cho AI + thủ công) ---
+# Điểm danh AI ghi tiếng Việt; điểm danh thủ công ghi tiếng Anh (Present/Late/...)
+# => gộp cả 2 vào bộ trạng thái để báo cáo đếm ĐÚNG ở mọi nơi.
+CO_MAT = {"Đúng giờ", "Có mặt", "Co mat", "Co Mat", "Present", "On time"}
+DI_MUON = {"Đi muộn", "Di muon", "Di muộn", "Late"}
+CO_PHEP = {"Có phép", "Co phep", "Excused"}
+VANG_KP = {"Vắng không phép", "Vắng", "Vang khong phep", "Vang", "Absent"}
 
 
 def normalize_status(status):
@@ -55,6 +57,27 @@ def _cam_thi_threshold() -> float:
     except Exception:
         pass
     return CAM_THI_THRESHOLD
+
+
+def _warning_threshold() -> float:
+    """Ngưỡng cảnh báo (tỷ lệ vắng %): từ ngưỡng này -> cảnh báo trước khi cấm thi."""
+    try:
+        from config.settings import settings
+        val = settings.config.get("attendance", {}).get("warning_threshold")
+        if val:
+            return float(val)
+    except Exception:
+        pass
+    return 10.0
+
+
+def class_status(ty_le_vang: float) -> str:
+    """Trạng thái theo tỷ lệ vắng: Hợp lệ / Cảnh báo / Cấm thi."""
+    if ty_le_vang > _cam_thi_threshold():
+        return "Cấm thi"
+    if ty_le_vang >= _warning_threshold():
+        return "Cảnh báo"
+    return "Hợp lệ"
 
 
 def _parse_datetime(sched):
@@ -131,7 +154,8 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
     student_ids = [e.student_id for e in enrollments]
 
     # 3. Điểm danh theo buổi thật (attendance_records)
-    rec_map = {}   # (student_id, session_id) -> status
+    rec_map = {}    # (student_id, session_id) -> status
+    src_map = {}    # (student_id, session_id) -> source (AI/manual)
     if total_sessions > 0:
         att_rec_rows = db.query(AttendanceRecord).filter(
             AttendanceRecord.student_id.in_(student_ids),
@@ -139,6 +163,7 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
         ).all()
         for r in att_rec_rows:
             rec_map[(r.student_id, r.session_id)] = r.status
+            src_map[(r.student_id, r.session_id)] = r.source
 
     # 4. Điểm danh theo lịch cũ (attendance_histories) map theo ngày
     hist_map = {}   # (student_id, date) -> status
@@ -171,12 +196,18 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
             continue
 
         co_mat = di_muon = co_phep = vang_kp = pending_cnt = 0
+        ai_count = manual_count = 0
         for s in sessions:
             key = (student.student_id, s.session_id)
             status = rec_map.get(key)
+            src = src_map.get(key)
             if not status:
                 status = hist_map.get((student.student_id, s.session_date))
             if status:
+                if src == "manual":
+                    manual_count += 1
+                else:
+                    ai_count += 1
                 ns = normalize_status(status)
                 if ns in {normalize_status(x) for x in CO_MAT}:
                     co_mat += 1
@@ -202,7 +233,7 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
         total_absent = vang_kp + co_phep
         ty_le_vang = round((total_absent / total_sessions) * 100, 1) if total_sessions > 0 else 0.0
 
-        trang_thai = "Cấm thi" if ty_le_vang > _cam_thi_threshold() else "Hợp lệ"
+        trang_thai = class_status(ty_le_vang)
 
         report.append({
             "mssv": student.student_id,
@@ -214,6 +245,8 @@ def build_class_report(db: Session, ma_lop_tc: str, from_date: str = None, to_da
             "co_phep": co_phep,
             "vang_kp": vang_kp,
             "cho_duyet": pending_cnt,
+            "ai_count": ai_count,
+            "manual_count": manual_count,
             "score": score,
             "ty_le_vang": ty_le_vang,
             "trang_thai": trang_thai,
@@ -274,6 +307,74 @@ def build_classes_summary(db: Session, classes) -> dict:
         "so_sv_cam_thi": len(at_risk),
         "at_risk": sorted(at_risk, key=lambda x: -x["ty_le_vang"]),
         "classes": class_summaries,
+    }
+
+
+def build_subject_dashboard(db: Session, classes) -> dict:
+    """Dashboard thống kê theo MÔN HỌC cho giảng viên (gộp các lớp cùng môn).
+
+    Trả về: subjects (từng môn), totals, at_risk (SV cấm thi/cảnh báo).
+    """
+    subjects = {}
+    for cc in classes:
+        if cc is None:
+            continue
+        sub_id = cc.subject_id or "N/A"
+        sub = subjects.setdefault(sub_id, {
+            "subject_id": sub_id,
+            "subject_name": cc.subject.subject_name if cc.subject else "N/A",
+            "so_lop": 0, "tong_sv": 0, "tong_buoi": 0,
+            "co_mat": 0, "di_muon": 0, "vang_kp": 0, "co_phep": 0,
+            "so_canh_bao": 0, "so_cam_thi": 0,
+        })
+        data = build_class_report(db, cc.class_id)
+        students = data["report"]
+        sub["so_lop"] += 1
+        sub["tong_buoi"] += data["total_sessions"]
+        sub["tong_sv"] += len(students)
+        sub["co_mat"] += sum(s["co_mat"] for s in students)
+        sub["di_muon"] += sum(s["di_muon"] for s in students)
+        sub["vang_kp"] += sum(s["vang_kp"] for s in students)
+        sub["co_phep"] += sum(s["co_phep"] for s in students)
+        sub["so_cam_thi"] += sum(1 for s in students if s["trang_thai"] == "Cấm thi")
+        sub["so_canh_bao"] += sum(1 for s in students if s["trang_thai"] == "Cảnh báo")
+
+    subjects_list = sorted(subjects.values(), key=lambda x: (-x["tong_sv"], x["subject_name"]))
+    totals = {
+        "so_mon": len(subjects_list),
+        "so_lop": sum(s["so_lop"] for s in subjects_list),
+        "tong_sv": sum(s["tong_sv"] for s in subjects_list),
+        "tong_buoi": sum(s["tong_buoi"] for s in subjects_list),
+        "co_mat": sum(s["co_mat"] for s in subjects_list),
+        "di_muon": sum(s["di_muon"] for s in subjects_list),
+        "vang_kp": sum(s["vang_kp"] for s in subjects_list),
+        "co_phep": sum(s["co_phep"] for s in subjects_list),
+        "so_canh_bao": sum(s["so_canh_bao"] for s in subjects_list),
+        "so_cam_thi": sum(s["so_cam_thi"] for s in subjects_list),
+    }
+
+    # Danh sách SV cấm thi / cảnh báo gộp theo môn
+    at_risk = []
+    for cc in classes:
+        if cc is None:
+            continue
+        data = build_class_report(db, cc.class_id)
+        sub_id = cc.subject_id or "N/A"
+        for s in data["report"]:
+            if s["trang_thai"] in ("Cấm thi", "Cảnh báo"):
+                at_risk.append({
+                    "mssv": s["mssv"], "ho_ten": s["ho_ten"], "lop_base": s["lop_base"],
+                    "ma_lop_tc": cc.class_id, "subject_id": sub_id,
+                    "subject_name": cc.subject.subject_name if cc.subject else sub_id,
+                    "ty_le_vang": s["ty_le_vang"], "score": s["score"],
+                    "trang_thai": s["trang_thai"],
+                })
+    at_risk.sort(key=lambda x: (-x["ty_le_vang"]))
+
+    return {
+        "subjects": subjects_list,
+        "totals": totals,
+        "at_risk": at_risk,
     }
 
 

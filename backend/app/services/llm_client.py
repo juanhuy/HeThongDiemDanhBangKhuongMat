@@ -24,6 +24,10 @@ class OllamaClient:
         self.base_url = (base_url or llm_cfg.get("base_url") or "http://127.0.0.1:11434").rstrip("/")
         self.model = model or llm_cfg.get("model") or "qwen2.5:7b"
         self.timeout = timeout or int(llm_cfg.get("timeout", 180) or 180)
+        # num_ctx quá nhỏ (8192) khiến Ollama cắt bớt prompt khi hội thoại dài,
+        # làm mất lệnh "trả lời tiếng Việt" -> model gốc Trung quay sang tiếng Trung.
+        # Nâng lên 16384 (qwen2.5:7b hỗ trợ tối đa 32768).
+        self.num_ctx = int(llm_cfg.get("num_ctx", 16384) or 16384)
 
     def available(self) -> bool:
         """Kiểm tra server Ollama có chạy không."""
@@ -45,7 +49,7 @@ class OllamaClient:
                         {"role": "user", "content": user},
                     ],
                     "stream": False,
-                    "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": 8192},
+                    "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": self.num_ctx},
                 },
                 timeout=self.timeout,
             )

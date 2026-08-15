@@ -26,6 +26,7 @@ from .notification import Notification
 from .system_setting import SystemSetting
 from .document import Document, DocumentComment, Flashcard
 from .presence_snapshot import PresenceSnapshot
+from .grade import Grade
 
 __all__ = [
     "Account",
@@ -56,4 +57,5 @@ __all__ = [
     "DocumentComment",
     "Flashcard",
     "PresenceSnapshot",
+    "Grade",
 ]

@@ -39,3 +39,15 @@ export const getLivePresence = (params = {}) => {
   const qs = new URLSearchParams(params).toString();
   return apiFetch(`/api/live-presence${qs ? `?${qs}` : ""}`);
 };
+
+// Danh sách SV của lớp cho điểm danh thủ công (có trạng thái + thống kê vắng)
+export const getClassRoster = (classId, sessionId) =>
+  apiFetch(`/api/attendance/classes/${encodeURIComponent(classId)}/sessions/${sessionId}/roster`);
+
+// Tổng kết điểm danh theo từng buổi của lớp
+export const classSessionsSummary = (classId) =>
+  apiFetch(`/api/attendance/classes/${encodeURIComponent(classId)}/sessions`);
+
+// Các buổi học hôm nay của giảng viên (xem nhanh ai đi học)
+export const getLecturerToday = () =>
+  apiFetch('/api/attendance/lecturer/today');

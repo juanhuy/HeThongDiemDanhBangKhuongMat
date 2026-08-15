@@ -17,9 +17,11 @@ import onnxruntime as ort
 class LivenessDetector:
     def __init__(self, model_path=None):
         if model_path is None:
-            # Đường dẫn mặc định
+            # Ưu tiên model chính thức MiniFASNetV2 (2.7_80x80), fallback file cũ
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            model_path = os.path.join(current_dir, "models", "silent_face.onnx")
+            preferred = os.path.join(current_dir, "models", "2.7_80x80_MiniFASNetV2.onnx")
+            legacy = os.path.join(current_dir, "models", "silent_face.onnx")
+            model_path = preferred if os.path.exists(preferred) else legacy
             
         self.model_path = model_path
         self.session = None
@@ -36,12 +38,17 @@ class LivenessDetector:
             self.challenge_threshold = float(liveness_cfg.get("challenge_threshold", 0.30))
             self.ai_threshold = float(liveness_cfg.get("ai_threshold", 0.35))
             self.heuristic_min = float(liveness_cfg.get("heuristic_min", 80))
+            self.heuristic_max = float(liveness_cfg.get("heuristic_max", 10000))
+            # Chỉ mục lớp "người thật" (model trong repo dùng 2; official MiniFASNet dùng 1)
+            self.real_index = int(liveness_cfg.get("real_index", 2))
         except Exception as e:
             print(f"-> [Liveness] Lỗi đọc config: {e}")
             self.enabled = True
             self.challenge_threshold = 0.30
             self.ai_threshold = 0.35
             self.heuristic_min = 80
+            self.heuristic_max = 10000
+            self.real_index = 2
         
         if self.enabled and os.path.exists(self.model_path):
             try:
@@ -104,15 +111,17 @@ class LivenessDetector:
             face_crop[dst_y1:dst_y2, dst_x1:dst_x2] = frame[src_y1:src_y2, src_x1:src_x2]
         else:
             return False, 0.0
-        
+
+        # Chuẩn bị 80x80 dùng chung cho model lẫn kiểm tra độ nét
+        input_size = 80
+        resized = cv.resize(face_crop, (input_size, input_size))
+
         # Nếu có mô hình ONNX, chạy suy luận
         if self.session is not None:
             try:
                 # Tiền xử lý ảnh cho Silent-Face-Anti-Spoofing (thường là scale về 80x80 hoặc 256x256)
                 # Dưới đây là chuẩn hóa đầu vào mẫu: resize về 80x80, chuẩn hóa về dạng float32 CHW
-                input_size = 80
                 # Mô hình Silent-Face-Anti-Spoofing yêu cầu đầu vào BGR, KHÔNG ĐƯỢC chuyển sang RGB!
-                resized = cv.resize(face_crop, (input_size, input_size))
                 # Không chia 255.0 vì model Silent-Face-Anti-Spoofing yêu cầu pixel value gốc (0-255)
                 img_data = resized.astype(np.float32)
                 img_data = np.transpose(img_data, (2, 0, 1))  # HWC to CHW
@@ -133,11 +142,11 @@ class LivenessDetector:
                 exp_logits = np.exp(logits - np.max(logits))
                 probs = exp_logits / np.sum(exp_logits)
                 
-                # Theo chuẩn của mô hình Silent-Face-Anti-Spoofing: 
-                # Index 0: Fake (Print attack)
-                # Index 1: Real / Live Face (Người thật) -> Dùng probs[1]!
-                # Index 2: Fake (Replay attack)
-                real_score = float(probs[1])
+                # Theo chuẩn của mô hình Silent-Face-Anti-Spoofing:
+                # Class output khác nhau tuỳ model; dùng real_index cấu hình được
+                # (repo này: 2 = người thật; official MiniFASNet: 1 = người thật).
+                idx = self.real_index if 0 <= self.real_index < len(probs) else 1
+                real_score = float(probs[idx])
                 
                 # Nếu người dùng đang quay đầu/ngẩng mặt để làm thử thách (yaw/pitch > 10 độ), 
                 # mô hình Silent-Face vốn chỉ được huấn luyện trên mặt nhìn thẳng sẽ giảm score.
@@ -148,8 +157,21 @@ class LivenessDetector:
                     pitch, yaw, roll = pose
                     if abs(yaw) > 10 or abs(pitch) > 10:
                         effective_threshold = self.challenge_threshold
-                
+
                 is_real = real_score >= effective_threshold
+
+                # KIỂM TRA ĐỘ NÉT KÈM THEO (Luôn chạy cùng ONNX, không chỉ khi ONNX lỗi):
+                # Ảnh in/ảnh chụp lại màn hình thường bị mờ hoặc quá tương phản,
+                # dù model có thể nhầm là "thật". Độ nét ngoài khoảng [min, max] => nghi giả.
+                gray = cv.cvtColor(resized, cv.COLOR_BGR2GRAY)
+                laplacian_var = cv.Laplacian(gray, cv.CV_64F).var()
+                sharp_ok = self.heuristic_min <= laplacian_var <= self.heuristic_max
+                if is_real and not sharp_ok:
+                    is_real = False
+                    real_score = min(real_score, 0.05)  # ép score xuống để rõ là "giả"
+                elif sharp_ok and not is_real:
+                    # Model nghi giả nhưng mặt rất nét -> có thể là thử thách quay đầu
+                    pass
                 return is_real, real_score
             except Exception as e:
                 import traceback
@@ -159,13 +181,12 @@ class LivenessDetector:
         # CHẾ ĐỘ FALLBACK: Phân tích kết cấu ảnh (Texture/Blur analysis)
         # Ảnh chụp lại màn hình hoặc giấy thường có độ mờ (blur) hoặc tương phản nhân tạo khác biệt.
         # Sử dụng phương sai Laplacian để phát hiện ảnh bị chụp lại từ thiết bị khác (thường bị mờ/nhiễu).
-        gray = cv.cvtColor(face_crop, cv.COLOR_BGR2GRAY)
+        gray = cv.cvtColor(resized, cv.COLOR_BGR2GRAY)
         laplacian_var = cv.Laplacian(gray, cv.CV_64F).var()
         
         # Nếu phương sai Laplacian cực thấp (< heuristic_min) hoặc quá cao do phản sáng màn hình điện thoại
         # thì có nguy cơ cao là ảnh giả mạo.
-        # Ngưỡng chuẩn thông thường cho webcam thực tế là khoảng 100 - 1500.
-        is_real = self.heuristic_min <= laplacian_var <= 3000.0
+        is_real = self.heuristic_min <= laplacian_var <= self.heuristic_max
         
         # Chuẩn hóa score về khoảng [0, 1] cho trực quan
         score = min(1.0, max(0.0, laplacian_var / 1000.0))

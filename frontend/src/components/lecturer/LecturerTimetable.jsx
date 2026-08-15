@@ -135,7 +135,7 @@ export default function LecturerTimetable({ user, showToast }) {
           mode: mode === 'week' ? 'week' : 'semester',
           weekStart: mode === 'week' ? weekStartStr : undefined,
         });
-        setSlots(res.slots || []);
+        setSchedules(res.slots || []);
         setTeachingClasses(res.teaching_classes || []);
       } catch (err) {
         showToast?.(err.message || 'Lỗi tải lịch giảng dạy', 'danger');
@@ -870,84 +870,82 @@ export default function LecturerTimetable({ user, showToast }) {
           </div>
         )}
       </div>
-    </div>
 
-    
-  );
-
-  {studentModal && (
-  <div
-    style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(0,0,0,0.45)',
-      zIndex: 1000,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 16,
-    }}
-    onClick={() => setStudentModal(null)}
-  >
-    <div
-      style={{
-        background: '#fff',
-        borderRadius: 12,
-        width: 560,
-        maxWidth: '100%',
-        maxHeight: '80vh',
-        overflow: 'auto',
-        padding: 20,
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-        <h3 style={{ margin: 0, color: '#0b6fa4' }}>
-          DS sinh viên — {studentModal.classId}
-        </h3>
-        <button
-          type="button"
-          onClick={() => setStudentModal(null)}
-          style={{ border: 'none', background: 'transparent', fontSize: 20, cursor: 'pointer' }}
+      {studentModal && (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.45)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+        }}
+        onClick={() => setStudentModal(null)}
+      >
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 12,
+            width: 560,
+            maxWidth: '100%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            padding: 20,
+          }}
+          onClick={(e) => e.stopPropagation()}
         >
-          ×
-        </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, color: '#0b6fa4' }}>
+              DS sinh viên — {studentModal.classId}
+            </h3>
+            <button
+              type="button"
+              onClick={() => setStudentModal(null)}
+              style={{ border: 'none', background: 'transparent', fontSize: 20, cursor: 'pointer' }}
+            >
+              ×
+            </button>
+          </div>
+          {studentModal.loading ? (
+            <p style={{ textAlign: 'center', color: '#64748b' }}>Đang tải...</p>
+          ) : studentModal.list.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#94a3b8' }}>Chưa có sinh viên đăng ký</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ background: '#e8f4fc' }}>
+                  {['STT', 'MSSV', 'Họ tên', 'Lớp BC', 'Ngày ĐK'].map((h) => (
+                    <th key={h} style={{ padding: '8px', textAlign: 'left', color: '#0b6fa4' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {studentModal.list.map((s, i) => (
+                  <tr key={s.student_id} style={{ borderBottom: '1px solid #e2edf5' }}>
+                    <td style={{ padding: '8px' }}>{i + 1}</td>
+                    <td style={{ padding: '8px', fontWeight: 600, color: '#0369a1' }}>
+                      {s.student_id}
+                    </td>
+                    <td style={{ padding: '8px' }}>{s.full_name}</td>
+                    <td style={{ padding: '8px' }}>{s.administrative_class || '—'}</td>
+                    <td style={{ padding: '8px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                      {s.enrollment_date
+                        ? new Date(s.enrollment_date).toLocaleDateString('vi-VN')
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
-      {studentModal.loading ? (
-        <p style={{ textAlign: 'center', color: '#64748b' }}>Đang tải...</p>
-      ) : studentModal.list.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#94a3b8' }}>Chưa có sinh viên đăng ký</p>
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-          <thead>
-            <tr style={{ background: '#e8f4fc' }}>
-              {['STT', 'MSSV', 'Họ tên', 'Lớp BC', 'Ngày ĐK'].map((h) => (
-                <th key={h} style={{ padding: '8px', textAlign: 'left', color: '#0b6fa4' }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {studentModal.list.map((s, i) => (
-              <tr key={s.student_id} style={{ borderBottom: '1px solid #e2edf5' }}>
-                <td style={{ padding: '8px' }}>{i + 1}</td>
-                <td style={{ padding: '8px', fontWeight: 600, color: '#0369a1' }}>
-                  {s.student_id}
-                </td>
-                <td style={{ padding: '8px' }}>{s.full_name}</td>
-                <td style={{ padding: '8px' }}>{s.administrative_class || '—'}</td>
-                <td style={{ padding: '8px', color: '#64748b', whiteSpace: 'nowrap' }}>
-                  {s.enrollment_date
-                    ? new Date(s.enrollment_date).toLocaleDateString('vi-VN')
-                    : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       )}
     </div>
-  </div>
-)}
+  );
 }

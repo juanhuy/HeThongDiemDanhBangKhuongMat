@@ -16,6 +16,7 @@ class Student(Base):
     cohort = Column(String(20), nullable=True)
     training_program = Column(String(50), nullable=True)
     academic_status = Column(String(50), default="Đang học")
+    tuition_debt = Column(Integer, default=0)  # 0 = không nợ; >0 = số tiền nợ (chặn đăng ký)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -23,6 +24,17 @@ class Student(Base):
     face_features = relationship("FaceFeature", back_populates="student", cascade="all, delete-orphan")
     enrollments = relationship("ClassEnrollment", back_populates="student", cascade="all, delete-orphan")
     attendance_records = relationship("AttendanceRecord", back_populates="student", cascade="all, delete-orphan")
+
+    major_rel = relationship("Major", foreign_keys=[major_id], lazy="joined")
+    faculty_rel = relationship("Faculty", foreign_keys=[faculty_id], lazy="joined")
+
+    @property
+    def major(self):
+        return self.major_rel.major_name if self.major_rel else None
+
+    @property
+    def department(self):
+        return self.faculty_rel.faculty_name if self.faculty_rel else None
 
     @property
     def administrative_class(self):

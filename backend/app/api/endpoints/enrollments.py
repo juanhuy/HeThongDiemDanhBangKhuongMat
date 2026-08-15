@@ -6,7 +6,7 @@ from datetime import datetime
 from app.db.session import get_db
 from app.models import CreditClass, ClassEnrollment, Student, ClassSchedule
 from app.models.student_class import StudentClassEnrollment
-from app.core.require import get_current_user
+from app.core.require import get_current_user, require_roles
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -29,7 +29,8 @@ def _schedule_time_range(sched):
         pass
     return None
 
-@router.get("/credit-classes/{class_id}/students", summary="Get Students In Class")
+@router.get("/credit-classes/{class_id}/students", summary="Get Students In Class",
+            dependencies=[Depends(require_roles("giang_vien", "admin"))])
 def get_students_in_class(class_id: str, db: Session = Depends(get_db)):
     """Lấy danh sách sinh viên hiện đang theo học trong lớp."""
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
@@ -47,8 +48,14 @@ def get_students_in_class(class_id: str, db: Session = Depends(get_db)):
     return {"status": "success", "class_id": class_id, "total_students": len(student_list), "data": student_list}
 
 @router.get("/students/{student_id}/credit-classes", summary="Get Student Enrolled Classes")
-def get_student_enrolled_classes(student_id: str, db: Session = Depends(get_db)):
-    """Lấy danh sách các lớp tín chỉ mà sinh viên đã đăng ký."""
+def get_student_enrolled_classes(student_id: str, db: Session = Depends(get_db),
+                                 current_user: dict = Depends(get_current_user)):
+    """Lấy danh sách các lớp tín chỉ mà sinh viên đã đăng ký.
+    SV chỉ xem của chính mình; GV/Admin xem được mọi SV."""
+    if current_user["role"] == "sinh_vien":
+        own = (current_user.get("mssv") or "").strip().upper()
+        if not own or own != student_id.strip().upper():
+            raise HTTPException(status_code=403, detail="Sinh viên chỉ xem được danh sách lớp của chính mình.")
     enrollments = db.query(ClassEnrollment).filter(ClassEnrollment.student_id == student_id.strip().upper()).all()
     enroll_map = {}
     for e in enrollments:
@@ -88,13 +95,27 @@ def get_student_enrolled_classes(student_id: str, db: Session = Depends(get_db))
     return {"status": "success", "data": result}
 
 @router.post("/credit-classes/{class_id}/enrollments", summary="Enroll Student")
-def enroll_student(class_id: str, student_id: str = Form(...), db: Session = Depends(get_db)):
+def enroll_student(class_id: str, student_id: str = Form(...), db: Session = Depends(get_db),
+                   current_user: dict = Depends(get_current_user)):
     """Đăng ký môn học cho một sinh viên (Kiểm tra điều kiện, trùng lịch, sĩ số)."""
+    # Phân quyền: SV chỉ đăng ký cho CHÍNH MÌNH; GV/Admin đăng ký hộ được
+    if current_user["role"] == "sinh_vien":
+        own = (current_user.get("mssv") or "").strip().upper()
+        if not own or own != student_id.strip().upper():
+            raise HTTPException(status_code=403, detail="Sinh viên chỉ có thể đăng ký cho chính mình.")
+
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
     if not cc: raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp {class_id}")
     if (cc.status or "").lower() != "active": raise HTTPException(status_code=400, detail=f"Lớp {class_id} không mở để đăng ký.")
     st = db.query(Student).filter(Student.student_id == student_id.strip().upper()).first()
     if not st: raise HTTPException(status_code=404, detail=f"Không tìm thấy sinh viên {student_id}")
+
+    # Chạy đầy đủ quy định đăng ký (tiên quyết, học kỳ, khóa, sĩ số, trùng môn...)
+    if current_user["role"] != "admin":
+        from app.api.endpoints.api_credit_classes import _validate_registration
+        ok, err = _validate_registration(db, st, cc)
+        if not ok:
+            raise HTTPException(status_code=400, detail=err)
         
     classes_to_enroll = [cc]
     if cc.class_type == "Practice" and cc.parent_class_id:
@@ -177,8 +198,14 @@ def enroll_student(class_id: str, student_id: str = Form(...), db: Session = Dep
     return {"status": "success", "message": f"Đã đăng ký thành công: {', '.join(new_enroll_ids)}"}
 
 @router.delete("/credit-classes/{class_id}/enrollments/{student_id}", summary="Unenroll Student")
-def unenroll_student(class_id: str, student_id: str, db: Session = Depends(get_db)):
+def unenroll_student(class_id: str, student_id: str, db: Session = Depends(get_db),
+                     current_user: dict = Depends(get_current_user)):
     """Hủy đăng ký học phần của sinh viên (Hủy chuỗi tự động)."""
+    # Phân quyền: SV chỉ hủy của CHÍNH MÌNH; GV/Admin hủy hộ được
+    if current_user["role"] == "sinh_vien":
+        own = (current_user.get("mssv") or "").strip().upper()
+        if not own or own != student_id.strip().upper():
+            raise HTTPException(status_code=403, detail="Sinh viên chỉ có thể hủy đăng ký của chính mình.")
     cc = db.query(CreditClass).filter(CreditClass.class_id == class_id.strip()).first()
     if not cc: raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp học tín chỉ {class_id}.")
     if cc.status.lower() != "active": raise HTTPException(status_code=400, detail=f"Lớp {class_id} không mở, không thể hủy đăng ký.")

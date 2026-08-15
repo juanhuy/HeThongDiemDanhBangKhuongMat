@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   Home, User, UserCheck, Users, BookOpen, Calendar, Clock, 
   Clipboard, FileText, Camera, ShieldAlert, Settings2, Building, Layers,
-  FolderOpen, Upload, ShieldCheck
+  FolderOpen, Upload, ShieldCheck, BarChart3
 } from 'lucide-react';
 
 const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
@@ -81,6 +81,12 @@ const Sidebar = ({ activeMenu, setActiveMenu, user }) => {
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'rooms_management' ? 'active' : ''}`} onClick={() => setActiveMenu('rooms_management')}>
             <BookOpen size={16} /> Quản lý Phòng học
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'leave_requests' ? 'active' : ''}`} onClick={() => setActiveMenu('leave_requests')}>
+            <Clipboard size={16} /> Duyệt nghỉ phép
+          </div>
+          <div className={`ptit-sidebar-item ${activeMenu === 'admin_reports' ? 'active' : ''}`} onClick={() => setActiveMenu('admin_reports')}>
+            <BarChart3 size={16} /> Báo cáo & Thống kê
           </div>
           <div className={`ptit-sidebar-item ${activeMenu === 'demo' ? 'active' : ''}`} onClick={() => setActiveMenu('demo')}>
             <Settings2 size={16} /> Bảng điều khiển Demo

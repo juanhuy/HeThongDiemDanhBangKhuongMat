@@ -57,3 +57,34 @@ def record_success(ip: str, username: str):
     with _lock:
         _failed.pop(key, None)
         _locked_until.pop((ip, username), None)
+
+
+# =========================================================================
+# RATE-LIMIT ĐĂNG KÝ HỌC PHẦN (chống auto-click / tool đăng ký tự động)
+# Sliding window: 1 user tối đa _REG_MAX_REQ request đăng ký trong _REG_WINDOW giây.
+# =========================================================================
+_REG_MAX_REQ = 3
+_REG_WINDOW_SECONDS = 1.0
+
+_reg_lock = threading.Lock()
+_reg_reqs = defaultdict(deque)  # key = username -> deque timestamps
+
+
+def check_registration_rate(username: str) -> bool:
+    """True nếu cho phép đăng ký (chưa vượt giới hạn)."""
+    now = time.time()
+    key = username.strip().lower()
+    with _reg_lock:
+        dq = _reg_reqs.get(key)
+        if dq:
+            while dq and now - dq[0] > _REG_WINDOW_SECONDS:
+                dq.popleft()
+            if len(dq) >= _REG_MAX_REQ:
+                return False
+        _reg_reqs[key].append(now)
+        # Dọn key cũ để tránh phình bộ nhớ
+        if len(_reg_reqs) > 10000:
+            cutoff = now - _REG_WINDOW_SECONDS
+            for k in [k for k, v in _reg_reqs.items() if not v or v[-1] < cutoff]:
+                _reg_reqs.pop(k, None)
+        return True

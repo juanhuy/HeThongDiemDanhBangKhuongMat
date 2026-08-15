@@ -55,10 +55,18 @@ app = FastAPI(
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    return JSONResponse(
-        status_code=422,
-        content={"detail": exc.errors()},
-    )
+    # Trả lỗi 422 dạng text dễ đọc thay vì mảng errors thô
+    errors = exc.errors()
+    if errors:
+        first = errors[0]
+        loc = " > ".join(str(x) for x in first.get("loc", []) if x not in ("body",))
+        msg = str(first.get("msg", "Dữ liệu không hợp lệ."))
+        # Bỏ tiền tố "Value error, " của pydantic v2 cho gọn
+        msg = msg.replace("Value error, ", "")
+        detail = f"{loc}: {msg}" if loc else msg
+    else:
+        detail = "Dữ liệu không hợp lệ."
+    return JSONResponse(status_code=422, content={"detail": detail})
     
 # Cấu hình CORS — mở cho mọi origin vì API dùng Bearer token (không dùng cookie).
 # Tránh lỗi "Failed to fetch" khi mở frontend qua localhost/127.0.0.1/IP/port khác.

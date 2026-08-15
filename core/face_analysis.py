@@ -24,6 +24,7 @@ for venv_name in ['.venv', 'venv']:
 
 import time
 import threading
+from collections import deque
 import numpy as np
 import cv2 as cv
 from insightface.app import FaceAnalysis
@@ -71,6 +72,17 @@ class FaceAnalyzer:
         # cho cùng một người đã được kiểm tra gần đây. Giúp giảm độ trễ theo thời gian thực.
         self._liveness_cache = {}
         self.liveness_interval = float(ai_config.get("liveness_interval", 2.0))
+
+        # ĐA KHUNG HÌNH: buffer điểm liveness theo từng danh tính.
+        # Chỉ kết luận thật/giả khi đã gom đủ min_frames trong window_seconds,
+        # chống ảnh in / video replay hiệu quả hơn so với 1 frame.
+        liveness_cfg = settings.config.get("liveness", {}) or {}
+        self.multi_frame = bool(liveness_cfg.get("multi_frame", True))
+        self.min_frames = int(liveness_cfg.get("min_frames", 4) or 4)
+        self.real_ratio = float(liveness_cfg.get("real_ratio", 0.6) or 0.6)
+        self.window_seconds = float(liveness_cfg.get("window_seconds", 4.0) or 4.0)
+        self.still_threshold = float(liveness_cfg.get("still_threshold", 0.8) or 0.8)
+        self._liveness_buffer = {}  # key -> deque[(ts, is_real, gray80)]
         
         # Load database ngay khi khởi động
         self.load_database()
@@ -271,6 +283,91 @@ class FaceAnalyzer:
             
         return False
 
+    def _bbox_key(self, bbox):
+        """Lượng tử hóa bbox để gom các frame của cùng một người đứng yên."""
+        x1, y1, x2, y2 = [int(v) for v in bbox]
+        return f"{x1 // 40}-{y1 // 40}-{x2 // 40}-{y2 // 40}"
+
+    def _face_crop_gray(self, img, bbox):
+        """Cắt vùng mặt 2.7x -> 80x80 grayscale để so khác biệt giữa các frame."""
+        try:
+            import cv2 as _cv
+            x1, y1, x2, y2 = [int(v) for v in bbox]
+            h, w = img.shape[:2]
+            cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+            crop = int(max(x2 - x1, y2 - y1) * 2.7)
+            if crop <= 0:
+                return None
+            nx1, ny1 = int(cx - crop / 2), int(cy - crop / 2)
+            nx2, ny2 = nx1 + crop, ny1 + crop
+            face_crop = np.zeros((crop, crop, 3), dtype=img.dtype)
+            sy1, sy2 = max(0, ny1), min(h, ny2)
+            sx1, sx2 = max(0, nx1), min(w, nx2)
+            if sy2 <= sy1 or sx2 <= sx1:
+                return None
+            face_crop[sy1 - ny1:sy1 - ny1 + (sy2 - sy1),
+                      sx1 - nx1:sx1 - nx1 + (sx2 - sx1)] = img[sy1:sy2, sx1:sx2]
+            return _cv.cvtColor(_cv.resize(face_crop, (80, 80)), _cv.COLOR_BGR2GRAY)
+        except Exception:
+            return None
+
+    def _multi_frame_liveness(self, img, bbox, cache_key, now):
+        """Chống giả mạo ĐA KHUNG HÌNH.
+
+        - Gộp nhiều frame rồi mới quyết định (chống nhiễu 1 frame).
+        - Nếu các frame gần như GIỐNG HỆT nhau dù model nói "thật" -> nghi ảnh
+          in/ảnh chụp cầm giữ yên trước camera -> đánh giả.
+
+        Trả về (is_real, score, confirmed):
+        - confirmed=False: chưa đủ frame để kết luận (trạng thái "đang xác minh").
+        - confirmed=True : đã đủ frame, is_real là quyết định cuối.
+        """
+        is_real, score = self.liveness_detector.is_real_face(img, bbox)
+
+        if not self.multi_frame:
+            return is_real, score, True
+
+        # Key ổn định: MSSV nếu biết, còn không dùng bbox lượng tử hóa
+        key = cache_key or self._bbox_key(bbox)
+        buf = self._liveness_buffer.setdefault(key, deque())
+
+        gray = self._face_crop_gray(img, bbox)
+        buf.append((now, is_real, gray))
+        # Chỉ giữ các frame trong cửa sổ thời gian
+        while buf and now - buf[0][0] > self.window_seconds:
+            buf.popleft()
+
+        # Dọn buffer cũ khi phình to (tránh rò rỉ bộ nhớ trong phiên dài)
+        if len(self._liveness_buffer) > 512:
+            cutoff = now - self.window_seconds
+            for k in [k for k, v in self._liveness_buffer.items() if not v or v[-1][0] < cutoff]:
+                self._liveness_buffer.pop(k, None)
+
+        if len(buf) < self.min_frames:
+            # Chưa đủ frame -> chưa kết luận (trả kết quả frame hiện tại, confirmed=False)
+            return is_real, score, False
+
+        real_count = sum(1 for _, r, _ in buf if r)
+        decided = (real_count / len(buf)) >= self.real_ratio
+
+        # Kiểm tra "đứng yên tuyệt đối" (ảnh in / ảnh chụp cầm giữ yên):
+        # người thật dù đứng im vẫn có chút khác biệt giữa các frame (nháy mắt, hít thở,
+        # nhiễu sensor). Nếu các frame gần như GIỐNG HỆT => khả năng cao là ảnh tĩnh.
+        if decided and self.still_threshold is not None:
+            grays = [g for _, _, g in buf if g is not None]
+            if len(grays) >= 2:
+                diffs = [
+                    np.abs(grays[i + 1].astype(np.int16) - grays[i].astype(np.int16)).mean()
+                    for i in range(len(grays) - 1)
+                ]
+                if diffs and max(diffs) < self.still_threshold:
+                    decided = False
+                    score = min(score, 0.05)  # ép score xuống để rõ "Giả mạo"
+                    # Xóa buffer để người dùng phải di chuyển/làm thử thách lại
+                    buf.clear()
+
+        return decided, score, True
+
     def recognize_image(self, img):
         """Nhận diện khuôn mặt từ một ảnh tĩnh (OpenCV Image)"""
         if img is None:
@@ -310,22 +407,24 @@ class FaceAnalyzer:
                     best_name = matched_mssv
                     is_known = True
             
-            # Kiểm tra Liveness (chống giả mạo)
+            # Kiểm tra Liveness (chống giả mạo) — ĐA KHUNG HÌNH
             # - Người đã biết & mới kiểm tra gần đây: tái sử dụng kết quả cache để tránh chi phí CPU mỗi frame.
             # - Khuôn mặt lạ/giả mạo: không cache để luôn kiểm tra lại.
             is_real = True
             liveness_score = 1.0
+            liveness_confirmed = True
             cache_key = matched_mssv if is_known else None
-            
+
             cached = self._liveness_cache.get(cache_key) if cache_key else None
             if cached and now - cached["ts"] < self.liveness_interval:
                 is_real = cached["is_real"]
                 liveness_score = cached["score"]
             else:
-                is_real, liveness_score = self.liveness_detector.is_real_face(img, bbox)
-                if is_real and cache_key:
+                is_real, liveness_score, liveness_confirmed = self._multi_frame_liveness(img, bbox, cache_key, now)
+                # Chỉ cache khi đã có kết luận cuối (đủ frame) và là người thật
+                if liveness_confirmed and is_real and cache_key:
                     self._liveness_cache[cache_key] = {"ts": now, "is_real": True, "score": liveness_score}
-            
+
             if not is_real:
                 best_name = "Spoof/Fake"
                 best_score = float(liveness_score)
@@ -339,13 +438,14 @@ class FaceAnalyzer:
                 # Nếu là người đã biết nhưng FAISS không cho kết quả thì giữ Unknown
                 if cache_key is None:
                     best_name = "Unknown"
-            
+
             results.append({
                 "box": (x1, y1, x2, y2),
                 "name": best_name,
                 "score": best_score,
                 "is_known": is_known,
-                "is_real": is_real
+                "is_real": is_real,
+                "liveness_confirmed": liveness_confirmed
             })
         
         # Dọn cache cũ để tránh phình bộ nhớ trong phiên chạy dài

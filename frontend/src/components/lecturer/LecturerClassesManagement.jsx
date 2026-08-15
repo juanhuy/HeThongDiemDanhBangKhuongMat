@@ -28,10 +28,6 @@ export default function LecturerClassesManagement({ user, showToast }) {
   const [students, setStudents] = useState([]);
   const [attendanceReport, setAttendanceReport] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [manualMssv, setManualMssv] = useState('');
-  const [manualStatus, setManualStatus] = useState('Present');
-  const [manualSessionId, setManualSessionId] = useState('');
-  const [manualMessage, setManualMessage] = useState('');
 
   const lecturerId = user?.lecturer_id || user?.username;
 
@@ -97,14 +93,6 @@ export default function LecturerClassesManagement({ user, showToast }) {
   useEffect(() => {
     if (!selectedClass?.classData?.class_id) return;
     setActiveDetailTab('students');
-    setManualMessage('');
-    setManualMssv('');
-    setManualStatus('Present');
-    if (selectedClass.schedules?.length) {
-      setManualSessionId(String(selectedClass.schedules[0].session_id));
-    } else {
-      setManualSessionId('');
-    }
   }, [selectedClass?.classData?.class_id]);
 
   useEffect(() => {
@@ -133,36 +121,6 @@ export default function LecturerClassesManagement({ user, showToast }) {
 
     loadDetailData();
   }, [selectedClass?.classData?.class_id, activeDetailTab]);
-
-  const handleManualCheckin = async (e) => {
-    e.preventDefault();
-    if (!selectedClass?.classData?.class_id || !manualMssv || !manualSessionId) {
-      setManualMessage('Vui lòng nhập MSSV và chọn buổi học.');
-      return;
-    }
-
-    setDetailLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('mssv', manualMssv.trim().toUpperCase());
-      formData.append('session_id', manualSessionId);
-      formData.append('trang_thai', manualStatus);
-      formData.append('nguoi_xac_nhan', user?.lecturer_id || 'Giảng viên');
-
-      const res = await authFetch(`${API_BASE}/api/attendance/manual-checkin`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.detail || data?.message || 'Không thể cập nhật điểm danh');
-      setManualMessage(data?.message || 'Cập nhật điểm danh thành công');
-      setManualMssv('');
-    } catch (err) {
-      setManualMessage(err.message || 'Lỗi cập nhật điểm danh');
-    } finally {
-      setDetailLoading(false);
-    }
-  };
 
   const selectedSemesterLabel = semesters.find((item) => item.semester_id === selectedSemester)?.semester || 'Tất cả';
 
@@ -291,7 +249,6 @@ export default function LecturerClassesManagement({ user, showToast }) {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
               {[
                 { key: 'students', label: 'Danh sách sinh viên' },
-                { key: 'manual', label: 'Điểm danh thủ công' },
                 { key: 'stats', label: 'Thống kê chuyên cần' },
               ].map((tab) => (
                 <button
@@ -340,49 +297,6 @@ export default function LecturerClassesManagement({ user, showToast }) {
                     </table>
                   </div>
                 )}
-              </div>
-            ) : activeDetailTab === 'manual' ? (
-              <div style={{ display: 'grid', gap: 12 }}>
-                <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
-                  Chọn buổi học và nhập MSSV để cập nhật trạng thái điểm danh thủ công.
-                </div>
-                <form onSubmit={handleManualCheckin} style={{ display: 'grid', gap: 10 }}>
-                  <input
-                    value={manualMssv}
-                    onChange={(e) => setManualMssv(e.target.value)}
-                    placeholder="Nhập MSSV"
-                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}
-                  />
-                  <select
-                    value={manualSessionId}
-                    onChange={(e) => setManualSessionId(e.target.value)}
-                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}
-                  >
-                    <option value="">Chọn buổi học</option>
-                    {selectedClass.schedules.map((schedule) => (
-                      <option key={schedule.session_id} value={schedule.session_id}>
-                        {getVietnameseDay(schedule.session_date || schedule.start_time)} {formatDate(schedule.session_date || schedule.start_time)} · Ca {schedule.shift || '—'}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={manualStatus}
-                    onChange={(e) => setManualStatus(e.target.value)}
-                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}
-                  >
-                    <option value="Present">Có mặt</option>
-                    <option value="Absent">Vắng</option>
-                    <option value="Late">Muộn</option>
-                    <option value="Excused">Có phép</option>
-                  </select>
-                  <button
-                    type="submit"
-                    style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: '#106fa6', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
-                  >
-                    Lưu điểm danh
-                  </button>
-                </form>
-                {manualMessage ? <div style={{ color: '#0f766e', fontSize: '0.85rem' }}>{manualMessage}</div> : null}
               </div>
             ) : (
               <div>

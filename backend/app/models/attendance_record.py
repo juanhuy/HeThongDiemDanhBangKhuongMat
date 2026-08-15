@@ -18,6 +18,8 @@ class AttendanceRecord(Base):
     # last_seen = lần quét cuối của camera để phát hiện SV đã đi ra.
     check_out_time = Column(DateTime, nullable=True)
     last_seen = Column(DateTime, nullable=True)
+    # Nguồn điểm danh: "AI" (camera tự động) / "manual" (giảng viên thủ công)
+    source = Column(String(20), nullable=True)
 
     class_session = relationship('ClassSession', back_populates='attendance_records')
     student = relationship('Student', back_populates='attendance_records')

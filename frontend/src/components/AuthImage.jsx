@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { apiFetch } from "../api/client";
+import { authFetch } from "../api/client";
 
-// Tải ảnh khuôn mặt qua apiFetch (tự gắn token) rồi hiển thị bằng Blob URL.
+// Tải ảnh khuôn mặt qua authFetch (tự gắn token, trả Response blob) rồi hiển thị bằng Blob URL.
 // Cần API_BASE; fallback là chữ cái đầu tiên của tên nếu ảnh chưa có.
 const AuthImage = ({ API_BASE, filename, alt = "", fallback = "?" }) => {
   const [src, setSrc] = useState(null);
@@ -13,7 +13,7 @@ const AuthImage = ({ API_BASE, filename, alt = "", fallback = "?" }) => {
 
     const load = async () => {
       try {
-        const res = await apiFetch(`${API_BASE}/api/images/${encodeURIComponent(filename)}`);
+        const res = await authFetch(`${API_BASE}/api/images/${encodeURIComponent(filename)}`);
         if (!res.ok) throw new Error("not found");
         const blob = await res.blob();
         if (cancelled) return;

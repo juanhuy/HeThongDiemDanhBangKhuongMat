@@ -1,8 +1,10 @@
-import { apiFetch, getToken, API_BASE } from './client';
+import { apiFetch, getToken, API_BASE, resolveApiBase } from './client';
 
-const base = `${API_BASE}/api/documents`;
+// Lưu ý: không build URL tuyệt đối tại module load (API_BASE được resolve động
+// khi chạy trên Android/máy thật). Luôn truyền path tương đối cho apiFetch.
 
 async function fetchBlob(path) {
+  await resolveApiBase();
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${getToken()}` },
@@ -17,7 +19,7 @@ export const uploadDocument = ({ file, title, description, subject_id }) => {
   fd.append('title', title);
   if (description) fd.append('description', description);
   if (subject_id) fd.append('subject_id', subject_id);
-  return apiFetch(`${base}/upload`, { method: 'POST', body: fd });
+  return apiFetch('/api/documents/upload', { method: 'POST', body: fd });
 };
 
 export const listDocuments = ({ search, tag, subject_id, sort, page, page_size } = {}) => {
@@ -28,68 +30,68 @@ export const listDocuments = ({ search, tag, subject_id, sort, page, page_size }
   if (sort) q.set('sort', sort);
   q.set('page', page || 1);
   q.set('page_size', page_size || 12);
-  return apiFetch(`${base}?${q.toString()}`);
+  return apiFetch(`/api/documents?${q.toString()}`);
 };
 
-export const listTags = () => apiFetch(`${base}/tags`);
+export const listTags = () => apiFetch('/api/documents/tags');
 
-export const getDocument = (id) => apiFetch(`${base}/${id}`);
+export const getDocument = (id) => apiFetch(`/api/documents/${id}`);
 
-export const getDocumentSummary = (id) => apiFetch(`${base}/${id}/summary`);
+export const getDocumentSummary = (id) => apiFetch(`/api/documents/${id}/summary`);
 
 export const reanalyzeDocument = (id) =>
-  apiFetch(`${base}/${id}/reanalyze`, { method: 'POST' });
+  apiFetch(`/api/documents/${id}/reanalyze`, { method: 'POST' });
 
-export const getDocumentText = (id) => apiFetch(`${base}/${id}/text`);
+export const getDocumentText = (id) => apiFetch(`/api/documents/${id}/text`);
 
-export const listComments = (id) => apiFetch(`${base}/${id}/comments`);
+export const listComments = (id) => apiFetch(`/api/documents/${id}/comments`);
 
 export const addComment = (id, content) => {
   const fd = new FormData();
   fd.append('content', content);
-  return apiFetch(`${base}/${id}/comments`, { method: 'POST', body: fd });
+  return apiFetch(`/api/documents/${id}/comments`, { method: 'POST', body: fd });
 };
 
 export const similarDocuments = (id, limit = 5) =>
-  apiFetch(`${base}/${id}/similar?limit=${limit}`);
+  apiFetch(`/api/documents/${id}/similar?limit=${limit}`);
 
-export const documentFlashcards = (id) => apiFetch(`${base}/${id}/flashcards`);
+export const documentFlashcards = (id) => apiFetch(`/api/documents/${id}/flashcards`);
 
-export const myFlashcards = () => apiFetch(`${base}/flashcards/mine`);
+export const myFlashcards = () => apiFetch('/api/documents/flashcards/mine');
 
 export const createPersonalFlashcard = ({ question, answer, document_id }) => {
   const fd = new FormData();
   fd.append('question', question);
   fd.append('answer', answer);
   if (document_id) fd.append('document_id', document_id);
-  return apiFetch(`${base}/flashcards/personal`, { method: 'POST', body: fd });
+  return apiFetch('/api/documents/flashcards/personal', { method: 'POST', body: fd });
 };
 
 export const deleteFlashcard = (card_id) =>
-  apiFetch(`${base}/flashcards/${card_id}`, { method: 'DELETE' });
+  apiFetch(`/api/documents/flashcards/${card_id}`, { method: 'DELETE' });
 
-export const moderationPending = () => apiFetch(`${base}/moderation/pending`);
+export const moderationPending = () => apiFetch('/api/documents/moderation/pending');
 
 export const moderateDocument = (id, action, note) => {
   const fd = new FormData();
   fd.append('action', action);
   if (note) fd.append('note', note);
-  return apiFetch(`${base}/${id}/moderate`, { method: 'POST', body: fd });
+  return apiFetch(`/api/documents/${id}/moderate`, { method: 'POST', body: fd });
 };
 
-export const removeDocument = (id) => apiFetch(`${base}/${id}`, { method: 'DELETE' });
+export const removeDocument = (id) => apiFetch(`/api/documents/${id}`, { method: 'DELETE' });
 
-export const documentSubjects = () => apiFetch(`${base}/meta/subjects`);
+export const documentSubjects = () => apiFetch('/api/documents/meta/subjects');
 
 // Xem PDF trực tuyến (có token) -> object URL
 export const viewDocumentBlobUrl = async (id) => {
-  const blob = await fetchBlob(`${base}/${id}/file`);
+  const blob = await fetchBlob(`/api/documents/${id}/file`);
   return URL.createObjectURL(blob);
 };
 
 // Tải file về máy
 export const downloadDocument = async (id, filename) => {
-  const blob = await fetchBlob(`${base}/${id}/download`);
+  const blob = await fetchBlob(`/api/documents/${id}/download`);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

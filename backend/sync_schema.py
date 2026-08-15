@@ -87,6 +87,20 @@ _ADD_COLUMNS = [
     # Điểm danh check-in / check-out (AI)
     ("attendance_records", "check_out_time", "DATETIME NULL"),
     ("attendance_records", "last_seen", "DATETIME NULL"),
+    # Phân loại nguồn điểm danh: AI (camera) / manual (giảng viên)
+    ("attendance_records", "source", "VARCHAR(20) DEFAULT 'AI'"),
+
+    # Xin nghỉ phép hỗ trợ buổi học mới (class_sessions) bên cạnh lịch cũ (class_schedules)
+    ("leave_requests", "session_id", "INT NULL"),
+
+    # Đăng ký học phần: môn học trước / song hành + nợ học phí SV
+    ("subjects", "predecessors", "VARCHAR(255) NULL"),
+    ("subjects", "corequisites", "VARCHAR(255) NULL"),
+    ("students", "tuition_debt", "INT DEFAULT 0"),
+
+    # Chương trình đào tạo (CTĐT): ngành + loại môn
+    ("subjects", "major_ids", "VARCHAR(255) NULL"),
+    ("subjects", "subject_type", "VARCHAR(20) DEFAULT 'Bắt buộc'"),
 ]
 
 # Các cột cần đổi định nghĩa (ALTER ... MODIFY) để tương thích model
@@ -102,6 +116,8 @@ _MODIFY_COLUMNS = [
     ("documents", "analysis_json", "LONGTEXT"),
     ("documents", "summary", "LONGTEXT"),
     ("documents", "key_points", "LONGTEXT"),
+    # leave_requests: cho phép đơn nghỉ dựa trên class_sessions (schedule_id có thể NULL)
+    ("leave_requests", "schedule_id", "INT NULL"),
 ]
 
 

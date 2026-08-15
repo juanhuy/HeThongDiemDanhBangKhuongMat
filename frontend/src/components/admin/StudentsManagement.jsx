@@ -49,7 +49,7 @@ export default function StudentsManagement({ showToast }) {
   const [search, setSearch] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [activeFilterColumn, setActiveFilterColumn] = useState(null);
-  const [filters, setFilters] = useState({ class: '', major: '', status: '' });
+  const [filters, setFilters] = useState({ class: '', major: '', status: '', faculty: '', cohort: '' });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
@@ -112,6 +112,8 @@ export default function StudentsManagement({ showToast }) {
   const uniqueClassesFromStudents = useMemo(() => [...new Set(students.map(s => s.administrative_class || s.lop_base).filter(Boolean))], [students]);
   const uniqueMajors = useMemo(() => [...new Set(students.map(s => s.major_id || s.major).filter(Boolean))], [students]);
   const uniqueStatuses = useMemo(() => [...new Set(students.map(s => s.academic_status || 'Đang học').filter(Boolean))], [students]);
+  const uniqueFaculties = useMemo(() => [...new Set(students.map(s => s.department || s.faculty_id).filter(Boolean))], [students]);
+  const uniqueCohorts = useMemo(() => [...new Set(students.map(s => s.cohort).filter(Boolean))], [students]);
 
   // const allAvailableClasses = useMemo(() => {
   //   const apiClasses = adminClasses.map(c => c.class_id || c.name || c);
@@ -176,6 +178,8 @@ export default function StudentsManagement({ showToast }) {
     if (filters.class) filtered = filtered.filter(s => (s.administrative_class || s.lop_base) === filters.class);
     if (filters.major) filtered = filtered.filter(s => (s.major_id || s.major) === filters.major);
     if (filters.status) filtered = filtered.filter(s => (s.academic_status || 'Đang học') === filters.status);
+    if (filters.faculty) filtered = filtered.filter(s => (s.department || s.faculty_id) === filters.faculty);
+    if (filters.cohort) filtered = filtered.filter(s => (s.cohort || '') === filters.cohort);
 
     if (sortConfig.key) {
       filtered.sort((a, b) => {
@@ -219,8 +223,39 @@ export default function StudentsManagement({ showToast }) {
     finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
+  // Kiểm tra hợp lệ các trường hồ sơ (CCCD, email, SĐT, ngày sinh) trước khi lưu
+  const validateProfileFields = (f) => {
+    if (!f?.full_name?.trim()) return 'Họ và tên không được để trống.';
+    if (f.citizen_id) {
+      const c = String(f.citizen_id).replace(/\s/g, '');
+      if (!/^\d{9}$|^\d{12}$/.test(c)) {
+        return 'CCCD/CMND phải gồm 9 chữ số (CMND) hoặc 12 chữ số (CCCD).';
+      }
+    }
+    if (f.email) {
+      const email = String(f.email).trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        return 'Email không hợp lệ. Ví dụ: sv@ptit.edu.vn';
+      }
+    }
+    if (f.phone_number) {
+      const p = String(f.phone_number).replace(/[\s-]/g, '');
+      if (!/^(0|\+84|84)[3-9]\d{8,9}$/.test(p)) {
+        return 'Số điện thoại không hợp lệ (VD: 0912345678, +84912345678).';
+      }
+    }
+    if (f.date_of_birth) {
+      const d = new Date(f.date_of_birth);
+      if (isNaN(d.getTime())) return 'Ngày sinh không hợp lệ.';
+      if (d > new Date()) return 'Ngày sinh không được ở tương lai.';
+    }
+    return null;
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
+    const vErr = validateProfileFields(createForm);
+    if (vErr) { showToast?.(vErr, 'danger'); return; }
     try {
       const payload = buildManualStudentPayload(createForm);
       Object.keys(payload).forEach(key => {
@@ -269,6 +304,8 @@ export default function StudentsManagement({ showToast }) {
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+    const vErr = validateProfileFields(profileForm);
+    if (vErr) { showToast?.(vErr, 'danger'); return; }
     try {
       const payload = buildManualStudentPayload(profileForm);
       Object.keys(payload).forEach(key => {
@@ -526,6 +563,36 @@ export default function StudentsManagement({ showToast }) {
                         <button style={styles.dropdownItem} onClick={() => handleFilter('major', '')}>{!filters.major && <Check size={16} color="#10b981" />} Tất cả Ngành</button>
                         {uniqueMajors.map(m => (
                           <button key={m} style={styles.dropdownItem} onClick={() => handleFilter('major', m)}>{filters.major === m && <Check size={16} color="#10b981" />} {m}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th style={styles.th}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }} onClick={() => setActiveFilterColumn(activeFilterColumn === 'faculty' ? null : 'faculty')}>
+                    Khoa <Filter size={14} color={filters.faculty ? '#106fa6' : '#94a3b8'} />
+                  </div>
+                  {activeFilterColumn === 'faculty' && (
+                    <div style={{ ...styles.dropdownMenu, width: "220px" }}>
+                      <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                        <button style={styles.dropdownItem} onClick={() => handleFilter('faculty', '')}>{!filters.faculty && <Check size={16} color="#10b981" />} Tất cả Khoa</button>
+                        {uniqueFaculties.map(f => (
+                          <button key={f} style={styles.dropdownItem} onClick={() => handleFilter('faculty', f)}>{filters.faculty === f && <Check size={16} color="#10b981" />} {f}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th style={styles.th}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }} onClick={() => setActiveFilterColumn(activeFilterColumn === 'cohort' ? null : 'cohort')}>
+                    Khóa <Filter size={14} color={filters.cohort ? '#106fa6' : '#94a3b8'} />
+                  </div>
+                  {activeFilterColumn === 'cohort' && (
+                    <div style={{ ...styles.dropdownMenu, width: "200px" }}>
+                      <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                        <button style={styles.dropdownItem} onClick={() => handleFilter('cohort', '')}>{!filters.cohort && <Check size={16} color="#10b981" />} Tất cả Khóa</button>
+                        {uniqueCohorts.map(c => (
+                          <button key={c} style={styles.dropdownItem} onClick={() => handleFilter('cohort', c)}>{filters.cohort === c && <Check size={16} color="#10b981" />} {c}</button>
                         ))}
                       </div>
                     </div>

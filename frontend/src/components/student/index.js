@@ -5,3 +5,4 @@ export { default as StudentInfoCard } from './StudentInfoCard';
 export { default as SubmitLeave } from './SubmitLeave';
 export { default as FaceBiometrics } from './FaceBiometrics';
 export { default as StudentTimetable } from './StudentTimetable';
+export { default as MyReport } from './MyReport';

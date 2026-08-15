@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { creditClassesApi, schedulesApi, attendanceApi } from '../../api';
+import { apiFetch, formBody } from '../../api/client';
 
 // Component con hiển thị thẻ chỉ số KPI
 const StatCard = ({ title, value, color, subtitle }) => (
@@ -28,6 +29,67 @@ export default function MyClasses({ user, showToast }) {
   });
 
   const mssv = user?.mssv || user?.username?.toUpperCase();
+
+  // Trạng thái Xin nghỉ phép (kết hợp trong Lớp của tôi)
+  const [leaveData, setLeaveData] = useState(null);
+  const [leaveClassId, setLeaveClassId] = useState('');
+  const [leaveScheduleId, setLeaveScheduleId] = useState('');
+  const [leaveReason, setLeaveReason] = useState('');
+  const [leaveProof, setLeaveProof] = useState('Giấy khám sức khỏe / Lý do cá nhân');
+  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
+
+  const loadLeaveData = async () => {
+    if (!mssv) return;
+    try {
+      const res = await apiFetch('/api/student/leave_classes');
+      setLeaveData(res);
+      if (res.classes?.length && !leaveClassId) {
+        setLeaveClassId(res.classes[0].class_id);
+      }
+    } catch (err) {
+      // không chặn trang nếu API lỗi
+    }
+  };
+
+  useEffect(() => {
+    loadLeaveData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mssv]);
+
+  const selectedLeaveClass = useMemo(
+    () => leaveData?.classes?.find((c) => c.class_id === leaveClassId) || null,
+    [leaveData, leaveClassId]
+  );
+
+  const submitLeave = async (e) => {
+    e.preventDefault();
+    if (!leaveScheduleId || !leaveReason.trim()) {
+      showToast?.('Vui lòng chọn buổi học và điền lý do', 'danger');
+      return;
+    }
+    const selected = selectedLeaveClass?.schedules?.find((s) => String(s.buoi_id) === String(leaveScheduleId));
+    try {
+      setLeaveSubmitting(true);
+      const res = await apiFetch('/api/student/leave_request', {
+        method: 'POST',
+        body: formBody({
+          mssv,
+          buoi_id: leaveScheduleId,
+          buoi_type: selected?.type || 'schedule',
+          ly_do: leaveReason,
+          minh_chung: leaveProof,
+        }),
+      });
+      showToast?.(res.message || 'Gửi đơn xin nghỉ phép thành công');
+      setLeaveScheduleId('');
+      setLeaveReason('');
+      loadLeaveData(); // làm mới danh sách buổi + lịch sử
+    } catch (err) {
+      showToast?.(err.message || 'Gửi đơn thất bại', 'danger');
+    } finally {
+      setLeaveSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (!mssv) return;
@@ -343,6 +405,153 @@ export default function MyClasses({ user, showToast }) {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* 6. Xin nghỉ phép (kết hợp trong Lớp của tôi) */}
+      <div style={{ background: '#fff', border: '1px solid #d0e0eb', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2edf5', color: '#106fa6', fontWeight: 600 }}>
+          📝 Xin nghỉ phép
+        </div>
+        <div style={{ padding: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: 4 }}>Chọn lớp học phần</label>
+              <select
+                value={leaveClassId}
+                onChange={(e) => { setLeaveClassId(e.target.value); setLeaveScheduleId(''); }}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+              >
+                {(leaveData?.classes || []).map((c) => (
+                  <option key={c.class_id} value={c.class_id}>
+                    {c.class_id} - {c.subject_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {selectedLeaveClass && (
+            <div style={{ marginTop: 14 }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                Chọn buổi học (chỉ xin được cho buổi CHƯA bắt đầu)
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {selectedLeaveClass.schedules.length === 0 ? (
+                  <div style={{ color: '#94a3b8', fontSize: '0.82rem', padding: 10, background: '#f8fafc', borderRadius: 6 }}>
+                    Không còn buổi học nào để xin nghỉ (các buổi của lớp này đã qua hoặc đã được xử lý).
+                  </div>
+                ) : selectedLeaveClass.schedules.map((s) => {
+                  const disabled = !s.eligible;
+                  let note = s.start_time ? ` · ${s.start_time}` : '';
+                  if (s.da_diem_danh) note += ' · ⛔ Buổi đã học';
+                  else if (s.already_requested) note += ' · ⚠ Đã gửi đơn';
+                  return (
+                    <label
+                      key={`${s.type}-${s.buoi_id}`}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 6,
+                        border: '1px solid', cursor: disabled ? 'not-allowed' : 'pointer',
+                        borderColor: disabled ? '#e2e8f0' : '#bfdbfe',
+                        background: disabled ? '#f8fafc' : '#eff6ff',
+                        opacity: disabled ? 0.65 : 1,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="leave-schedule"
+                        checked={leaveScheduleId === String(s.buoi_id)}
+                        onChange={() => setLeaveScheduleId(String(s.buoi_id))}
+                        disabled={disabled}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: '#0f172a' }}>
+                        Buổi {s.buoi_id} - Ngày {s.study_date}{note} · Phòng {s.room || '—'}
+                        <span style={{
+                          marginLeft: 6, padding: '1px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 600,
+                          background: s.type === 'session' ? '#dcfce7' : '#f1f5f9',
+                          color: s.type === 'session' ? '#15803d' : '#64748b',
+                        }}>
+                          {s.type === 'session' ? 'Buổi xếp lịch' : 'Lịch cũ'}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 14 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: 4 }}>Lý do *</label>
+                  <textarea
+                    required
+                    value={leaveReason}
+                    onChange={(e) => setLeaveReason(e.target.value)}
+                    rows={3}
+                    placeholder="VD: Bị ốm có giấy ra viện, Lý do gia đình..."
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box', resize: 'vertical' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: 4 }}>Minh chứng</label>
+                  <input
+                    value={leaveProof}
+                    onChange={(e) => setLeaveProof(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={leaveSubmitting || !leaveScheduleId || !leaveReason.trim()}
+                onClick={submitLeave}
+                style={{
+                  marginTop: 14, padding: '10px 22px', borderRadius: 8, border: 'none',
+                  background: leaveSubmitting || !leaveScheduleId || !leaveReason.trim() ? '#94a3b8' : '#106fa6',
+                  color: '#fff', fontWeight: 600, cursor: leaveSubmitting || !leaveScheduleId || !leaveReason.trim() ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {leaveSubmitting ? 'Đang gửi...' : 'Gửi đơn nghỉ phép'}
+              </button>
+            </div>
+          )}
+
+          {/* Lịch sử đơn nghỉ */}
+          {(leaveData?.requests || []).length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: 8 }}>Lịch sử đơn nghỉ phép</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f0f7fc' }}>
+                      {['Lớp', 'Ngày học', 'Lý do', 'Trạng thái', 'Người duyệt'].map((h) => (
+                        <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: '#106fa6', fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaveData.requests.map((r) => (
+                      <tr key={r.id} style={{ borderBottom: '1px solid #e2edf5' }}>
+                        <td style={{ padding: '8px 10px' }}>{r.ma_lop_tc}</td>
+                        <td style={{ padding: '8px 10px' }}>{r.ngay_hoc}</td>
+                        <td style={{ padding: '8px 10px' }}>{r.ly_do}</td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600,
+                            background: r.trang_thai === 'Approved' ? '#dcfce7' : r.trang_thai === 'Pending' ? '#fef9c3' : '#fee2e2',
+                            color: r.trang_thai === 'Approved' ? '#16a34a' : r.trang_thai === 'Pending' ? '#ca8a04' : '#dc2626',
+                          }}>
+                            {r.trang_thai === 'Approved' ? 'Đã duyệt' : r.trang_thai === 'Pending' ? 'Chờ duyệt' : 'Từ chối'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px' }}>{r.nguoi_duyet || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -65,7 +65,11 @@ export default function LeaveRequests({ API_BASE, showToast }) {
               <tr key={r.id} style={{ borderBottom: '1px solid #e2edf5' }}>
                 <td style={{ padding: '10px 12px', fontWeight: 600 }}>{r.mssv || r.student_id}</td>
                 <td style={{ padding: '10px 12px' }}>{r.full_name || r.ho_ten || '—'}</td>
-                <td style={{ padding: '10px 12px' }}>{r.ma_buoi_hoc || r.schedule_id || (r.ngay_hoc ? `${r.ngay_hoc} (${r.ma_lop_tc})` : '—')}</td>
+                <td style={{ padding: '10px 12px' }}>
+                  {r.ma_buoi_hoc || r.schedule_id
+                    ? (r.ma_buoi_hoc || r.schedule_id)
+                    : (r.ngay_hoc ? `${r.ngay_hoc} · ${r.ma_lop_tc || '—'}` : '—')}
+                </td>
                 <td style={{ padding: '10px 12px' }}>{r.reason || r.ly_do || '—'}</td>
                 <td style={{ padding: '10px 12px' }}>
                   <span style={{

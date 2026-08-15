@@ -68,7 +68,9 @@ def serve_face_image(filename: str):
     """Phục vụ ảnh khuôn mặt (yêu cầu đăng nhập) — thay thế static mount công khai."""
     from fastapi.responses import FileResponse
     from app.core.uploads import safe_filename
-    name = os.path.basename(safe_filename(filename, ".jpg"))
+    # Bỏ phần mở rộng + chặn path traversal: safe_filename chỉ giữ ký tự an toàn
+    base = os.path.splitext(os.path.basename(filename))[0]
+    name = safe_filename(base, ".jpg")
     path = os.path.join(images_dir, name)
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Không tìm thấy ảnh.")
@@ -155,7 +157,8 @@ def record_attendance_db(db: Session, mssv: str, session_id: int = None, room_id
                 student_id=mssv,
                 status=status_val,
                 recorded_at=now,
-                confidence_score=score
+                confidence_score=score,
+                source="AI"
             )
             db.add(record)
         else:
@@ -193,7 +196,8 @@ def record_attendance_db(db: Session, mssv: str, session_id: int = None, room_id
             status=_checkin_status(),
             recorded_at=now,
             last_seen=now,
-            confidence_score=score
+            confidence_score=score,
+            source="AI"
         )
         db.add(record)
         db.commit()
@@ -389,14 +393,26 @@ async def recognize_uploaded_image(
         score = face["score"]
         is_known = face["is_known"]
         is_real = face.get("is_real", True)
+        liveness_confirmed = face.get("liveness_confirmed", True)
         active_state = face.get("active_state", None)
         
         ho_ten = "Unknown"
         lop_base = "Unknown"
         trang_thai = "Chưa xác định"
-        
+
+        # Resolve TÊN ngay khi biết MSSV (trước liveness) — để hiển thị đúng
+        # ngay cả khi đang "xác minh chống giả mạo" (không chờ đủ frame).
+        if is_known and mssv not in ["Unknown", "Spoof/Fake"]:
+            _st = db.query(Student).filter(Student.student_id == mssv).first()
+            if _st:
+                ho_ten = _st.profile.full_name if _st.profile else getattr(_st, 'full_name', 'N/A')
+                lop_base = _st.administrative_class or "N/A"
+
         if not is_real:
             trang_thai = "Giả mạo khuôn mặt"
+        elif not liveness_confirmed:
+            # Đa khung hình: chưa đủ frame để xác nhận thật/giả -> chưa ghi điểm danh
+            trang_thai = "Đang xác minh chống giả mạo..."
         elif challenge_only:
             trang_thai = "Đang thực hiện thử thách"
         elif is_known and mssv not in ["Unknown", "Spoof/Fake"]:
@@ -444,6 +460,7 @@ async def recognize_uploaded_image(
             "score": float(score),
             "is_known": bool(is_known),
             "is_real": bool(is_real),
+            "liveness_confirmed": bool(liveness_confirmed),
             "active_state": active_state,
             "trang_thai": trang_thai
         })

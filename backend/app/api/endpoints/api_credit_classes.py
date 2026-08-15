@@ -5,8 +5,11 @@ from app.db.session import get_db
 from app.models.subject import Subject
 from app.models.credit_class import CreditClass
 from app.models.student_class import StudentClassEnrollment
+from app.models.class_enrollments import ClassEnrollment
 from app.models.class_schedule import ClassSchedule
+from app.models.class_session import ClassSession
 from app.models.attendance_history import AttendanceHistory
+from app.models.attendance_record import AttendanceRecord
 from app.models.student import Student
 from datetime import datetime
 from typing import Optional
@@ -89,14 +92,30 @@ def _student_enrolled_credits(db: Session, student_id: str, exclude_class_ids=()
     return total
 
 
-def _parse_prerequisites(subject) -> list:
-    """Tách danh sách mã môn tiên quyết từ chuỗi 'MA1, MA2, ...'"""
-    if not subject or not subject.prerequisites:
+def _parse_prerequisites(raw_value) -> list:
+    """Tách danh sách mã môn từ chuỗi 'MA1, MA2, ...' (chấp nhận cả chuỗi rỗng/None)."""
+    if not raw_value:
         return []
-    raw = subject.prerequisites
+    raw = str(raw_value)
     for sep in [",", ";", "|", "/"]:
         raw = raw.replace(sep, ",")
     return [p.strip().upper() for p in raw.split(",") if p.strip()]
+
+
+def _cohort_matches(class_cohort: str, student_cohort: str) -> bool:
+    """So khớp khóa học linh hoạt giữa 2 định dạng:
+    - Lớp dùng 'D22', SV dùng '2022-2027' -> cùng khóa (22).
+    - Chỉ so trên phần CHỮ SỐ: 'D22' -> '22'; '2022-2027' -> '2022'.
+    - Khớp nếu chuỗi số này chứa chuỗi số kia (22 nằm trong 2022).
+    """
+    def _digits(s: str) -> str:
+        return "".join(ch for ch in (s or "") if ch.isdigit())
+
+    cd = _digits(class_cohort)
+    sd = _digits(student_cohort)
+    if not cd or not sd:
+        return True  # thiếu thông tin khóa -> không chặn
+    return cd in sd or sd in cd
 
 
 def _validate_registration(db: Session, student: Student, cc: CreditClass,
@@ -166,12 +185,9 @@ def _validate_registration(db: Session, student: Student, cc: CreditClass,
 
     # 6. Ràng buộc khóa học
     if not demo["bypass_eligibility"]:
-        if cc.cohort and student.cohort:
-            c = cc.cohort.strip().upper()
-            s = student.cohort.strip().upper()
-            if c not in s and s not in c:
-                return False, (f"Lớp {cc.class_id} chỉ mở cho khóa {cc.cohort}, "
-                               f"không dành cho khóa {student.cohort}.")
+        if cc.cohort and student.cohort and not _cohort_matches(cc.cohort, student.cohort):
+            return False, (f"Lớp {cc.class_id} chỉ mở cho khóa {cc.cohort}, "
+                           f"không dành cho khóa {student.cohort}.")
 
     # 7. Chống đăng ký trùng môn (đang học ở lớp khác)
     if not demo["bypass_duplicate_subject"]:
@@ -184,17 +200,52 @@ def _validate_registration(db: Session, student: Student, cc: CreditClass,
             return False, (f"Bạn đã đăng ký môn {cc.subject.subject_name if cc.subject else cc.subject_id} "
                            f"ở lớp {dup.class_id}. Không thể đăng ký trùng môn.")
 
-    # 8. Môn tiên quyết
+    # 8. Môn tiên quyết / học trước / song hành
     if not demo["bypass_prerequisites"]:
-        for prereq in _parse_prerequisites(cc.subject):
-            had = db.query(StudentClassEnrollment).join(CreditClass, StudentClassEnrollment.class_id == CreditClass.class_id).filter(
+        from app.models.grade import Grade
+
+        def _passed(subject_id):
+            """Đã ĐẬU môn (điểm >= 5)."""
+            return db.query(Grade).filter(
+                Grade.student_id == student.student_id,
+                Grade.subject_id == subject_id,
+                Grade.score >= 5.0,
+            ).first() is not None
+
+        def _taken(subject_id):
+            """Đã HỌC môn (có bản ghi điểm, kể cả rớt)."""
+            return db.query(Grade).filter(
+                Grade.student_id == student.student_id,
+                Grade.subject_id == subject_id,
+            ).first() is not None
+
+        def _enrolled_now(subject_id):
+            """Đang đăng ký môn này ở lớp khác (dùng cho song hành)."""
+            return db.query(StudentClassEnrollment).join(
+                CreditClass, StudentClassEnrollment.class_id == CreditClass.class_id
+            ).filter(
                 StudentClassEnrollment.student_id == student.student_id,
-                CreditClass.subject_id == prereq
-            ).first()
-            if not had:
-                pre_subj = db.query(Subject).filter(Subject.subject_id == prereq).first()
-                label = f"{prereq} ({pre_subj.subject_name})" if pre_subj else prereq
-                return False, f"Chưa đủ môn tiên quyết: {label}."
+                CreditClass.subject_id == subject_id,
+            ).first() is not None
+
+        def _subj_label(subject_id):
+            s = db.query(Subject).filter(Subject.subject_id == subject_id).first()
+            return f"{subject_id} ({s.subject_name})" if s else subject_id
+
+        # 8a. Môn TIÊN QUYẾT: phải ĐẬU (điểm >= 5)
+        for prereq in _parse_prerequisites(cc.subject.prerequisites if cc.subject else None):
+            if not _passed(prereq):
+                return False, f"Chưa đủ môn tiên quyết (phải đậu): {_subj_label(prereq)}."
+
+        # 8b. Môn HỌC TRƯỚC: phải đã học (có thể rớt)
+        for pre in _parse_prerequisites(cc.subject.predecessors if cc.subject else None):
+            if not _taken(pre):
+                return False, f"Chưa hoàn thành môn học trước: {_subj_label(pre)}."
+
+        # 8c. Môn SONG HÀNH: đang học cùng lúc HOẶC đã đậu
+        for co in _parse_prerequisites(cc.subject.corequisites if cc.subject else None):
+            if not (_passed(co) or _enrolled_now(co)):
+                return False, f"Phải đăng ký song hành môn: {_subj_label(co)}."
 
     # 9. Giới hạn số tín chỉ
     if not demo["bypass_credit_limit"]:
@@ -208,6 +259,16 @@ def _validate_registration(db: Session, student: Student, cc: CreditClass,
         if max_credits and cur_total + new_credits > max_credits:
             return False, (f"Vượt quá số tín chỉ tối đa được đăng ký ({max_credits} tín chỉ): "
                            f"hiện có {cur_total}, thêm {new_credits} = {cur_total + new_credits}.")
+
+    # 10. CHƯƠNG TRÌNH ĐÀO TẠO: môn phải thuộc ngành của SV (nếu môn có giới hạn ngành)
+    if not demo["bypass_curriculum"]:
+        subj = cc.subject
+        if subj and subj.major_ids:
+            allowed_majors = [m.strip().upper() for m in str(subj.major_ids).split(",") if m.strip()]
+            sv_major = (student.major_id or "").strip().upper()
+            if allowed_majors and sv_major and sv_major not in allowed_majors:
+                return False, (f"Môn {subj.subject_id} ({subj.subject_name}) không thuộc "
+                               f"chương trình đào tạo ngành {sv_major}.")
 
     return True, ""
 
@@ -325,6 +386,10 @@ def enroll_student(ma_lop_tc: str = Form(...), mssv: str = Form(...), db: Sessio
     if current_user["role"] == "sinh_vien":
         if not current_user.get("mssv") or current_user["mssv"].upper() != mssv.strip().upper():
             raise HTTPException(status_code=403, detail="Sinh viên chỉ có thể đăng ký cho chính mình.")
+        # Chống auto-click: giới hạn số request đăng ký trong 1 giây
+        from app.core.rate_limit import check_registration_rate
+        if not check_registration_rate(mssv):
+            raise HTTPException(status_code=429, detail="Thao tác quá nhanh. Vui lòng chậm lại một chút.")
     cc = db.query(CreditClass).filter(CreditClass.class_id == ma_lop_tc.strip()).first()
     if not cc:
         raise HTTPException(status_code=404, detail=f"Khong tim thay lop tin chi {ma_lop_tc}")
@@ -341,41 +406,63 @@ def enroll_student(ma_lop_tc: str = Form(...), mssv: str = Form(...), db: Sessio
         return {"status": "success", "message": f"Da dang ky sinh vien {mssv} vao lop {ma_lop_tc}"}
 
     # Kiểm tra toàn bộ quy định đăng ký học phần (đợt, kỳ, sĩ số, tiên quyết, khóa, trùng môn, tín chỉ, học vụ)
-    ok, err = _validate_registration(db, st, cc)
-    if not ok:
-        raise HTTPException(status_code=400, detail=err)
+    # Admin đăng ký hộ được BỎ QUA quy định này (admin có thẩm quyền); SV tự đăng ký vẫn phải đủ quy định.
+    if current_user["role"] != "admin":
+        ok, err = _validate_registration(db, st, cc)
+        if not ok:
+            raise HTTPException(status_code=400, detail=err)
 
     # Kiểm tra trùng lịch học với các lớp sinh viên đã đăng ký
     new_schedules = db.query(ClassSchedule).filter(ClassSchedule.class_id == ma_lop_tc.strip()).all()
-    if new_schedules:
-        enrolled = db.query(StudentClassEnrollment).filter(
-            StudentClassEnrollment.student_id == mssv.strip().upper()
-        ).all()
-        enrolled_class_ids = [e.class_id for e in enrolled if e.class_id != ma_lop_tc.strip()]
-        
-        if enrolled_class_ids:
-            existing_schedules = db.query(ClassSchedule).filter(
-                ClassSchedule.class_id.in_(enrolled_class_ids)
-            ).all()
+    enrolled = db.query(StudentClassEnrollment).filter(
+        StudentClassEnrollment.student_id == mssv.strip().upper()
+    ).all()
+    enrolled_class_ids = [e.class_id for e in enrolled if e.class_id != ma_lop_tc.strip()]
 
-            for ns in new_schedules:
-                ns_info = _schedule_time_range(ns)
-                if ns_info is None:
+    def _conflict_msg(ns_weekday, ns_start, ns_end, other_class_id, o_start, o_end):
+        day = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"][ns_weekday - 2]
+        return (f"Trùng lịch học! Ngày {day}: Lớp {ma_lop_tc.strip()} "
+                f"({ns_start // 60:02d}:{ns_start % 60:02d} - {ns_end // 60:02d}:{ns_end % 60:02d}) "
+                f"bị trùng giờ với lớp {other_class_id} "
+                f"({o_start // 60:02d}:{o_start % 60:02d} - {o_end // 60:02d}:{o_end % 60:02d}) bạn đã đăng ký.")
+
+    # a) Trùng lịch theo class_schedules (lịch cũ)
+    if new_schedules and enrolled_class_ids:
+        existing_schedules = db.query(ClassSchedule).filter(
+            ClassSchedule.class_id.in_(enrolled_class_ids)
+        ).all()
+        for ns in new_schedules:
+            ns_info = _schedule_time_range(ns)
+            if ns_info is None:
+                continue
+            ns_weekday, ns_start, ns_end = ns_info
+            for es in existing_schedules:
+                es_info = _schedule_time_range(es)
+                if es_info is None:
                     continue
-                ns_weekday, ns_start, ns_end = ns_info
-                for es in existing_schedules:
-                    es_info = _schedule_time_range(es)
-                    if es_info is None:
-                        continue
-                    es_weekday, es_start, es_end = es_info
-                    if ns_weekday == es_weekday and ns_start < es_end and ns_end > es_start:
-                        date_str = str(ns.study_date or f"Thứ {ns_weekday + 2}")
-                        ns_time = f"{ns_start // 60:02d}:{ns_start % 60:02d}"
-                        es_time = f"{es_start // 60:02d}:{es_start % 60:02d}"
+                es_weekday, es_start, es_end = es_info
+                if ns_weekday == es_weekday and ns_start < es_end and ns_end > es_start:
+                    raise HTTPException(status_code=400,
+                                        detail=_conflict_msg(ns_weekday, ns_start, ns_end, es.class_id, es_start, es_end))
+
+    # b) Trùng lịch theo class_sessions (lịch mới) — kiểm tra ngày + khung giờ
+    new_sessions = db.query(ClassSession).filter(ClassSession.class_id == ma_lop_tc.strip()).all()
+    if new_sessions and enrolled_class_ids:
+        existing_sessions = db.query(ClassSession).filter(
+            ClassSession.class_id.in_(enrolled_class_ids)
+        ).all()
+        for ns in new_sessions:
+            for es in existing_sessions:
+                if ns.session_date != es.session_date:
+                    continue
+                if ns.start_time and es.start_time and ns.end_time and es.end_time:
+                    if ns.start_time < es.end_time and ns.end_time > es.start_time:
                         raise HTTPException(
                             status_code=400,
-                            detail=f"Trùng lịch học! Ngày {date_str}: Lớp {ma_lop_tc.strip()} ({ns_time}) bị trùng giờ với lớp {es.class_id} ({es_time}) bạn đã đăng ký."
-                        )
+                            detail=f"Trùng lịch học! Ngày {ns.session_date}: Lớp {ma_lop_tc.strip()} "
+                                   f"({ns.start_time.strftime('%H:%M')} - {ns.end_time.strftime('%H:%M')}) "
+                                   f"bị trùng giờ với lớp {es.class_id} "
+                                   f"({es.start_time.strftime('%H:%M')} - {es.end_time.strftime('%H:%M')}) bạn đã đăng ký.")
 
     enroll = StudentClassEnrollment(
         class_id=ma_lop_tc.strip(),
@@ -384,9 +471,100 @@ def enroll_student(ma_lop_tc: str = Form(...), mssv: str = Form(...), db: Sessio
     )
     db.add(enroll)
     db.flush()
-    cc.current_students = _enrolled_count(db, cc.class_id)
+
+    # CHỐNG OVER-BOOKING: tăng sĩ số nguyên tử (compare-and-swap).
+    # Chỉ +1 nếu còn chỗ; nếu 0 dòng được cập nhật -> đã đủ -> rollback.
+    # Cơ chế này triệt tiêu race condition khi nhiều SV đăng ký cùng lúc.
+    from sqlalchemy import text as _text
+    res = db.execute(_text(
+        "UPDATE credit_classes "
+        "SET current_students = COALESCE(current_students, 0) + 1 "
+        "WHERE class_id = :cid "
+        "AND COALESCE(current_students, 0) < COALESCE(max_students, 50)"
+    ), {"cid": ma_lop_tc.strip()})
+    if res.rowcount == 0:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Lớp {ma_lop_tc.strip()} đã đủ sĩ số.")
     db.commit()
     return {"status": "success", "message": f"Da dang ky sinh vien {mssv} vao lop {ma_lop_tc}"}
+
+
+@router.post("/sinh_vien_lop_tin_chi/swap")
+def swap_class(ma_lop_cu: str = Form(...), ma_lop_moi: str = Form(...), mssv: str = Form(...),
+               db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """ĐỔI LỚP (atomic): hủy lớp cũ + đăng ký lớp mới trong 1 transaction.
+
+    Nếu đăng ký lớp mới THẤT BẠI (hết chỗ, trùng lịch, vi phạm quy định...),
+    toàn bộ thao tác rollback -> sinh viên vẫn giữ nguyên lớp cũ.
+    """
+    if current_user["role"] == "sinh_vien":
+        if not current_user.get("mssv") or current_user["mssv"].upper() != mssv.strip().upper():
+            raise HTTPException(status_code=403, detail="Sinh viên chỉ có thể đổi lớp cho chính mình.")
+
+    mssv_u = mssv.strip().upper()
+    old = db.query(StudentClassEnrollment).filter(
+        StudentClassEnrollment.class_id == ma_lop_cu.strip(),
+        StudentClassEnrollment.student_id == mssv_u).first()
+    if not old:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lớp cũ đang đăng ký.")
+
+    if db.query(StudentClassEnrollment).filter(
+        StudentClassEnrollment.class_id == ma_lop_moi.strip(),
+        StudentClassEnrollment.student_id == mssv_u).first():
+        raise HTTPException(status_code=400, detail="Sinh viên đã đăng ký lớp mới này.")
+
+    st = db.query(Student).filter(Student.student_id == mssv_u).first()
+    cc_new = db.query(CreditClass).filter(CreditClass.class_id == ma_lop_moi.strip()).first()
+    if not st or not cc_new:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên hoặc lớp mới.")
+
+    # Đăng ký lớp mới trước (chạy đủ validation) — nhưng chưa commit
+    if current_user["role"] != "admin":
+        ok, err = _validate_registration(db, st, cc_new)
+        if not ok:
+            raise HTTPException(status_code=400, detail=err)
+
+    # Trùng lịch: kiểm tra lớp mới với các lớp đang học (trừ lớp cũ)
+    new_sessions = db.query(ClassSession).filter(ClassSession.class_id == ma_lop_moi.strip()).all()
+    if new_sessions:
+        other_ids = [e.class_id for e in db.query(StudentClassEnrollment).filter(
+            StudentClassEnrollment.student_id == mssv_u,
+            StudentClassEnrollment.class_id != ma_lop_cu.strip()).all()]
+        if other_ids:
+            for ns in new_sessions:
+                for es in db.query(ClassSession).filter(ClassSession.class_id.in_(other_ids)).all():
+                    if ns.session_date == es.session_date and ns.start_time and es.start_time and ns.end_time and es.end_time \
+                            and ns.start_time < es.end_time and ns.end_time > es.start_time:
+                        raise HTTPException(status_code=400,
+                                            detail=f"Trùng lịch học với lớp {es.class_id} bạn đang học.")
+
+    try:
+        # 1) Hủy lớp cũ + hoàn trả slot
+        db.delete(old)
+        db.flush()
+        from sqlalchemy import text as _text
+        db.execute(_text(
+            "UPDATE credit_classes SET current_students = GREATEST(COALESCE(current_students, 0) - 1, 0) "
+            "WHERE class_id = :cid"), {"cid": ma_lop_cu.strip()})
+
+        # 2) Đăng ký lớp mới + giữ slot nguyên tử
+        db.add(StudentClassEnrollment(class_id=ma_lop_moi.strip(), student_id=mssv_u, academic_status="Active"))
+        db.flush()
+        res = db.execute(_text(
+            "UPDATE credit_classes SET current_students = COALESCE(current_students, 0) + 1 "
+            "WHERE class_id = :cid AND COALESCE(current_students, 0) < COALESCE(max_students, 50)"
+        ), {"cid": ma_lop_moi.strip()})
+        if res.rowcount == 0:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=f"Lớp {ma_lop_moi.strip()} đã đủ sĩ số. Không thể đổi lớp.")
+        db.commit()
+        return {"status": "success", "message": f"Đã đổi từ {ma_lop_cu} sang {ma_lop_moi}."}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Lỗi hệ thống khi đổi lớp.")
 
 
 @router.delete("/sinh_vien_lop_tin_chi/{ma_lop_tc}/{mssv}")
@@ -412,6 +590,16 @@ def unenroll_student(ma_lop_tc: str, mssv: str, db: Session = Depends(get_db),
                 AttendanceHistory.schedule_id.in_(schedule_ids),
             ).first()
             if had:
+                raise HTTPException(status_code=400,
+                                    detail="Không thể hủy đăng ký: sinh viên đã có buổi điểm danh trong lớp này.")
+        # Kiểm tra cả bảng điểm danh theo buổi học mới (class_sessions)
+        session_ids = [s.session_id for s in db.query(ClassSession).filter(ClassSession.class_id == ma_lop_tc.strip()).all()]
+        if session_ids:
+            had2 = db.query(AttendanceRecord).filter(
+                AttendanceRecord.student_id == mssv.strip().upper(),
+                AttendanceRecord.session_id.in_(session_ids),
+            ).first()
+            if had2:
                 raise HTTPException(status_code=400,
                                     detail="Không thể hủy đăng ký: sinh viên đã có buổi điểm danh trong lớp này.")
 
@@ -794,6 +982,84 @@ def get_lecturer_report(lecturer_id: Optional[str] = None, db: Session = Depends
         classes = query.all()
         data = build_classes_summary(db, classes)
         return {"status": "success", "lecturer_id": lecturer_id or "Tất cả", **data}
+    except HTTPException:
+        raise
+    except Exception as err:
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {err}")
+
+
+@router.get("/reports/lecturer/dashboard", summary="Dashboard môn học giảng dạy trong học kỳ (GV/Admin)")
+def get_lecturer_dashboard(
+    lecturer_id: Optional[str] = Query(None, description="Mã GV (admin dùng; GV tự lấy từ token)."),
+    semester: Optional[int] = Query(None, description="Lọc theo học kỳ (1, 2, 3, Hè)."),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Thống kê các môn học giảng viên đang giảng dạy: gộp theo môn, kèm cảnh báo/cấm thi."""
+    try:
+        from app.core.attendance_report import build_subject_dashboard
+        if current_user.get("role") == "giang_vien":
+            own_id = current_user.get("lecturer_id")
+            if not own_id:
+                raise HTTPException(status_code=403, detail="Tài khoản giảng viên chưa gắn mã giảng viên.")
+            if lecturer_id and lecturer_id.strip() != own_id:
+                raise HTTPException(status_code=403, detail="Giảng viên chỉ xem được báo cáo của chính mình.")
+            lecturer_id = own_id
+        query = db.query(CreditClass)
+        if lecturer_id:
+            query = query.filter(CreditClass.lecturer_id == lecturer_id.strip())
+        if semester is not None:
+            query = query.filter(CreditClass.semester == semester)
+        classes = query.order_by(CreditClass.subject_id, CreditClass.class_id).all()
+        data = build_subject_dashboard(db, classes)
+        return {"status": "success", "lecturer_id": lecturer_id or "Tất cả", **data}
+    except HTTPException:
+        raise
+    except Exception as err:
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {err}")
+
+
+@router.get("/reports/lecturer/dashboard/export", summary="Xuất Excel dashboard môn học giảng dạy (.xlsx)")
+def export_lecturer_dashboard(
+    lecturer_id: Optional[str] = Query(None),
+    semester: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Xuất dashboard môn học (gộp theo môn, lọc học kỳ) ra file Excel thật."""
+    try:
+        from app.core.attendance_report import build_subject_dashboard
+        from app.core.excel import build_excel_response
+        if current_user.get("role") == "giang_vien":
+            own_id = current_user.get("lecturer_id")
+            if not own_id:
+                raise HTTPException(status_code=403, detail="Tài khoản giảng viên chưa gắn mã giảng viên.")
+            if lecturer_id and lecturer_id.strip() != own_id:
+                raise HTTPException(status_code=403, detail="Giảng viên chỉ xem được báo cáo của chính mình.")
+            lecturer_id = own_id
+        query = db.query(CreditClass)
+        if lecturer_id:
+            query = query.filter(CreditClass.lecturer_id == lecturer_id.strip())
+        if semester is not None:
+            query = query.filter(CreditClass.semester == semester)
+        data = build_subject_dashboard(db, query.all())
+
+        rows = [{
+            "Môn học": s["subject_name"],
+            "Mã môn": s["subject_id"],
+            "Số lớp": s["so_lop"],
+            "Số SV": s["tong_sv"],
+            "Số buổi": s["tong_buoi"],
+            "Có mặt": s["co_mat"],
+            "Đi muộn": s["di_muon"],
+            "Vắng KP": s["vang_kp"],
+            "Có phép": s["co_phep"],
+            "Cảnh báo": s["so_canh_bao"],
+            "Cấm thi": s["so_cam_thi"],
+        } for s in data["subjects"]]
+        columns = ["Môn học", "Mã môn", "Số lớp", "Số SV", "Số buổi", "Có mặt",
+                   "Đi muộn", "Vắng KP", "Có phép", "Cảnh báo", "Cấm thi"]
+        return build_excel_response("dashboard_mon_hoc.xlsx", rows, columns)
     except HTTPException:
         raise
     except Exception as err:
@@ -1193,13 +1459,16 @@ def teacher_manual_checkin(
 @router.post("/student/leave_request")
 def student_leave_request(
     mssv: str = Form(...),
-    ma_buoi_hoc: int = Form(...),
+    ma_buoi_hoc: Optional[int] = Form(None, description="schedule_id (lịch cũ) — giữ tương thích"),
+    buoi_id: Optional[int] = Form(None, description="ID buổi học"),
+    buoi_type: str = Form("schedule", description="schedule | session"),
     ly_do: str = Form(...),
     minh_chung: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     try:
+        from app.models.leave_request import LeaveRequest
         # Sinh viên chỉ được nộp đơn cho buổi học của chính mình
         if current_user["role"] == "sinh_vien":
             if not current_user.get("mssv") or current_user["mssv"].upper() != mssv.strip().upper():
@@ -1208,23 +1477,31 @@ def student_leave_request(
         if not student:
             raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên.")
 
-        sched = db.query(ClassSchedule).filter(ClassSchedule.schedule_id == ma_buoi_hoc).first()
-        if not sched:
-            raise HTTPException(status_code=404, detail="Không tìm thấy buổi học.")
+        buoi_type = (buoi_type or "schedule").strip().lower()
+        target_class = None
+        start_dt = None
 
-        # Ràng buộc: SV chỉ xin nghỉ cho lớp mình đang học
-        enrolled = db.query(StudentClassEnrollment).filter(
-            StudentClassEnrollment.class_id == sched.class_id,
-            StudentClassEnrollment.student_id == mssv.strip().upper()
-        ).first()
-        if not enrolled:
-            raise HTTPException(status_code=400,
-                                detail=f"Sinh viên {mssv.strip().upper()} không thuộc lớp {sched.class_id} của buổi học này.")
-
-        # Chặn nộp đơn nghỉ khi buổi học đã bắt đầu (phải xin TRƯỚC giờ học)
-        demo = get_demo_controls(db)
-        if not demo.get("allow_after_hours_leave"):
-            start_dt = None
+        if buoi_type == "session":
+            # Buổi học mới (class_sessions)
+            if not buoi_id:
+                raise HTTPException(status_code=400, detail="Thiếu buoi_id.")
+            sess = db.query(ClassSession).filter(ClassSession.session_id == buoi_id).first()
+            if not sess:
+                raise HTTPException(status_code=404, detail="Không tìm thấy buổi học.")
+            target_class = sess.class_id
+            start_dt = sess.start_time
+            new_req = LeaveRequest(
+                student_id=mssv.strip().upper(), session_id=sess.session_id,
+                reason=ly_do, evidence=minh_chung, status="Pending")
+        else:
+            # Lịch cũ (class_schedules)
+            sid = buoi_id or ma_buoi_hoc
+            if not sid:
+                raise HTTPException(status_code=400, detail="Thiếu buổi học.")
+            sched = db.query(ClassSchedule).filter(ClassSchedule.schedule_id == sid).first()
+            if not sched:
+                raise HTTPException(status_code=404, detail="Không tìm thấy buổi học.")
+            target_class = sched.class_id
             if sched.study_date is not None and sched.start_time is not None:
                 clean_time = str(sched.start_time).strip()
                 if len(clean_time) == 5:
@@ -1237,26 +1514,35 @@ def student_leave_request(
                     except Exception:
                         start_dt = None
             elif sched.day_of_week is not None and sched.start_shift is not None:
-                try:
-                    from datetime import timedelta as _td
-                    today = datetime.now().date()
-                    offset = 6 if int(sched.day_of_week) == 8 else int(sched.day_of_week) - 2
-                    d = today + _td(days=(offset - today.weekday()) % 7)
-                    start_dt = datetime(d.year, d.month, d.day, min(6 + int(sched.start_shift), 23), 0)
-                except Exception:
-                    start_dt = None
-            if start_dt is not None and datetime.now() >= start_dt:
-                raise HTTPException(status_code=400,
-                                    detail="Không thể nộp đơn nghỉ: buổi học đã bắt đầu. Đơn nghỉ phải được nộp trước giờ học.")
+                from datetime import timedelta as _td
+                today = datetime.now().date()
+                offset = 6 if int(sched.day_of_week) == 8 else int(sched.day_of_week) - 2
+                d = today + _td(days=(offset - today.weekday()) % 7)
+                start_dt = datetime(d.year, d.month, d.day, min(6 + int(sched.start_shift), 23), 0)
+            new_req = LeaveRequest(
+                student_id=mssv.strip().upper(), schedule_id=sid,
+                reason=ly_do, evidence=minh_chung, status="Pending")
 
-        from app.models.leave_request import LeaveRequest
-        new_req = LeaveRequest(
-            student_id=mssv.strip().upper(),
-            schedule_id=ma_buoi_hoc,
-            reason=ly_do,
-            evidence=minh_chung,
-            status="Pending"
-        )
+        # Ràng buộc: SV chỉ xin nghỉ cho lớp mình đang học
+        enrolled = db.query(StudentClassEnrollment).filter(
+            StudentClassEnrollment.class_id == target_class,
+            StudentClassEnrollment.student_id == mssv.strip().upper()
+        ).first()
+        if not enrolled:
+            enrolled = db.query(ClassEnrollment).filter(
+                ClassEnrollment.class_id == target_class,
+                ClassEnrollment.student_id == mssv.strip().upper()
+            ).first()
+        if not enrolled:
+            raise HTTPException(status_code=400,
+                                detail=f"Sinh viên {mssv.strip().upper()} không thuộc lớp {target_class} của buổi học này.")
+
+        # Chặn nộp đơn nghỉ khi buổi học đã bắt đầu (phải xin TRƯỚC giờ học)
+        demo = get_demo_controls(db)
+        if not demo.get("allow_after_hours_leave") and start_dt is not None and datetime.now() >= start_dt:
+            raise HTTPException(status_code=400,
+                                detail="Không thể nộp đơn nghỉ: buổi học đã bắt đầu. Đơn nghỉ phải được nộp trước giờ học.")
+
         db.add(new_req)
         db.commit()
         return {"status": "success", "message": "Nộp đơn xin nghỉ phép thành công."}
@@ -1285,8 +1571,8 @@ def get_my_leave_requests(db: Session = Depends(get_db), current_user: dict = De
                 "id": r.request_id,
                 "mssv": r.student_id,
                 "ho_ten": r.student.profile.full_name if (r.student and r.student.profile) else "N/A",
-                "ma_lop_tc": r.schedule.class_id if r.schedule else "N/A",
-                "ngay_hoc": str(r.schedule.study_date) if r.schedule else "N/A",
+                "ma_lop_tc": _leave_class_id(r),
+                "ngay_hoc": _leave_date(r),
                 "ly_do": r.reason,
                 "trang_thai": r.status,
                 "nguoi_duyet": r.approved_by,
@@ -1295,45 +1581,212 @@ def get_my_leave_requests(db: Session = Depends(get_db), current_user: dict = De
         ],
     }
 
+
+def _leave_class_id(r) -> str:
+    """Mã lớp của đơn nghỉ — từ class_sessions hoặc class_schedules."""
+    if r.session is not None:
+        return r.session.class_id
+    if r.schedule is not None:
+        return r.schedule.class_id
+    return "N/A"
+
+
+def _leave_date(r) -> str:
+    """Ngày học của đơn nghỉ — từ class_sessions hoặc class_schedules."""
+    if r.session is not None:
+        return str(r.session.session_date)
+    if r.schedule is not None:
+        return str(r.schedule.study_date)
+    return "N/A"
+
+
+@router.get("/student/leave_classes", summary="Lớp + buổi học để SV chọn xin nghỉ phép")
+def get_student_leave_classes(
+    mssv: Optional[str] = Query(None, description="MSSV (admin/GV dùng; SV tự lấy từ token)."),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Trả về lớp SV đang học + danh sách buổi học (class_schedules) để chọn xin nghỉ.
+
+    - eligible=True: buổi CHƯA bắt đầu, chưa điểm danh, chưa có đơn Pending/Approved.
+    - Buổi đã bắt đầu (started=True) bị disable trên giao diện — buổi đã học không được xin phép.
+    - Kèm lịch sử đơn nghỉ của SV.
+    """
+    try:
+        from app.models.leave_request import LeaveRequest
+        from datetime import timedelta
+
+        if current_user["role"] == "sinh_vien":
+            target = (current_user.get("mssv") or "").strip().upper()
+            if mssv and mssv.strip().upper() != target:
+                raise HTTPException(status_code=403, detail="Sinh viên chỉ xem được của mình.")
+        else:
+            target = (mssv or "").strip().upper()
+            if not target:
+                raise HTTPException(status_code=400, detail="Thiếu MSSV.")
+
+        enrollments = db.query(StudentClassEnrollment).filter(
+            StudentClassEnrollment.student_id == target).all()
+        # Fallback cho danh sách đăng ký cũ (ClassEnrollment) — gộp, không trùng class_id
+        legacy = db.query(ClassEnrollment).filter(ClassEnrollment.student_id == target).all()
+        seen_class_ids = {e.class_id for e in enrollments}
+        for le in legacy:
+            if le.class_id not in seen_class_ids:
+                enrollments = list(enrollments) + [le]
+                seen_class_ids.add(le.class_id)
+
+        now = datetime.now()
+        today = now.date()
+        classes_out = []
+
+        def _leave_status(leavereq_row):
+            return leavereq_row.status
+
+        for e in enrollments:
+            cc = e.credit_class if hasattr(e, "credit_class") else None
+            if cc is None:
+                cc = db.query(CreditClass).filter(CreditClass.class_id == e.class_id).first()
+            if not cc:
+                continue
+
+            # --- Lịch cũ (class_schedules) ---
+            schedules = db.query(ClassSchedule).filter(ClassSchedule.class_id == cc.class_id).all()
+            buoi_list = []
+            for s in schedules:
+                start_dt = None
+                if s.study_date is not None and s.start_time is not None:
+                    clean = str(s.start_time).strip()
+                    if len(clean) == 5:
+                        clean += ":00"
+                    try:
+                        start_dt = datetime.strptime(f"{s.study_date} {clean}", "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        try:
+                            start_dt = datetime.combine(s.study_date, s.start_time)
+                        except Exception:
+                            start_dt = None
+                elif s.day_of_week is not None and s.start_shift is not None:
+                    try:
+                        offset = 6 if int(s.day_of_week) == 8 else int(s.day_of_week) - 2
+                        d = today + timedelta(days=(offset - today.weekday()) % 7)
+                        start_dt = datetime(d.year, d.month, d.day, min(6 + int(s.start_shift), 23), 0)
+                    except Exception:
+                        start_dt = None
+                if start_dt is not None and now >= start_dt:
+                    continue  # bỏ buổi đã bắt đầu
+                existing_req = db.query(LeaveRequest).filter(
+                    LeaveRequest.student_id == target,
+                    LeaveRequest.schedule_id == s.schedule_id,
+                    LeaveRequest.status.in_(["Pending", "Approved"]),
+                ).first()
+                has_att = db.query(AttendanceHistory).filter(
+                    AttendanceHistory.student_id == target,
+                    AttendanceHistory.schedule_id == s.schedule_id,
+                ).first() is not None
+                buoi_list.append({
+                    "buoi_id": s.schedule_id,
+                    "type": "schedule",
+                    "study_date": str(s.study_date) if s.study_date else None,
+                    "start_time": str(s.start_time)[:5] if s.start_time else None,
+                    "room": s.room or s.room_id,
+                    "eligible": (existing_req is None) and (not has_att),
+                    "already_requested": existing_req is not None,
+                    "da_diem_danh": has_att,
+                })
+
+            # --- Buổi học mới (class_sessions) ---
+            sessions_rows = db.query(ClassSession).filter(ClassSession.class_id == cc.class_id) \
+                .order_by(ClassSession.session_date, ClassSession.start_time).all()
+            for sess in sessions_rows:
+                if sess.end_time is not None and now >= sess.end_time:
+                    continue  # buổi đã kết thúc -> bỏ
+                existing_req = db.query(LeaveRequest).filter(
+                    LeaveRequest.student_id == target,
+                    LeaveRequest.session_id == sess.session_id,
+                    LeaveRequest.status.in_(["Pending", "Approved"]),
+                ).first()
+                has_att = db.query(AttendanceRecord).filter(
+                    AttendanceRecord.student_id == target,
+                    AttendanceRecord.session_id == sess.session_id,
+                ).first() is not None
+                buoi_list.append({
+                    "buoi_id": sess.session_id,
+                    "type": "session",
+                    "study_date": str(sess.session_date),
+                    "start_time": sess.start_time.strftime("%H:%M") if sess.start_time else None,
+                    "room": sess.room_id,
+                    "eligible": (existing_req is None) and (not has_att),
+                    "already_requested": existing_req is not None,
+                    "da_diem_danh": has_att,
+                })
+
+            buoi_list.sort(key=lambda x: (x["study_date"] or "9999", x["start_time"] or ""))
+            classes_out.append({
+                "class_id": cc.class_id,
+                "subject_id": cc.subject_id,
+                "subject_name": cc.subject.subject_name if cc.subject else "N/A",
+                "lecturer_name": cc.lecturer.full_name if cc.lecturer else "N/A",
+                "schedules": buoi_list,
+            })
+
+        requests = db.query(LeaveRequest).filter(LeaveRequest.student_id == target) \
+            .order_by(LeaveRequest.request_id.desc()).limit(50).all()
+        return {
+            "status": "success",
+            "classes": classes_out,
+            "requests": [
+                {
+                    "id": r.request_id,
+                    "ma_lop_tc": r.schedule.class_id if r.schedule else "N/A",
+                    "ngay_hoc": str(r.schedule.study_date) if r.schedule else "N/A",
+                    "ly_do": r.reason,
+                    "trang_thai": r.status,
+                    "nguoi_duyet": r.approved_by,
+                } for r in requests
+            ],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
+
 @router.get("/leave-requests", dependencies=[Depends(require_roles("giang_vien", "admin"))])
 @router.get("/teacher/leave_requests", dependencies=[Depends(require_roles("giang_vien", "admin"))])
 def get_teacher_leave_requests(lecturer_id: Optional[str] = None, db: Session = Depends(get_db)):
     try:
         from app.models.leave_request import LeaveRequest
-        query = db.query(LeaveRequest).join(ClassSchedule).join(CreditClass)
-        if lecturer_id and isinstance(lecturer_id, str):
-            query = query.filter(func.lower(CreditClass.lecturer_id) == lecturer_id.strip().lower())
+        query = db.query(LeaveRequest)
         requests = query.order_by(LeaveRequest.request_id.desc()).all()
+        # Lọc theo giảng viên (dựa trên lớp của schedule/session)
+        if lecturer_id and isinstance(lecturer_id, str):
+            lid = lecturer_id.strip().lower()
+            filtered = []
+            for r in requests:
+                cid = _leave_class_id(r)
+                if not cid or cid == "N/A":
+                    continue
+                cc = db.query(CreditClass).filter(CreditClass.class_id == cid).first()
+                if cc and (cc.lecturer_id or "").strip().lower() == lid:
+                    filtered.append(r)
+            requests = filtered
+        rows = [
+            {
+                "id": r.request_id,
+                "mssv": r.student_id,
+                "ho_ten": r.student.profile.full_name if (r.student and r.student.profile) else "N/A",
+                "ma_lop_tc": _leave_class_id(r),
+                "ngay_hoc": _leave_date(r),
+                "ly_do": r.reason,
+                "minh_chung": r.evidence,
+                "trang_thai": r.status,
+                "nguoi_duyet": r.approved_by
+            }
+            for r in requests
+        ]
         return {
             "status": "success",
-            "data": [
-                {
-                    "id": r.request_id,
-                    "mssv": r.student_id,
-                    "ho_ten": r.student.profile.full_name if (r.student and r.student.profile) else "N/A",
-                    "ma_lop_tc": r.schedule.class_id if r.schedule else "N/A",
-                    "ngay_hoc": str(r.schedule.study_date) if r.schedule else "N/A",
-                    "ly_do": r.reason,
-                    "minh_chung": r.evidence,
-                    "trang_thai": r.status,
-                    "nguoi_duyet": r.approved_by
-                }
-                for r in requests
-            ],
-            "requests": [
-                {
-                    "id": r.request_id,
-                    "mssv": r.student_id,
-                    "ho_ten": r.student.profile.full_name if (r.student and r.student.profile) else "N/A",
-                    "ma_lop_tc": r.schedule.class_id if r.schedule else "N/A",
-                    "ngay_hoc": str(r.schedule.study_date) if r.schedule else "N/A",
-                    "ly_do": r.reason,
-                    "minh_chung": r.evidence,
-                    "trang_thai": r.status,
-                    "nguoi_duyet": r.approved_by
-                }
-                for r in requests
-            ]
+            "data": rows,
+            "requests": rows,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {e}")
@@ -1361,15 +1814,36 @@ def approve_leave(
         
         req.status = "Approved"
         req.approved_by = nguoi_duyet or "Giảng viên"
-        
+
+        demo = get_demo_controls(db)
+        override_ok = demo.get("allow_override_present_leave", False)
+        from app.core.attendance_report import is_present_status
+
+        # Đơn theo buổi học mới (class_sessions) -> ghi AttendanceRecord
+        if req.session_id is not None:
+            existing = db.query(AttendanceRecord).filter(
+                AttendanceRecord.student_id == req.student_id,
+                AttendanceRecord.session_id == req.session_id
+            ).first()
+            if existing and is_present_status(existing.status) and not override_ok:
+                db.commit()
+                return {"status": "success", "message": "Đơn đã duyệt. Sinh viên đã có mặt buổi này nên không thay đổi trạng thái điểm danh."}
+            if existing:
+                existing.status = "Có phép"
+                existing.source = "manual"
+            else:
+                db.add(AttendanceRecord(
+                    student_id=req.student_id, session_id=req.session_id,
+                    status="Có phép", source="manual",
+                    notes=f"Đơn nghỉ duyệt bởi {nguoi_duyet or 'GV'}",
+                    recorded_at=datetime.now()))
+            db.commit()
+            return {"status": "success", "message": "Đã duyệt đơn nghỉ phép có phép thành công."}
+
         existing = db.query(AttendanceHistory).filter(
             AttendanceHistory.student_id == req.student_id,
             AttendanceHistory.schedule_id == req.schedule_id
         ).first()
-        
-        demo = get_demo_controls(db)
-        override_ok = demo.get("allow_override_present_leave", False)
-        from app.core.attendance_report import is_present_status
 
         if existing and is_present_status(existing.status) and not override_ok:
             # Đã có mặt -> giữ nguyên, không ghi đè thành "Có phép" làm giảm điểm oan
@@ -1387,7 +1861,7 @@ def approve_leave(
                 check_in_time=datetime.now()
             )
             db.add(new_att)
-            
+
         db.commit()
         return {"status": "success", "message": "Đã duyệt đơn nghỉ phép có phép thành công."}
     except HTTPException as he:

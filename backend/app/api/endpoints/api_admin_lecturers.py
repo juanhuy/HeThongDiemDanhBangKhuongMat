@@ -113,6 +113,12 @@ def delete_existing_lecturer(
     db_lecturer = crud.get_lecturer(db, lecturer_id=lecturer_id)
     if not db_lecturer:
         raise HTTPException(status_code=404, detail="Không tìm thấy giảng viên")
+    # Chặn xóa khi GV còn lớp tín chỉ phụ trách (tránh cascade xóa lớp)
+    from app.models.credit_class import CreditClass
+    n_classes = db.query(CreditClass).filter(CreditClass.lecturer_id == lecturer_id.strip()).count()
+    if n_classes > 0:
+        raise HTTPException(status_code=400,
+                            detail=f"Không thể xóa giảng viên {lecturer_id}: còn {n_classes} lớp tín chỉ đang phụ trách. Hãy chuyển lớp cho GV khác trước.")
     crud.delete_lecturer(db=db, lecturer_id=lecturer_id)
     log_audit(db, actor_username=current_user.get("username"), actor_role=current_user.get("role"),
               action="DELETE", target="lecturers", target_id=lecturer_id, detail="Xóa giảng viên")

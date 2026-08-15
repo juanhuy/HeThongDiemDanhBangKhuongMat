@@ -38,6 +38,23 @@ def update_faculty(faculty_id: str, faculty_update: FacultyUpdate, db: Session =
         raise HTTPException(status_code=404, detail="Không tìm thấy Khoa")
     return crud.update_faculty(db=db, db_faculty=db_obj, faculty_update=faculty_update)
 
+@router.delete("/{faculty_id}", dependencies=[Depends(require_admin)])
+def delete_faculty(faculty_id: str, db: Session = Depends(get_db)):
+    from app.models.major import Major
+    from app.models.student import Student
+    from app.models.lecturer import Lecturer
+    db_obj = crud.get_faculty(db, faculty_id=faculty_id)
+    if not db_obj:
+        raise HTTPException(status_code=404, detail="Không tìm thấy Khoa")
+    n_maj = db.query(Major).filter(Major.faculty_id == faculty_id.strip()).count()
+    n_sv = db.query(Student).filter(Student.faculty_id == faculty_id.strip()).count()
+    n_gv = db.query(Lecturer).filter(Lecturer.faculty_id == faculty_id.strip()).count()
+    if n_maj + n_sv + n_gv > 0:
+        raise HTTPException(status_code=400,
+                            detail=f"Không thể xóa Khoa {faculty_id}: còn {n_maj} ngành, {n_sv} sinh viên, {n_gv} giảng viên.")
+    crud.delete_faculty(db=db, faculty_id=faculty_id)
+    return {"message": f"Đã xóa Khoa {faculty_id}"}
+
 @router.post("/import/csv", dependencies=[Depends(require_admin)])
 async def import_faculties_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:

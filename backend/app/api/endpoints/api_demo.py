@@ -3,8 +3,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.demo_service import get_demo_controls, update_demo_controls, _DEFAULT
+from app.core.require import require_admin
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 class DemoControls(BaseModel):

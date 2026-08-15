@@ -24,7 +24,7 @@ const Login = ({ API_BASE, onLoginSuccess }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        storeSession(data.access_token, data.user);
+        storeSession(data.access_token, data.user, data.refresh_token);
         onLoginSuccess(data.user);
       } else {
         setError(data.detail || "Đăng nhập thất bại. Vui lòng kiểm tra lại tài khoản và mật khẩu.");

@@ -39,6 +39,19 @@ def update_major(major_id: str, major_update: MajorUpdate, db: Session = Depends
         raise HTTPException(status_code=404, detail="Không tìm thấy Ngành")
     return crud.update_major(db=db, db_major=db_obj, major_update=major_update)
 
+@router.delete("/{major_id}", dependencies=[Depends(require_admin)])
+def delete_major(major_id: str, db: Session = Depends(get_db)):
+    from app.models.student import Student
+    db_obj = crud.get_major(db, major_id=major_id)
+    if not db_obj:
+        raise HTTPException(status_code=404, detail="Không tìm thấy Ngành")
+    n_sv = db.query(Student).filter(Student.major_id == major_id.strip()).count()
+    if n_sv > 0:
+        raise HTTPException(status_code=400,
+                            detail=f"Không thể xóa Ngành {major_id}: còn {n_sv} sinh viên đang theo học.")
+    crud.delete_major(db=db, major_id=major_id)
+    return {"message": f"Đã xóa Ngành {major_id}"}
+
 @router.post("/import/csv", dependencies=[Depends(require_admin)])
 async def import_majors_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:

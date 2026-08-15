@@ -44,6 +44,7 @@ export default function SubjectsManagement({ showToast }) {
 
   const [form, setForm] = useState({
     subject_id: '', subject_name: '', theory_credits: 0, practical_credits: 0, faculty_id: '', is_active: true,
+    major_ids: '', subject_type: 'Bắt buộc',
   });
 
   const fetchAll = async () => {
@@ -106,10 +107,11 @@ export default function SubjectsManagement({ showToast }) {
       setForm({
         subject_id: s.subject_id, subject_name: s.subject_name || '', theory_credits: s.theory_credits || 0,
         practical_credits: s.practical_credits || 0, faculty_id: s.faculty_id || '', is_active: s.is_active !== false,
+        major_ids: s.major_ids || '', subject_type: s.subject_type || 'Bắt buộc',
       });
     } else {
       setEditingId(null);
-      setForm({ subject_id: '', subject_name: '', theory_credits: 0, practical_credits: 0, faculty_id: '', is_active: true });
+      setForm({ subject_id: '', subject_name: '', theory_credits: 0, practical_credits: 0, faculty_id: '', is_active: true, major_ids: '', subject_type: 'Bắt buộc' });
     }
     setIsOpen(true);
   };
@@ -515,6 +517,19 @@ export default function SubjectsManagement({ showToast }) {
                 <div>
                   <label style={styles.label}>Tín chỉ Thực hành</label>
                   <input type="number" min={0} value={form.practical_credits} onChange={(e) => setForm({ ...form, practical_credits: parseInt(e.target.value) || 0 })} style={styles.input} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15 }}>
+                <div>
+                  <label style={styles.label}>Ngành đào tạo (mã, cách nhau dấu phẩy)</label>
+                  <input value={form.major_ids} onChange={(e) => setForm({ ...form, major_ids: e.target.value })} placeholder="VD: MaCNTT,MaATTT (rỗng = môn đại cương)" style={styles.input} />
+                </div>
+                <div>
+                  <label style={styles.label}>Loại môn (CTĐT)</label>
+                  <select value={form.subject_type} onChange={(e) => setForm({ ...form, subject_type: e.target.value })} style={styles.input}>
+                    <option value="Bắt buộc">Bắt buộc</option>
+                    <option value="Tự chọn">Tự chọn</option>
+                  </select>
                 </div>
               </div>
               <div>

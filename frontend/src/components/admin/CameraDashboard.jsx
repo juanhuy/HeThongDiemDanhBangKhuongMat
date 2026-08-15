@@ -20,6 +20,7 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
   const fileInputRef = useRef(null);
   const intervalRef = useRef(null);
   const snapshotTimerRef = useRef(null);
+  const scanningRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -59,6 +60,9 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
 
     intervalRef.current = setInterval(async () => {
       if (!videoRef.current || !canvasRef.current) return;
+      // Chống chồng request: nếu request trước chưa xong thì bỏ qua frame này
+      if (scanningRef.current) return;
+      scanningRef.current = true;
       const video = videoRef.current;
       const temp = document.createElement('canvas');
       temp.width = video.videoWidth || 640;
@@ -66,17 +70,19 @@ export default function CameraDashboard({ showToast, onAttendanceLogged }) {
       temp.getContext('2d').drawImage(video, 0, 0, temp.width, temp.height);
 
       temp.toBlob(async (blob) => {
-        if (!blob) return;
         try {
+          if (!blob) return;
           const data = await attendanceApi.recognizeFace(blob, cameraRoom);
           setDetectionLogs(data.results || []);
           drawBoxes(data.results || [], temp);
           onAttendanceLogged?.();
         } catch (err) {
           console.error('Lỗi quét khuôn mặt:', err);
+        } finally {
+          scanningRef.current = false;
         }
       }, 'image/jpeg');
-    }, 800);
+    }, 200);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
